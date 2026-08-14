@@ -23,12 +23,20 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import {
+  createNote,
+  initializeStorage,
+  isTauriRuntime,
+  listActiveItems,
+  searchItems,
+  type StoredLibraryItem,
+} from "./lib/libraryApi";
 import "./App.css";
 
-type ItemKind = "Article" | "Image" | "Note" | "PDF" | "Quote";
+type ItemKind = "Article" | "Image" | "Note" | "PDF" | "Quote" | "Video" | "File";
 
 type LibraryItem = {
-  id: number;
+  id: string | number;
   kind: ItemKind;
   title: string;
   description: string;
@@ -40,6 +48,55 @@ type LibraryItem = {
   featured?: boolean;
   favorite?: boolean;
 };
+
+function displayKind(kind: string): ItemKind {
+  switch (kind.toLowerCase()) {
+    case "article":
+    case "url":
+      return "Article";
+    case "image":
+      return "Image";
+    case "note":
+      return "Note";
+    case "pdf":
+      return "PDF";
+    case "video":
+    case "embed":
+      return "Video";
+    case "file":
+      return "File";
+    default:
+      return "Note";
+  }
+}
+
+function formatItemDate(timestamp: number) {
+  const date = new Date(timestamp);
+  const age = Date.now() - date.getTime();
+  if (age < 60 * 60 * 1000) return "Just now";
+  if (age < 24 * 60 * 60 * 1000) return "Today";
+  return date.toLocaleDateString(undefined, { month: "short", day: "2-digit" });
+}
+
+function storedItemToLibraryItem(item: StoredLibraryItem): LibraryItem {
+  const kind = displayKind(item.kind);
+  const metadataTags = item.metadata.tags;
+  const tags = Array.isArray(metadataTags)
+    ? metadataTags.filter((tag): tag is string => typeof tag === "string")
+    : [];
+
+  return {
+    id: item.id,
+    kind,
+    title: item.title?.trim() || "Untitled note",
+    description: item.description?.trim() || "Saved to your mind.",
+    source: item.sourceLabel || item.sourceUrl || "Quick note",
+    date: formatItemDate(item.createdAt),
+    tags,
+    image: item.thumbnailPath ?? item.localAssetPath ?? undefined,
+    favorite: item.favorite,
+  };
+}
 
 const seedItems: LibraryItem[] = [
   {
@@ -143,13 +200,14 @@ function KindIcon({ kind }: { kind: ItemKind }) {
 }
 
 function App() {
-  const [items, setItems] = useState(seedItems);
+  const [items, setItems] = useState<LibraryItem[]>(isTauriRuntime() ? [] : seedItems);
   const [query, setQuery] = useState("");
   const [activeView, setActiveView] = useState("Everything");
   const [isAdding, setIsAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [selectedItem, setSelectedItem] = useState<LibraryItem | null>(null);
   const [listMode, setListMode] = useState(false);
+  const [captureError, setCaptureError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -166,6 +224,26 @@ function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let cancelled = false;
+
+    async function loadItems() {
+      try {
+        await initializeStorage();
+        const storedItems = query.trim() ? await searchItems(query) : await listActiveItems();
+        if (!cancelled) setItems(storedItems.map(storedItemToLibraryItem));
+      } catch (error) {
+        if (!cancelled) setCaptureError(error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    void loadItems();
+    return () => {
+      cancelled = true;
+    };
+  }, [query]);
 
   const filteredItems = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -185,22 +263,36 @@ function App() {
     });
   }, [activeView, items, query]);
 
-  function saveQuickNote(event: React.FormEvent) {
+  async function saveQuickNote(event: React.FormEvent) {
     event.preventDefault();
     if (!newTitle.trim()) return;
-    const item: LibraryItem = {
-      id: Date.now(),
-      kind: "Note",
-      title: newTitle.trim(),
-      description: "Saved just now. Expand this thought whenever it asks for more room.",
-      source: "Quick note",
-      date: "Just now",
-      tags: ["new note"],
-      accent: "paper-blue",
-    };
-    setItems((current) => [item, ...current]);
-    setNewTitle("");
-    setIsAdding(false);
+    setCaptureError(null);
+
+    try {
+      if (isTauriRuntime()) {
+        const storedItem = await createNote({
+          body: newTitle.trim(),
+          metadata: { captureSource: "quick-note" },
+        });
+        setItems((current) => [storedItemToLibraryItem(storedItem), ...current]);
+      } else {
+        const item: LibraryItem = {
+          id: Date.now(),
+          kind: "Note",
+          title: newTitle.trim(),
+          description: "Saved just now. Expand this thought whenever it asks for more room.",
+          source: "Quick note",
+          date: "Just now",
+          tags: ["new note"],
+          accent: "paper-blue",
+        };
+        setItems((current) => [item, ...current]);
+      }
+      setNewTitle("");
+      setIsAdding(false);
+    } catch (error) {
+      setCaptureError(error instanceof Error ? error.message : String(error));
+    }
   }
 
   return (
@@ -220,7 +312,7 @@ function App() {
           <button className="nav-item active" onClick={() => setActiveView("Everything")}>
             <Layers3 size={17} />
             <span>Everything</span>
-            <span className="nav-count">146</span>
+            <span className="nav-count">{items.length}</span>
           </button>
           <button className="nav-item" onClick={() => setActiveView("Top of mind")}>
             <Sparkles size={17} />
@@ -288,7 +380,7 @@ function App() {
         <section className="library-header">
           <div>
             <h1>{activeView === "Everything" ? "Everything" : activeView}</h1>
-            <p><span className="live-dot" />146 things saved · Search by whatever you remember.</p>
+            <p><span className="live-dot" />{items.length} things saved · Search by whatever you remember.</p>
           </div>
           <button className="quiet-link" onClick={() => setIsAdding(true)}><Plus size={15} /> Add a note</button>
         </section>
@@ -326,6 +418,8 @@ function App() {
             <button className="capture-close" type="button" onClick={() => setIsAdding(false)} aria-label="Close capture"><X size={16} /></button>
           </form>
         )}
+
+        {captureError && <p className="capture-error">Couldn’t save this yet: {captureError}</p>}
 
         <div className="library-toolbar">
           <div className="result-context">
