@@ -24,13 +24,17 @@ import {
   X,
 } from "lucide-react";
 import {
+  assetUrl,
+  createUrl,
   createNote,
   initializeStorage,
   isTauriRuntime,
   listActiveItems,
+  saveFile,
   searchItems,
   type StoredLibraryItem,
 } from "./lib/libraryApi";
+import { classifyFile } from "./lib/ingestion/file-classification";
 import "./App.css";
 
 type ItemKind = "Article" | "Image" | "Note" | "PDF" | "Quote" | "Video" | "File";
@@ -78,12 +82,14 @@ function formatItemDate(timestamp: number) {
   return date.toLocaleDateString(undefined, { month: "short", day: "2-digit" });
 }
 
-function storedItemToLibraryItem(item: StoredLibraryItem): LibraryItem {
+async function storedItemToLibraryItem(item: StoredLibraryItem): Promise<LibraryItem> {
   const kind = displayKind(item.kind);
   const metadataTags = item.metadata.tags;
   const tags = Array.isArray(metadataTags)
     ? metadataTags.filter((tag): tag is string => typeof tag === "string")
     : [];
+
+  const image = await assetUrl(item.thumbnailPath ?? item.localAssetPath);
 
   return {
     id: item.id,
@@ -93,7 +99,7 @@ function storedItemToLibraryItem(item: StoredLibraryItem): LibraryItem {
     source: item.sourceLabel || item.sourceUrl || "Quick note",
     date: formatItemDate(item.createdAt),
     tags,
-    image: item.thumbnailPath ?? item.localAssetPath ?? undefined,
+    image,
     favorite: item.favorite,
   };
 }
@@ -204,11 +210,15 @@ function App() {
   const [query, setQuery] = useState("");
   const [activeView, setActiveView] = useState("Everything");
   const [isAdding, setIsAdding] = useState(false);
+  const [captureMode, setCaptureMode] = useState<"note" | "url" | "file">("note");
   const [newTitle, setNewTitle] = useState("");
+  const [captureUrl, setCaptureUrl] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedItem, setSelectedItem] = useState<LibraryItem | null>(null);
   const [listMode, setListMode] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -233,7 +243,7 @@ function App() {
       try {
         await initializeStorage();
         const storedItems = query.trim() ? await searchItems(query) : await listActiveItems();
-        if (!cancelled) setItems(storedItems.map(storedItemToLibraryItem));
+        if (!cancelled) setItems(await Promise.all(storedItems.map(storedItemToLibraryItem)));
       } catch (error) {
         if (!cancelled) setCaptureError(error instanceof Error ? error.message : String(error));
       }
@@ -263,36 +273,115 @@ function App() {
     });
   }, [activeView, items, query]);
 
-  async function saveQuickNote(event: React.FormEvent) {
+  async function saveCapture(event: React.FormEvent) {
     event.preventDefault();
-    if (!newTitle.trim()) return;
     setCaptureError(null);
 
     try {
-      if (isTauriRuntime()) {
-        const storedItem = await createNote({
-          body: newTitle.trim(),
-          metadata: { captureSource: "quick-note" },
-        });
-        setItems((current) => [storedItemToLibraryItem(storedItem), ...current]);
-      } else {
-        const item: LibraryItem = {
-          id: Date.now(),
-          kind: "Note",
-          title: newTitle.trim(),
-          description: "Saved just now. Expand this thought whenever it asks for more room.",
-          source: "Quick note",
-          date: "Just now",
-          tags: ["new note"],
-          accent: "paper-blue",
+      if (captureMode === "note") {
+        if (!newTitle.trim()) return;
+        if (isTauriRuntime()) {
+          const storedItem = await createNote({
+            body: newTitle.trim(),
+            metadata: { captureSource: "quick-note" },
+          });
+          const libraryItem = await storedItemToLibraryItem(storedItem);
+          setItems((current) => [libraryItem, ...current]);
+        } else {
+          const item: LibraryItem = {
+            id: Date.now(),
+            kind: "Note",
+            title: newTitle.trim(),
+            description: "Saved just now. Expand this thought whenever it asks for more room.",
+            source: "Quick note",
+            date: "Just now",
+            tags: ["new note"],
+            accent: "paper-blue",
+          };
+          setItems((current) => [item, ...current]);
+        }
+      } else if (captureMode === "url") {
+        if (!captureUrl.trim()) return;
+        const { ingestUrl } = await import("./lib/ingestion");
+        const article = await ingestUrl(captureUrl.trim());
+        const metadata = {
+          author: article.author,
+          publishedDate: article.publishedDate,
+          extractedText: article.text,
+          html: article.html,
+          imageUrls: article.imageUrls,
+          safeEmbeds: article.safeEmbeds,
+          extractor: article.extractor,
         };
-        setItems((current) => [item, ...current]);
+
+        if (isTauriRuntime()) {
+          const storedItem = await createUrl({
+            sourceUrl: article.canonicalUrl,
+            title: article.title,
+            description: article.description,
+            body: article.text,
+            metadata,
+          });
+          const libraryItem = await storedItemToLibraryItem(storedItem);
+          setItems((current) => [libraryItem, ...current]);
+        } else {
+          const item: LibraryItem = {
+            id: Date.now(),
+            kind: "Article",
+            title: article.title,
+            description: article.description || article.text.slice(0, 180),
+            source: new URL(article.canonicalUrl).hostname,
+            date: "Just now",
+            tags: [],
+            image: article.imageUrls[0],
+          };
+          setItems((current) => [item, ...current]);
+        }
+      } else {
+        if (!selectedFile) return;
+        const kind = classifyFile(selectedFile);
+        const bytes = Array.from(new Uint8Array(await selectedFile.arrayBuffer()));
+        if (isTauriRuntime()) {
+          const storedItem = await saveFile({
+            fileName: selectedFile.name,
+            mimeType: selectedFile.type,
+            kind,
+            bytes,
+          });
+          const libraryItem = await storedItemToLibraryItem(storedItem);
+          setItems((current) => [libraryItem, ...current]);
+        } else {
+          const item: LibraryItem = {
+            id: Date.now(),
+            kind: kind === "image" ? "Image" : kind === "pdf" ? "PDF" : kind === "video" ? "Video" : "File",
+            title: selectedFile.name,
+            description: "Saved locally from this device.",
+            source: "Local file",
+            date: "Just now",
+            tags: [],
+            image: kind === "image" ? URL.createObjectURL(selectedFile) : undefined,
+          };
+          setItems((current) => [item, ...current]);
+        }
       }
+
       setNewTitle("");
+      setCaptureUrl("");
+      setSelectedFile(null);
       setIsAdding(false);
     } catch (error) {
       setCaptureError(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  function selectCaptureMode(mode: "note" | "url" | "file") {
+    setCaptureMode(mode);
+    setCaptureError(null);
+  }
+
+  function openCapture(mode: "note" | "url" | "file" = "note") {
+    selectCaptureMode(mode);
+    setIsAdding(true);
   }
 
   return (
@@ -382,7 +471,7 @@ function App() {
             <h1>{activeView === "Everything" ? "Everything" : activeView}</h1>
             <p><span className="live-dot" />{items.length} things saved · Search by whatever you remember.</p>
           </div>
-          <button className="quiet-link" onClick={() => setIsAdding(true)}><Plus size={15} /> Add a note</button>
+          <button className="quiet-link" onClick={() => openCapture("note")}><Plus size={15} /> Add a note</button>
         </section>
 
         <section className="capture-bar" aria-label="Capture and search">
@@ -404,16 +493,41 @@ function App() {
         </section>
 
         {isAdding && (
-          <form className="quick-capture" onSubmit={saveQuickNote}>
+          <form className="quick-capture" onSubmit={saveCapture}>
             <div className="quick-capture-icon"><Sparkles size={16} /></div>
-            <input
+            <div className="capture-mode-tabs" role="tablist" aria-label="Capture type">
+              <button type="button" className={captureMode === "note" ? "selected" : ""} onClick={() => selectCaptureMode("note")}>Note</button>
+              <button type="button" className={captureMode === "url" ? "selected" : ""} onClick={() => selectCaptureMode("url")}>Link</button>
+              <button type="button" className={captureMode === "file" ? "selected" : ""} onClick={() => selectCaptureMode("file")}>File</button>
+            </div>
+            {captureMode === "note" && <input
               autoFocus
               value={newTitle}
               onChange={(event) => setNewTitle(event.target.value)}
               placeholder="A thought, a link, a small beginning…"
               aria-label="New note"
-            />
-            <span className="capture-type">Quick note</span>
+            />}
+            {captureMode === "url" && <input
+              autoFocus
+              type="url"
+              value={captureUrl}
+              onChange={(event) => setCaptureUrl(event.target.value)}
+              placeholder="Paste a link to save and read later…"
+              aria-label="URL to save"
+            />}
+            {captureMode === "file" && <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="visually-hidden"
+                accept="image/*,application/pdf,video/*"
+                onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+              />
+              <button type="button" className="file-picker" onClick={() => fileInputRef.current?.click()}>
+                {selectedFile ? selectedFile.name : "Choose an image, PDF, or video"}
+              </button>
+            </>}
+            <span className="capture-type">{captureMode === "note" ? "Quick note" : captureMode === "url" ? "Defuddle article" : "Local file"}</span>
             <button className="capture-save" type="submit">Save</button>
             <button className="capture-close" type="button" onClick={() => setIsAdding(false)} aria-label="Close capture"><X size={16} /></button>
           </form>

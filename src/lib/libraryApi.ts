@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 
 export type StoredItemKind = "note" | "article" | "image" | "pdf" | "video" | "file" | "embed";
 
@@ -24,6 +24,21 @@ export type CreateNoteInput = {
   metadata?: Record<string, unknown>;
 };
 
+export type CreateUrlInput = {
+  sourceUrl: string;
+  title: string;
+  description: string;
+  body: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type SaveFileInput = {
+  fileName: string;
+  mimeType: string;
+  kind: "image" | "pdf" | "video" | "other";
+  bytes: number[];
+};
+
 const runtimeIsTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 export function isTauriRuntime() {
@@ -47,7 +62,21 @@ export async function createNote(input: CreateNoteInput) {
   return invoke<StoredLibraryItem>("create_note", { input });
 }
 
+export async function createUrl(input: CreateUrlInput) {
+  return invoke<StoredLibraryItem>("create_url", { input });
+}
+
+export async function saveFile(input: SaveFileInput) {
+  return invoke<StoredLibraryItem>("save_file", { input });
+}
+
+export async function assetUrl(path: string | null) {
+  if (!path) return undefined;
+  if (!runtimeIsTauri) return path;
+  const absolutePath = await invoke<string>("resolve_asset_path", { path });
+  return convertFileSrc(absolutePath);
+}
+
 export async function archiveItem(id: string) {
   return invoke<StoredLibraryItem>("archive_item", { id, archived: true });
 }
-
