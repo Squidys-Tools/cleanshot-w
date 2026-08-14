@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "article-short-01",
+      "path": "corpus/articles/article-short-01.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "",
+        "author": "",
+        "search_terms": [],
+        "must_not_match": []
+      },
+      "notes": ""
+    },
+    {
+      "id": "screenshot-small-text-01",
+      "path": "corpus/screenshots/screenshot-small-text-01.png",
+      "type": "screenshot",
+      "language": "en",
+      "expected": {
+        "ocr_text": "",
+        "search_terms": [],
+        "must_not_match": []
+      },
+      "notes": ""
+    },
+    {
+      "id": "image-similar-01",
+      "path": "corpus/images/image-similar-01.jpg",
+      "type": "image",
+      "language": "und",
+      "similarity_group": "moodboard-a",
+      "expected": {
+        "search_terms": [],
+        "must_not_match": []
+      },
+      "notes": ""
+    },
+    {
+      "id": "pdf-scanned-01",
+      "path": "corpus/pdfs/pdf-scanned-01.pdf",
+      "type": "pdf",
+      "language": "en",
+      "expected": {
+        "ocr_text": "",
+        "search_terms": [],
+        "must_not_match": []
+      },
+      "notes": ""
+    }
+  ]
+}
