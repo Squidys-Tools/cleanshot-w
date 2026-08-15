@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SQLite FTS5 for Local Search</title>
+  <meta name="description" content="Reference documentation for building full-text search over a local library with SQLite FTS5.">
+</head>
+<body>
+  <main>
+    <h1>SQLite FTS5 for Local Search</h1>
+
+    <p>
+      FTS5 is the full-text search engine built into SQLite. It gives you
+      tokenized search over text columns with ranking, prefix matching, and
+      phrase queries, all without a server. This guide covers the parts you
+      need for a local, offline library.
+    </p>
+
+    <h2>Creating the virtual table</h2>
+    <p>
+      FTS5 tables are declared like ordinary tables but must include exactly
+      one <code>UNINDEXED</code> column used as the primary key link to your
+      content table.
+    </p>
+    <pre><code>CREATE VIRTUAL TABLE items_fts USING fts5(
+    item_id UNINDEXED,
+    title,
+    description,
+    body
+);
+</code></pre>
+
+    <h2>Keeping the index in sync with triggers</h2>
+    <p>
+      Because FTS5 tables are virtual, changes to your content table are not
+      reflected automatically. Attach triggers so inserts, updates, and
+      deletes stay in sync.
+    </p>
+    <pre><code>CREATE TRIGGER items_fts_after_insert AFTER INSERT ON items BEGIN
+    INSERT INTO items_fts(item_id, title, description, body)
+    VALUES (new.id, new.title, new.description, new.body);
+END;
+</code></pre>
+
+    <h2>Querying</h2>
+    <p>
+      The match operator handles phrases and negation. Quote user input to
+      treat every token as a phrase fragment, then escape embedded quotes.
+    </p>
+    <pre><code>SELECT i.*, bm25(items_fts)
+FROM items_fts
+JOIN items i ON i.id = items_fts.item_id
+WHERE items_fts MATCH '"slow" "news"'
+ORDER BY bm25(items_fts);
+</code></pre>
+
+    <h2>Failure mode</h2>
+    <p>
+      FTS5 may be unavailable when SQLite is compiled without the extension.
+      Detect this at startup and fall back to <code>LIKE</code> queries so
+      search degrades gracefully instead of failing outright.
+    </p>
+  </main>
+</body>
+</html>

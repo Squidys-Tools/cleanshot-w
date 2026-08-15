@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Parsing Dates Without Losing Your Mind</title>
+  <meta name="description" content="A practical guide to parsing publication dates from messy article metadata, with code examples.">
+</head>
+<body>
+  <article>
+    <h1>Parsing Dates Without Losing Your Mind</h1>
+    <p class="byline">Field note from the ingestion team</p>
+
+    <p>
+      When you pull a page from the web, the publication date can be in the
+      <code>&lt;time&gt;</code> element, an ISO string in a meta tag, a
+      schema.org property, or nowhere at all. This note shows the small
+      toolkit we use, in order of preference.
+    </p>
+
+    <h2>1. Prefer machine-readable first</h2>
+    <p>
+      Never parse display text when a machine-readable value exists. Look for
+      ISO 8601 in meta tags and schema.org markup before anything else.
+    </p>
+    <pre><code>const candidates = [
+  page.querySelector('meta[property="article:published_time"]')?.content,
+  page.querySelector('time[datetime]')?.getAttribute('datetime'),
+  page.querySelector('meta[name="date"]')?.content,
+];
+
+for (const value of candidates) {
+  if (!value) continue;
+  const date = new Date(value);
+  if (!Number.isNaN(date.getTime())) return date.toISOString();
+}
+</code></pre>
+
+    <h2>2. Then handle human formats</h2>
+    <p>
+      Many sites render "March 12, 2026" or "12 Mar 2026". A small map plus
+      a normalizer covers most cases. Keep it explicit and tested.
+    </p>
+    <pre><code>const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+                 jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+
+export function parseHumanDate(text: string): string | null {
+  const match = text.match(/(\d{1,2})\s+([a-z]{3})\w*\s+(\d{4})/i);
+  if (!match) return null;
+  const [, day, month, year] = match;
+  const monthNumber = MONTHS[month.slice(0, 3).toLowerCase()];
+  if (!monthNumber) return null;
+  const date = new Date(Date.UTC(Number(year), monthNumber - 1, Number(day)));
+  return date.toISOString();
+}
+</code></pre>
+
+    <h2>3. Fail toward absent</h2>
+    <p>
+      When nothing parses, store no date instead of a guessed one. A wrong
+      date sorts your archive wrong for years. Absence is honest and
+      recoverable; fiction is not.
+    </p>
+    <pre><code>const publishedDate = isoDate ?? parseHumanDate(text) ?? null;
+</code></pre>
+
+    <h2>Rules we stole from ourselves</h2>
+    <ul>
+      <li>Never trust the page title for the date.</li>
+      <li>Timezone-aware parsing, always UTC storage.</li>
+      <li>Cache the raw string with the parsed value for debugging.</li>
+    </ul>
+  </article>
+</body>
+</html>

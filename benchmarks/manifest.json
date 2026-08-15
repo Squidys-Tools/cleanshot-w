@@ -7,12 +7,151 @@
       "type": "article",
       "language": "en",
       "expected": {
-        "title": "",
-        "author": "",
-        "search_terms": [],
+        "title": "The Case for Slower News",
+        "author": "Mira Alderton",
+        "search_terms": ["slower", "news", "over-informed"],
+        "must_not_match": ["paywall", "recipe"]
+      },
+      "notes": "Short blog post; canonical link present; date via time element."
+    },
+    {
+      "id": "article-long-essay-01",
+      "path": "corpus/articles/article-long-essay-01.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "Notes on Attention, Winter 2026",
+        "author": "Theo Wren",
+        "search_terms": ["attention", "bookmark", "serendipity", "archive", "Theo"],
+        "must_not_match": ["salmon", "transit", "electric"]
+      },
+      "notes": "Long-form essay; multiple h2 sections; good extraction target."
+    },
+    {
+      "id": "article-news-01",
+      "path": "corpus/articles/article-news-01.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "City Council Approves Riverfront Transit Line",
+        "author": "Sam Okonkwo",
+        "search_terms": ["council", "riverfront", "light rail", "Eastgate", "Lena Voss"],
+        "must_not_match": ["salmon", "drawer", "FTS5"]
+      },
+      "notes": "News article with byline, updated timestamp, quotes."
+    },
+    {
+      "id": "article-recipe-01",
+      "path": "corpus/articles/article-recipe-01.html",
+      "type": "recipe",
+      "language": "en",
+      "expected": {
+        "title": "One-Pan Miso Butter Salmon",
+        "author": "June Park",
+        "search_terms": ["miso", "salmon", "leeks", "butter", "jasmine rice", "skillet"],
+        "must_not_match": ["transit", "news", "drawer"]
+      },
+      "notes": "Recipe: ingredients list and ordered method; test structured extraction."
+    },
+    {
+      "id": "article-docs-01",
+      "path": "corpus/articles/article-docs-01.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "SQLite FTS5 for Local Search",
+        "search_terms": ["fts5", "sqlite", "virtual table", "bm25", "trigger"],
+        "must_not_match": ["salmon", "serendipity"]
+      },
+      "notes": "Technical documentation with code blocks; no byline."
+    },
+    {
+      "id": "article-footnotes-01",
+      "path": "corpus/articles/article-footnotes-01.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "The Library That Grew a Door",
+        "author": "Ana Beltrán",
+        "search_terms": ["library", "door", "catalog", "reading room"],
+        "must_not_match": ["transit", "recipe"]
+      },
+      "notes": "Footnote links with an end notes list; tests note/reference handling."
+    },
+    {
+      "id": "article-codeblocks-01",
+      "path": "corpus/articles/article-codeblocks-01.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "Parsing Dates Without Losing Your Mind",
+        "search_terms": ["parsing", "date", "ISO", "schema.org", "MONTHS"],
+        "must_not_match": ["salmon", "riverfront"]
+      },
+      "notes": "Multiple pre/code blocks with JS source; tests code preservation."
+    },
+    {
+      "id": "article-gallery-01",
+      "path": "corpus/articles/article-gallery-01.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "Seven Rooms Worth Saving",
+        "search_terms": ["rooms", "gallery", "warm light"],
+        "must_not_match": ["drawer", "miso"],
+        "image_urls_min": 7
+      },
+      "notes": "Seven figures referencing local corpus images; tests image URL collection."
+    },
+    {
+      "id": "article-js-heavy-01",
+      "path": "corpus/articles/article-js-heavy-01.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "The Rendering Kitchen",
+        "search_terms": ["rendering", "server side", "browser"],
+        "must_not_match": ["paywall"]
+      },
+      "notes": "Client-side rendered: content built by script, noscript fallback present. Extractor must execute JS or use noscript to recover body."
+    },
+    {
+      "id": "article-ads-01",
+      "path": "corpus/articles/article-ads-01.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "How to Fix a Drawer That Won't Close",
+        "author": "Devon Ruiz",
+        "search_terms": ["drawer", "runners", "slides", "carpenter's square"],
+        "must_not_match": ["Advertisement", "Sponsored", "transit", "salmon"]
+      },
+      "notes": "Sticky nav plus leaderboard, in-content, and footer ad blocks; extractor should drop them."
+    },
+    {
+      "id": "article-paywalled-01",
+      "path": "corpus/articles/article-paywalled-01.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "The Slow Reading Manifesto",
+        "author": "Ingrid Solberg",
+        "search_terms": ["reading", "manifesto", "subscribe"],
         "must_not_match": []
       },
-      "notes": ""
+      "notes": "Paywalled: overlay + hidden rest of essay. Tests failure handling; extractor should retain lead paragraph and not fabricate content."
+    },
+    {
+      "id": "screenshot-large-text-01",
+      "path": "corpus/screenshots/screenshot-large-text-01.png",
+      "type": "screenshot",
+      "language": "en",
+      "expected": {
+        "ocr_text_file": "expected/ocr/screenshot-large-text-01.txt",
+        "search_terms": ["quiet web", "slower corner", "join the list"],
+        "must_not_match": ["salmon", "transit"]
+      },
+      "notes": "Landing-page style screenshot with a large headline and button text."
     },
     {
       "id": "screenshot-small-text-01",
@@ -20,11 +159,33 @@
       "type": "screenshot",
       "language": "en",
       "expected": {
-        "ocr_text": "",
-        "search_terms": [],
-        "must_not_match": []
+        "ocr_text_file": "expected/ocr/screenshot-small-text-01.txt",
+        "search_terms": ["annual-report-2025.pdf", "sketchbook-scan.jpg", "timeline-draft.xlsx", "4.2 MB"],
+        "must_not_match": ["salmon", "council"]
       },
-      "notes": ""
+      "notes": "Dense file table with many small-text rows; small-text OCR tolerance test."
+    },
+    {
+      "id": "image-photo-01",
+      "path": "corpus/images/image-photo-01.jpg",
+      "type": "image",
+      "language": "und",
+      "expected": {
+        "search_terms": ["landscape", "mountains", "sun", "dusk"],
+        "must_not_match": ["salmon", "transit"]
+      },
+      "notes": "Synthetic photographic-style landscape used as gallery and concept image."
+    },
+    {
+      "id": "image-design-ref-01",
+      "path": "corpus/images/image-design-ref-01.jpg",
+      "type": "image",
+      "language": "und",
+      "expected": {
+        "search_terms": ["pastel", "palette", "moodboard", "swatches"],
+        "must_not_match": ["drawer", "council"]
+      },
+      "notes": "Pastel palette study; concept/color test image."
     },
     {
       "id": "image-similar-01",
@@ -33,10 +194,128 @@
       "language": "und",
       "similarity_group": "moodboard-a",
       "expected": {
-        "search_terms": [],
+        "search_terms": ["interior", "window", "plant", "chair", "warm"],
+        "must_not_match": ["desert", "ocean"]
+      },
+      "notes": "Warm interior scene; pairs with image-similar-02."
+    },
+    {
+      "id": "image-similar-02",
+      "path": "corpus/images/image-similar-02.jpg",
+      "type": "image",
+      "language": "und",
+      "similarity_group": "moodboard-a",
+      "expected": {
+        "search_terms": ["interior", "window", "plant", "chair"],
+        "must_not_match": ["desert", "ocean"]
+      },
+      "notes": "Same interior layout in cooler tones; similarity partner for image-similar-01."
+    },
+    {
+      "id": "image-similar-03",
+      "path": "corpus/images/image-similar-03.jpg",
+      "type": "image",
+      "language": "und",
+      "similarity_group": "moodboard-b",
+      "expected": {
+        "search_terms": ["desert", "dunes", "sunset", "orange"],
+        "must_not_match": ["interior", "ocean"]
+      },
+      "notes": "Warm dune scene at dusk; pairs with image-similar-04."
+    },
+    {
+      "id": "image-similar-04",
+      "path": "corpus/images/image-similar-04.jpg",
+      "type": "image",
+      "language": "und",
+      "similarity_group": "moodboard-b",
+      "expected": {
+        "search_terms": ["desert", "dunes", "dusk", "violet"],
+        "must_not_match": ["interior", "ocean"]
+      },
+      "notes": "Same dune composition in violet tones; similarity partner for image-similar-03."
+    },
+    {
+      "id": "image-distractor-01",
+      "path": "corpus/images/image-distractor-01.jpg",
+      "type": "image",
+      "language": "und",
+      "similarity_group": "distractors",
+      "expected": {
+        "search_terms": ["ocean", "night", "waves", "moon"],
+        "must_not_match": ["interior", "desert", "palette"]
+      },
+      "notes": "Dark ocean at night; distractor for both similarity groups."
+    },
+    {
+      "id": "image-lowres-01",
+      "path": "corpus/images/image-lowres-01.jpg",
+      "type": "image",
+      "language": "und",
+      "expected": {
+        "search_terms": ["fruit", "apple", "table"],
         "must_not_match": []
       },
-      "notes": ""
+      "notes": "120x90 low-resolution image; tests low-res concept and similarity handling."
+    },
+    {
+      "id": "image-meme-01",
+      "path": "corpus/images/image-meme-01.png",
+      "type": "image",
+      "language": "en",
+      "expected": {
+        "ocr_text_file": "expected/ocr/image-meme-01.txt",
+        "search_terms": ["save one link", "47 tabs", "tabs"],
+        "must_not_match": ["salmon", "transit"]
+      },
+      "notes": "Meme with Impact top/bottom text; OCR plus concept test. On-message content."
+    },
+    {
+      "id": "image-handwriting-01",
+      "path": "corpus/images/image-handwriting-01.png",
+      "type": "image",
+      "language": "en",
+      "expected": {
+        "ocr_text_file": "expected/ocr/image-handwriting-01.txt",
+        "search_terms": ["friday", "reading list", "water the plants"],
+        "must_not_match": ["salmon", "council"]
+      },
+      "notes": "Lined-paper note rendered in a handwriting-style face; rough OCR expected."
+    },
+    {
+      "id": "image-rotated-01",
+      "path": "corpus/images/image-rotated-01.png",
+      "type": "image",
+      "language": "en",
+      "expected": {
+        "ocr_text_file": "expected/ocr/image-rotated-01.txt",
+        "search_terms": ["field report", "expedition", "fog"],
+        "must_not_match": ["salmon", "drawer"]
+      },
+      "notes": "Headline and paragraph rotated 14 degrees; tests rotation tolerance."
+    },
+    {
+      "id": "image-columns-01",
+      "path": "corpus/images/image-columns-01.png",
+      "type": "image",
+      "language": "en",
+      "expected": {
+        "ocr_text_file": "expected/ocr/image-columns-01.txt",
+        "search_terms": ["field notes", "left", "right", "libraries"],
+        "must_not_match": ["salmon"]
+      },
+      "notes": "Two-column layout page; tests reading order and column handling."
+    },
+    {
+      "id": "pdf-native-text-01",
+      "path": "corpus/pdfs/pdf-native-text-01.pdf",
+      "type": "pdf",
+      "language": "en",
+      "expected": {
+        "search_terms": ["local first", "capture rule", "retrieval", "field guide"],
+        "must_not_match": ["salmon", "transit"]
+      },
+      "notes": "Native-text PDF with headings; tests text extraction layer."
     },
     {
       "id": "pdf-scanned-01",
@@ -44,11 +323,187 @@
       "type": "pdf",
       "language": "en",
       "expected": {
-        "ocr_text": "",
-        "search_terms": [],
+        "ocr_text_file": "expected/ocr/pdf-scanned-01.txt",
+        "search_terms": ["memorandum", "inventory", "warehouse", "sprouted bulbs"],
+        "must_not_match": ["salmon"]
+      },
+      "notes": "Scanned PDF: embedded JPEG of a typewritten page; OCR required."
+    },
+    {
+      "id": "pdf-multicolumn-01",
+      "path": "corpus/pdfs/pdf-multicolumn-01.pdf",
+      "type": "pdf",
+      "language": "en",
+      "expected": {
+        "search_terms": ["field notes", "newspapers", "column", "margin"],
+        "must_not_match": ["salmon"]
+      },
+      "notes": "Two-column magazine-style text; tests column reading order."
+    },
+    {
+      "id": "pdf-tables-01",
+      "path": "corpus/pdfs/pdf-tables-01.pdf",
+      "type": "pdf",
+      "language": "en",
+      "expected": {
+        "search_terms": ["quarterly", "operating", "revenue", "Q4", "unaudited"],
+        "must_not_match": ["salmon", "council"]
+      },
+      "notes": "Table with grid lines and four rows; tests table extraction."
+    },
+    {
+      "id": "pdf-images-captions-01",
+      "path": "corpus/pdfs/pdf-images-captions-01.pdf",
+      "type": "pdf",
+      "language": "en",
+      "expected": {
+        "search_terms": ["site survey", "west meadow", "oaks", "wildflower"],
+        "must_not_match": ["salmon", "transit"],
+        "embedded_images_min": 1
+      },
+      "notes": "Embedded figure with caption; tests image extraction and caption text."
+    },
+    {
+      "id": "pdf-bad-metadata-01",
+      "path": "corpus/pdfs/pdf-bad-metadata-01.pdf",
+      "type": "pdf",
+      "language": "en",
+      "expected": {
+        "search_terms": ["untitled fragment", "no title", "metadata"],
         "must_not_match": []
       },
-      "notes": ""
+      "notes": "Minimal PDF with no title/author/info dict; tests graceful metadata handling."
+    },
+    {
+      "id": "video-youtube-01",
+      "path": "corpus/videos/video-youtube-01.html",
+      "type": "video",
+      "language": "en",
+      "expected": {
+        "title": "Why Libraries Smell Like Paper",
+        "search_terms": ["libraries", "smell", "documentary", "paper", "vanillin"],
+        "must_not_match": [],
+        "safe_embeds": [{ "provider": "youtube", "min": 1 }]
+      },
+      "notes": "YouTube embed via youtube-nocookie; should pass the safe-embeds allowlist."
+    },
+    {
+      "id": "video-vimeo-01",
+      "path": "corpus/videos/video-vimeo-01.html",
+      "type": "video",
+      "language": "en",
+      "expected": {
+        "title": "Field Study: A Morning in the Print Shop",
+        "search_terms": ["print shop", "letterpress", "field study", "press"],
+        "must_not_match": [],
+        "safe_embeds": [{ "provider": "vimeo", "min": 1 }]
+      },
+      "notes": "Vimeo embed; should pass the safe-embeds allowlist."
+    },
+    {
+      "id": "video-article-embed-01",
+      "path": "corpus/videos/video-article-embed-01.html",
+      "type": "video",
+      "language": "en",
+      "expected": {
+        "title": "How to Fold a Paper Airplane That Flies Home",
+        "search_terms": ["paper airplane", "fold", "centerline", "reflexed"],
+        "must_not_match": [],
+        "safe_embeds": [{ "provider": "youtube", "min": 1 }]
+      },
+      "notes": "Craft article with an embedded YouTube video in the middle."
+    },
+    {
+      "id": "video-unsupported-iframe-01",
+      "path": "corpus/videos/video-unsupported-iframe-01.html",
+      "type": "video",
+      "language": "en",
+      "expected": {
+        "title": "Streams of the Week",
+        "search_terms": ["streams", "bread baker", "storm chaser", "Lisbon"],
+        "must_not_match": [],
+        "safe_embeds_max": 0
+      },
+      "notes": "Iframe from an unsupported host; safe-embeds must reject it, article text retained."
+    },
+    {
+      "id": "video-no-media-01",
+      "path": "corpus/videos/video-no-media-01.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "An Essay With No Media",
+        "search_terms": ["no media", "essay", "reader"],
+        "must_not_match": [],
+        "safe_embeds_max": 0
+      },
+      "notes": "Text-only page with no embeds; extractor must not invent media."
+    },
+    {
+      "id": "note-quick-01",
+      "path": "corpus/notes/note-quick-01.md",
+      "type": "note",
+      "language": "en",
+      "expected": {
+        "search_terms": ["oat milk", "thank-you card"],
+        "must_not_match": ["transit", "salmon"]
+      },
+      "notes": "Two-line quick note."
+    },
+    {
+      "id": "note-long-01",
+      "path": "corpus/notes/note-long-01.md",
+      "type": "note",
+      "language": "en",
+      "expected": {
+        "search_terms": ["journal", "reading room", "garden", "postcard"],
+        "must_not_match": ["salmon", "transit"]
+      },
+      "notes": "Multi-paragraph journal entry."
+    },
+    {
+      "id": "note-markdown-01",
+      "path": "corpus/notes/note-markdown-01.md",
+      "type": "note",
+      "language": "en",
+      "expected": {
+        "search_terms": ["FTS5", "content-addressed", "background processing", "semantic"],
+        "must_not_match": ["salmon"]
+      },
+      "notes": "Markdown note with headings, lists, links, and a quote."
+    },
+    {
+      "id": "note-todo-01",
+      "path": "corpus/notes/note-todo-01.md",
+      "type": "note",
+      "language": "en",
+      "expected": {
+        "search_terms": ["reading room", "walnut", "chairs", "drawer"],
+        "must_not_match": ["salmon", "transit"]
+      },
+      "notes": "Checklist-style note with checked and unchecked items."
+    },
+    {
+      "id": "quote-source-01",
+      "path": "corpus/notes/quote-source-01.md",
+      "type": "quote",
+      "language": "en",
+      "expected": {
+        "search_terms": ["Annie Dillard", "mind", "weather", "Pilgrim"],
+        "must_not_match": ["salmon"]
+      },
+      "notes": "Quote with attributed author and a source URL."
+    },
+    {
+      "id": "quote-nosource-01",
+      "path": "corpus/notes/quote-nosource-01.md",
+      "type": "quote",
+      "language": "en",
+      "expected": {
+        "search_terms": ["attention", "generosity", "rarest"],
+        "must_not_match": ["salmon"]
+      },
+      "notes": "Quote with no verifiable source; attribution uncertain."
     }
   ]
 }

@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Benchmark run artifacts (only results-latest.json and summary.md are tracked)
+benchmarks/results/results-*.json
+!benchmarks/results/results-latest.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

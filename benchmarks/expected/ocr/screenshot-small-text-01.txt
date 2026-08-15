@@ -1,0 +1,11 @@
+Name Modified Size Kind
+annual-report-2025.pdf Jul 02 14:12 4.2 MB PDF
+brand-guidelines.pdf Jun 18 09:40 8.7 MB PDF
+field-notes-spring.txt May 03 18:05 12 KB Text
+logo-mark.png Apr 27 11:22 340 KB Image
+meeting-notes.md Apr 12 16:48 6 KB Markdown
+onboarding-flow.pdf Mar 30 10:02 1.9 MB PDF
+photo-batch-01.zip Mar 21 13:33 48 MB Archive
+readme.txt Mar 02 08:17 2 KB Text
+sketchbook-scan.jpg Feb 14 15:29 5.1 MB Image
+timeline-draft.xlsx Feb 01 09:58 22 KB Spreadsheet
