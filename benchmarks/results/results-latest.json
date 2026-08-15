@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T23:50:29.725Z",
+  "generatedAt": "2026-08-15T00:55:05.433Z",
   "engine": {
     "ocr": "windows-ocr"
   },
@@ -9,7 +9,7 @@
     "partial": 8,
     "fail": 1,
     "skip": 8,
-    "avgScore": 0.9410527416295672
+    "avgScore": 0.9400796534028631
   },
   "byType": {
     "article": {
@@ -34,7 +34,7 @@
       "partial": 2,
       "fail": 0,
       "skip": 0,
-      "avgScore": 0.9243170622480967
+      "avgScore": 0.9125135281385282
     },
     "image": {
       "total": 12,
@@ -42,7 +42,7 @@
       "partial": 2,
       "fail": 1,
       "skip": 8,
-      "avgScore": 0.7242897727272728
+      "avgScore": 0.7219202898550725
     },
     "pdf": {
       "total": 6,
@@ -266,15 +266,15 @@
       "type": "screenshot",
       "engine": "windows-ocr",
       "status": "partial",
-      "score": 0.9655172413793104,
+      "score": 0.96875,
       "metrics": {
-        "recall": 0.9655172413793104,
-        "precision": 0.9655172413793104,
-        "expectedCount": 29,
-        "actualCount": 29
+        "recall": 0.96875,
+        "precision": 0.96875,
+        "expectedCount": 32,
+        "actualCount": 32
       },
       "messages": [
-        "OCR recall 0.97 (29 expected tokens)",
+        "OCR recall 0.97 (32 expected tokens)",
         "missing tokens (sample): in",
         "OCR precision 0.97"
       ]
@@ -284,15 +284,15 @@
       "type": "screenshot",
       "engine": "windows-ocr",
       "status": "partial",
-      "score": 0.8831168831168831,
+      "score": 0.8562770562770563,
       "metrics": {
-        "recall": 0.8831168831168831,
-        "precision": 0.8831168831168831,
-        "expectedCount": 77,
-        "actualCount": 77
+        "recall": 0.8363636363636363,
+        "precision": 0.8761904761904762,
+        "expectedCount": 110,
+        "actualCount": 105
       },
       "messages": [
-        "OCR recall 0.88 (77 expected tokens)",
+        "OCR recall 0.84 (110 expected tokens)",
         "missing tokens (sample): 18, text, 6, markdown, onboarding, 9, readme, sketchbook",
         "OCR precision 0.88"
       ]
@@ -410,11 +410,11 @@
       "metrics": {
         "recall": 0,
         "precision": 0,
-        "expectedCount": 13,
+        "expectedCount": 14,
         "actualCount": 0
       },
       "messages": [
-        "OCR recall 0.00 (13 expected tokens)",
+        "OCR recall 0.00 (14 expected tokens)",
         "missing tokens (sample): me, i, will, just, save, one, link, 10",
         "OCR precision 0.00"
       ]
@@ -428,8 +428,8 @@
       "metrics": {
         "recall": 1,
         "precision": 1,
-        "expectedCount": 13,
-        "actualCount": 13
+        "expectedCount": 15,
+        "actualCount": 15
       },
       "messages": []
     },
@@ -438,15 +438,15 @@
       "type": "image",
       "engine": "windows-ocr",
       "status": "partial",
-      "score": 0.90625,
+      "score": 0.9166666666666667,
       "metrics": {
-        "recall": 0.8125,
+        "recall": 0.8333333333333334,
         "precision": 1,
-        "expectedCount": 32,
-        "actualCount": 26
+        "expectedCount": 36,
+        "actualCount": 30
       },
       "messages": [
-        "OCR recall 0.81 (32 expected tokens)",
+        "OCR recall 0.83 (36 expected tokens)",
         "missing tokens (sample): field, report, appendix, b, rotation, tolerance"
       ]
     },
@@ -455,15 +455,17 @@
       "type": "image",
       "engine": "windows-ocr",
       "status": "partial",
-      "score": 0.990909090909091,
+      "score": 0.9710144927536232,
       "metrics": {
-        "recall": 1,
-        "precision": 0.9818181818181818,
-        "expectedCount": 54,
-        "actualCount": 55
+        "recall": 0.9710144927536232,
+        "precision": 0.9710144927536232,
+        "expectedCount": 69,
+        "actualCount": 69
       },
       "messages": [
-        "OCR precision 0.98"
+        "OCR recall 0.97 (69 expected tokens)",
+        "missing tokens (sample): ",
+        "OCR precision 0.97"
       ]
     },
     {

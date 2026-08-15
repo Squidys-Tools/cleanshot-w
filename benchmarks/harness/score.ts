@@ -32,19 +32,38 @@ export interface TokenStats {
   actualCount: number;
 }
 
-/** Token-level recall/precision between an expected text and an extracted text. */
+/**
+ * Token-level recall/precision between an expected text and an extracted text.
+ * Multiplicity-aware (bag of tokens): a repeated word that is missing or
+ * duplicated counts each time, so engines are compared against the documented
+ * word-accuracy metric rather than distinct tokens.
+ */
 export function tokenStats(expected: string, actual: string): TokenStats {
-  const expectedTokens = [...new Set(tokenize(expected))];
-  const actualTokens = new Set(tokenize(actual));
+  const expectedTokens = tokenize(expected);
+  const actualTokens = tokenize(actual);
   if (expectedTokens.length === 0) {
-    return { recall: 1, precision: actualTokens.size === 0 ? 1 : 0, expectedCount: 0, actualCount: actualTokens.size };
+    return { recall: 1, precision: actualTokens.length === 0 ? 1 : 0, expectedCount: 0, actualCount: actualTokens.length };
   }
-  const hits = expectedTokens.filter((token) => actualTokens.has(token)).length;
+
+  const expectedCounts = new Map<string, number>();
+  for (const token of expectedTokens) {
+    expectedCounts.set(token, (expectedCounts.get(token) ?? 0) + 1);
+  }
+  const actualCounts = new Map<string, number>();
+  for (const token of actualTokens) {
+    actualCounts.set(token, (actualCounts.get(token) ?? 0) + 1);
+  }
+
+  let correct = 0;
+  for (const [token, count] of expectedCounts) {
+    correct += Math.min(count, actualCounts.get(token) ?? 0);
+  }
+
   return {
-    recall: hits / expectedTokens.length,
-    precision: actualTokens.size === 0 ? 0 : hits / actualTokens.size,
+    recall: correct / expectedTokens.length,
+    precision: actualTokens.length === 0 ? 0 : correct / actualTokens.length,
     expectedCount: expectedTokens.length,
-    actualCount: actualTokens.size,
+    actualCount: actualTokens.length,
   };
 }
 

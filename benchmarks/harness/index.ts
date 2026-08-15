@@ -203,7 +203,7 @@ function scoreOcr(item: ManifestItem, expectedText: string, actualText: string, 
     engine,
     status: statusFor(score),
     score,
-    metrics: stats,
+    metrics: { ...stats },
     messages,
   };
 }
@@ -281,7 +281,7 @@ interface Summary {
   avgScore: number;
 }
 
-function summarize(results: ItemResult[], types: Set<string>): Summary {
+function summarize(results: ItemResult[]): Summary {
   const scorable = results.filter((r) => r.status !== "skip");
   return {
     total: results.length,
@@ -362,7 +362,7 @@ async function main(): Promise<void> {
     }
   }
 
-  const overall = summarize(items, new Set(manifest.items.map((i) => i.type)));
+  const overall = summarize(items);
   const report = {
     generatedAt: new Date().toISOString(),
     engine: { ocr: ocrEngine?.name ?? null },

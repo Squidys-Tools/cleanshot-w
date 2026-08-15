@@ -155,7 +155,7 @@ OCR items are scored with token recall + precision against `expected/ocr/`.
 
 Baseline run on the 42-item corpus with the `windows-ocr` engine:
 
-- **25 pass, 8 partial, 1 fail, 8 skip — overall 0.941.**
+- **25 pass, 8 partial, 1 fail, 8 skip — overall 0.940.**
 - 8 skips: vision / similarity items (photos, design refs, similar pairs,
   distractor, low-res) — these need the embeddings benchmark.
 - Genuine gaps surfaced by the partials and fail:
@@ -171,9 +171,9 @@ Baseline run on the 42-item corpus with the `windows-ocr` engine:
     text for an Impact-style all-caps meme even at high contrast. A
     different engine (Tesseract) would likely read it — a useful engine
     comparison signal.
-  - **OCR noise on real content**: small-text screenshot 0.88 recall,
-    rotated headline 0.81 recall, scanned typewritten PDF 0.75 (term
-    "sprouted bulbs" mangled), two-column 0.98 precision.
+  - **OCR noise on real content**: small-text screenshot 0.84 recall,
+    rotated headline 0.83 recall, scanned typewritten PDF 0.75 (term
+    "sprouted bulbs" mangled), two-column 0.97.
 
 These are documented as findings, not fixture errors — the fixtures
 deliberately model realistic pages.
