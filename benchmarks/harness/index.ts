@@ -6,7 +6,7 @@ import { loadManifest, corpusPath, benchmarksRoot } from "./manifest";
 import { startCorpusServer } from "./server";
 import { extractFixture } from "./extract";
 import { extractPdf, extractFirstEmbeddedJpeg } from "./pdf";
-import { pickOcrEngine, WindowsOcrEngine, TesseractJsEngine, type OcrEngine } from "./ocr";
+import { availableOcrEngines, WindowsOcrEngine, TesseractJsEngine, type OcrEngine } from "./ocr";
 import { average, bannedTermHits, stringScore, termMatches, tokenStats, tokenize } from "./score";
 import type { ManifestItem, ExpectedSearch } from "./manifest";
 import type { ExtractionOutcome } from "./extract";
@@ -208,8 +208,7 @@ function scoreOcr(item: ManifestItem, expectedText: string, actualText: string, 
   };
 }
 
-async function tryOcr(engine: OcrEngine | null, filePath: string): Promise<{ text: string; engine: string } | null> {
-  if (!engine) return null;
+async function tryOcr(engine: OcrEngine, filePath: string): Promise<{ text: string; engine: string } | null> {
   try {
     const text = await engine.run(filePath);
     return { text, engine: engine.name };
@@ -219,10 +218,29 @@ async function tryOcr(engine: OcrEngine | null, filePath: string): Promise<{ tex
   }
 }
 
+/** Runs every available engine and returns the best OCR text by token score. */
+async function bestOcr(
+  engines: OcrEngine[],
+  filePath: string,
+  expectedText: string,
+): Promise<{ text: string; engine: string; score: number } | null> {
+  let best: { text: string; engine: string; score: number } | null = null;
+  for (const engine of engines) {
+    const result = await tryOcr(engine, filePath);
+    if (!result) continue;
+    const stats = tokenStats(expectedText, result.text);
+    const score = (stats.recall + stats.precision) / 2;
+    if (!best || score > best.score) {
+      best = { text: result.text, engine: result.engine, score };
+    }
+  }
+  return best;
+}
+
 async function runItem(
   item: ManifestItem,
   baseUrl: string,
-  ocrEngine: OcrEngine | null,
+  ocrEngines: OcrEngine[],
 ): Promise<ItemResult> {
   const exp: ExpectedSearch = item.expected ?? {};
   const filePath = corpusPath(item.path);
@@ -240,14 +258,17 @@ async function runItem(
   if (item.type === "pdf") {
     const naive = extractPdf(filePath);
     let ocrText: string | null = null;
+    let ocrEngine: string | null = null;
     if (!naive.text && exp.ocr_text_file) {
       const jpeg = extractFirstEmbeddedJpeg(filePath);
-      if (jpeg && ocrEngine) {
+      if (jpeg) {
         const tmpFile = join(tmpdir(), `mymind-ocr-${item.id}.jpg`);
         writeFileSync(tmpFile, jpeg);
         try {
-          const result = await tryOcr(ocrEngine, tmpFile);
-          ocrText = result?.text ?? null;
+          const expectedText = readFileSync(corpusPath(exp.ocr_text_file), "utf8");
+          const best = await bestOcr(ocrEngines, tmpFile, expectedText);
+          ocrText = best?.text ?? null;
+          ocrEngine = best?.engine ?? null;
         } finally {
           rmSync(tmpFile, { force: true });
         }
@@ -256,15 +277,21 @@ async function runItem(
     if (!naive.text && !ocrText && exp.ocr_text_file) {
       return skipResult(item, "scanned PDF: no OCR engine available (Windows.Media.Ocr or tesseract.js)");
     }
-    return scorePdf(item, naive, ocrText, ocrEngine?.name ?? null);
+    return scorePdf(item, naive, ocrText, ocrEngine);
   }
 
   if (item.type === "image" || item.type === "screenshot") {
     if (exp.ocr_text_file) {
-      const result = await tryOcr(ocrEngine, filePath);
-      if (!result) return skipResult(item, "no OCR engine available (Windows.Media.Ocr or tesseract.js)");
       const expectedText = readFileSync(corpusPath(exp.ocr_text_file), "utf8");
-      return scoreOcr(item, expectedText, result.text, result.engine);
+      let best: ItemResult | null = null;
+      for (const engine of ocrEngines) {
+        const result = await tryOcr(engine, filePath);
+        if (!result) continue;
+        const scored = scoreOcr(item, expectedText, result.text, result.engine);
+        if (!best || scored.score > best.score) best = scored;
+      }
+      if (!best) return skipResult(item, "no OCR engine available (Windows.Media.Ocr or tesseract.js)");
+      return best;
     }
     return skipResult(item, "vision/similarity scoring not implemented (embeddings benchmark)");
   }
@@ -333,17 +360,17 @@ async function main(): Promise<void> {
   const server = await startCorpusServer(corpusPath("."));
 
   console.log(`Loaded ${manifest.items.length} fixtures; corpus server at ${server.baseUrl}`);
-  const ocrEngine = await pickOcrEngine([
+  const ocrEngines = await availableOcrEngines([
     new WindowsOcrEngine(join(import.meta.dir, "win-ocr.ps1")),
     new TesseractJsEngine(),
   ]);
-  console.log(`OCR engine: ${ocrEngine ? ocrEngine.name : "none (screenshots/scan OCR skipped)"}`);
+  console.log(`OCR engines: ${ocrEngines.length ? ocrEngines.map((e) => e.name).join(", ") : "none (screenshots/scan OCR skipped)"}`);
   console.log("");
 
   const items: ItemResult[] = [];
   for (const item of manifest.items) {
     process.stdout.write(`  ${item.id} ... `);
-    const result = await runItem(item, server.baseUrl, ocrEngine);
+    const result = await runItem(item, server.baseUrl, ocrEngines);
     items.push(result);
     console.log(`[${result.status}] score ${result.score.toFixed(3)} ${result.messages.length ? `(${result.messages[0]})` : ""}`);
   }
@@ -365,7 +392,7 @@ async function main(): Promise<void> {
   const overall = summarize(items);
   const report = {
     generatedAt: new Date().toISOString(),
-    engine: { ocr: ocrEngine?.name ?? null },
+    engine: { ocr: ocrEngines.map((e) => e.name) },
     overall,
     byType,
     items,

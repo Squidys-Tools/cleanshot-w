@@ -16,6 +16,9 @@ dist-ssr
 benchmarks/results/results-*.json
 !benchmarks/results/results-latest.json
 
+# tesseract.js language data cache (regenerated at runtime in the working dir)
+eng.traineddata
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
