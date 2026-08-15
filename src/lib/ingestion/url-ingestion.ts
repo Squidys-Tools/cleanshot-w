@@ -2,7 +2,7 @@ import { parseHTML } from "linkedom";
 import { DefaultDefuddleAdapter } from "./defuddle-adapter";
 import { UrlIngestionError } from "./errors";
 import { extractFallback } from "./fallback";
-import { collectImageUrls, collectSafeEmbeds, htmlToText, sanitizeHtml } from "./html-safety";
+import { collectImageUrls, collectSafeEmbeds, hasReadableText, htmlToText, sanitizeHtml } from "./html-safety";
 import { normalizeHttpUrl, normalizePublishedDate, normalizeText, parseHttpUrl, uniqueStrings } from "./url";
 import type { NormalizedArticle, RawArticleExtraction, UrlIngestionOptions } from "./types";
 
@@ -59,7 +59,7 @@ function mergeExtraction(primary: RawArticleExtraction, fallback: RawArticleExtr
     author: normalizeText(primary.author) || fallback.author,
     publishedDate: primary.publishedDate ?? fallback.publishedDate ?? null,
     canonicalUrl: primary.canonicalUrl ?? fallback.canonicalUrl,
-    contentHtml: normalizeText(primary.contentHtml) ? primary.contentHtml : fallback.contentHtml,
+    contentHtml: hasReadableText(primary.contentHtml) ? primary.contentHtml : fallback.contentHtml,
     imageUrls: uniqueStrings([...(fallback.imageUrls ?? []), ...(primary.imageUrls ?? [])]),
   };
 }
@@ -145,13 +145,13 @@ export async function ingestUrl(input: string, options: UrlIngestionOptions = {}
   try {
     const defuddleExtraction = await adapter.extract(extractionDocument, fetchedUrl);
     extraction = mergeExtraction(defuddleExtraction, fallback);
-    if (normalizeText(defuddleExtraction.contentHtml)) extractor = "defuddle";
+    if (hasReadableText(defuddleExtraction.contentHtml)) extractor = "defuddle";
   } catch {
     extraction = fallback;
   }
 
   const html = sanitizeHtml(extraction.contentHtml ?? "", fetchedUrl);
-  if (!normalizeText(html)) {
+  if (!hasReadableText(html)) {
     throw new UrlIngestionError("extraction-failed", "No readable article content was found on the page.", {
       url: fetchedUrl,
     });

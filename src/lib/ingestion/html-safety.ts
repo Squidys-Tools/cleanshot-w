@@ -212,7 +212,13 @@ function sanitizeElement(element: Element, pageUrl: string): void {
 
 export function sanitizeHtml(html: string, pageUrl: string): string {
   const { document } = parseHTML(`<html><head></head><body>${html}</body></html>`);
-  for (const selector of ["script", "noscript", "template", "style", "link", "meta", "object", "embed", "form"]) {
+  for (const element of [...document.querySelectorAll("noscript")]) {
+    const parent = element.parentElement;
+    if (!parent) continue;
+    while (element.firstChild) parent.insertBefore(element.firstChild, element);
+    element.remove();
+  }
+  for (const selector of ["script", "template", "style", "link", "meta", "object", "embed", "form"]) {
     for (const element of document.querySelectorAll(selector)) element.remove();
   }
   for (const element of document.querySelectorAll("*")) sanitizeElement(element, pageUrl);
@@ -222,6 +228,12 @@ export function sanitizeHtml(html: string, pageUrl: string): string {
 export function htmlToText(html: string): string {
   const { document } = parseHTML(`<html><head></head><body>${html}</body></html>`);
   return normalizeText(document.body?.textContent);
+}
+
+/** True when the HTML contains any readable text after tags/whitespace are removed. */
+export function hasReadableText(html: string | undefined | null): boolean {
+  if (!html) return false;
+  return htmlToText(html).length > 0;
 }
 
 export function collectImageUrls(document: Document, pageUrl: string): string[] {
