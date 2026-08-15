@@ -168,7 +168,7 @@ async function main(): Promise<void> {
   }
 
   const manifest = loadManifest();
-  const kept = manifest.items.filter((item) => !item.id.startsWith("article-live-macrumors-"));
+  const kept = manifest.items;
   writeFileSync(manifestPath, JSON.stringify({ ...manifest, items: [...kept, ...newItems] }, null, 2) + "\n");
   console.log(`Manifest updated: ${kept.length} existing + ${newItems.length} macrumors item(s).`);
 
