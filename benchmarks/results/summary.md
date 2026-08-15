@@ -1,15 +1,15 @@
 # Benchmark results
-Generated: 2026-08-15T00:55:05.433Z
+Generated: 2026-08-15T03:11:15.473Z
 
-## Overall: score 0.940 — pass 25, partial 8, fail 1, skip 8
+## Overall: score 0.992 — pass 36, partial 4, fail 0, skip 8
 
 | Type | Score | Pass | Partial | Fail | Skip | Total |
 | --- | --- | --- | --- | --- | --- | --- |
-| article | 0.962 | 9 | 2 | 0 | 0 | 11 |
-| recipe | 0.917 | 0 | 1 | 0 | 0 | 1 |
+| article | 1.000 | 17 | 0 | 0 | 0 | 17 |
+| recipe | 1.000 | 1 | 0 | 0 | 0 | 1 |
 | screenshot | 0.913 | 0 | 2 | 0 | 0 | 2 |
-| image | 0.722 | 1 | 2 | 1 | 8 | 12 |
-| pdf | 0.958 | 5 | 1 | 0 | 0 | 6 |
+| image | 0.961 | 2 | 2 | 0 | 8 | 12 |
+| pdf | 1.000 | 6 | 0 | 0 | 0 | 6 |
 | video | 1.000 | 4 | 0 | 0 | 0 | 4 |
 | note | 1.000 | 4 | 0 | 0 | 0 | 4 |
 | quote | 1.000 | 2 | 0 | 0 | 0 | 2 |
@@ -17,13 +17,13 @@ Generated: 2026-08-15T00:55:05.433Z
 ## Items
 - [PASS] article-short-01 (score 1.000, production:ingestUrl)
 - [PASS] article-long-essay-01 (score 1.000, production:ingestUrl)
-- [PARTIAL] article-news-01 (score 0.917, production:ingestUrl)
-- [PARTIAL] article-recipe-01 (score 0.917, production:ingestUrl)
+- [PASS] article-news-01 (score 1.000, production:ingestUrl)
+- [PASS] article-recipe-01 (score 1.000, production:ingestUrl)
 - [PASS] article-docs-01 (score 1.000, production:ingestUrl)
 - [PASS] article-footnotes-01 (score 1.000, production:ingestUrl)
 - [PASS] article-codeblocks-01 (score 1.000, production:ingestUrl)
 - [PASS] article-gallery-01 (score 1.000, production:ingestUrl)
-- [PARTIAL] article-js-heavy-01 (score 0.667, production:ingestUrl)
+- [PASS] article-js-heavy-01 (score 1.000, production:ingestUrl)
 - [PASS] article-ads-01 (score 1.000, production:ingestUrl)
 - [PASS] article-paywalled-01 (score 1.000, production:ingestUrl)
 - [PARTIAL] screenshot-large-text-01 (score 0.969, windows-ocr)
@@ -36,12 +36,12 @@ Generated: 2026-08-15T00:55:05.433Z
 - [SKIP] image-similar-04 (score 0.000, none)
 - [SKIP] image-distractor-01 (score 0.000, none)
 - [SKIP] image-lowres-01 (score 0.000, none)
-- [FAIL] image-meme-01 (score 0.000, windows-ocr)
+- [PARTIAL] image-meme-01 (score 0.929, windows-ocr)
 - [PASS] image-handwriting-01 (score 1.000, windows-ocr)
 - [PARTIAL] image-rotated-01 (score 0.917, windows-ocr)
-- [PARTIAL] image-columns-01 (score 0.971, windows-ocr)
+- [PASS] image-columns-01 (score 1.000, tesseract.js)
 - [PASS] pdf-native-text-01 (score 1.000, naive-streams)
-- [PARTIAL] pdf-scanned-01 (score 0.750, windows-ocr)
+- [PASS] pdf-scanned-01 (score 1.000, tesseract.js)
 - [PASS] pdf-multicolumn-01 (score 1.000, naive-streams)
 - [PASS] pdf-tables-01 (score 1.000, naive-streams)
 - [PASS] pdf-images-captions-01 (score 1.000, naive-streams)
@@ -57,18 +57,14 @@ Generated: 2026-08-15T00:55:05.433Z
 - [PASS] note-todo-01 (score 1.000, raw-file)
 - [PASS] quote-source-01 (score 1.000, raw-file)
 - [PASS] quote-nosource-01 (score 1.000, raw-file)
+- [PASS] article-live-macrumors-the-macrumors-show-where-does-the-apple-watch-go-next (score 1.000, production:ingestUrl)
+- [PASS] article-live-macrumors-new-things-your-iphone-can-do-ios-27 (score 1.000, production:ingestUrl)
+- [PASS] article-live-macrumors-iphone-18-pro-next-month-12-rumored-features (score 1.000, production:ingestUrl)
+- [PASS] article-live-macrumors-iphone-17-vs-iphone-18-buying (score 1.000, production:ingestUrl)
+- [PASS] article-live-macrumors-best-apple-deals-of-the-week-8-14-26 (score 1.000, production:ingestUrl)
+- [PASS] article-live-macrumors-apple-trained-own-ai-model-for-china (score 1.000, production:ingestUrl)
 
 ## Details
-### article-news-01 — partial (0.917)
-- author mismatch: expected "Sam Okonkwo", got ""
-
-### article-recipe-01 — partial (0.917)
-- author mismatch: expected "June Park", got ""
-
-### article-js-heavy-01 — partial (0.667)
-- search term not found: "server side"
-- search term not found: "browser"
-
 ### screenshot-large-text-01 — partial (0.969)
 - OCR recall 0.97 (32 expected tokens)
 - missing tokens (sample): in
@@ -103,19 +99,10 @@ Generated: 2026-08-15T00:55:05.433Z
 ### image-lowres-01 — skip (0.000)
 - vision/similarity scoring not implemented (embeddings benchmark)
 
-### image-meme-01 — fail (0.000)
-- OCR recall 0.00 (14 expected tokens)
-- missing tokens (sample): me, i, will, just, save, one, link, 10
-- OCR precision 0.00
+### image-meme-01 — partial (0.929)
+- OCR recall 0.86 (14 expected tokens)
+- missing tokens (sample): i, will
 
 ### image-rotated-01 — partial (0.917)
 - OCR recall 0.83 (36 expected tokens)
 - missing tokens (sample): field, report, appendix, b, rotation, tolerance
-
-### image-columns-01 — partial (0.971)
-- OCR recall 0.97 (69 expected tokens)
-- missing tokens (sample): 
-- OCR precision 0.97
-
-### pdf-scanned-01 — partial (0.750)
-- search term not found: "sprouted bulbs"

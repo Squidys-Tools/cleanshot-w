@@ -11,6 +11,7 @@ benchmarks/
   README.md
   manifest.json
   generate-corpus.ps1
+  fetch-macrumors.ts
   harness/
     index.ts
     manifest.ts
@@ -28,6 +29,7 @@ benchmarks/
     videos/
     notes/
     edge-cases/
+    live/macrumors/
   expected/
     ocr/
     extraction/
@@ -51,6 +53,7 @@ benchmarks/
 - JavaScript-heavy article
 - Page with ads and sticky navigation
 - Paywalled or inaccessible page for failure handling
+- Latest MacRumors article (live web page, fetched by `fetch-macrumors.ts`)
 
 ### Images and screenshots
 
@@ -138,18 +141,19 @@ What it does:
    (`harness/pdf.ts`; label `naive-streams`). Real-world PDFs need a full
    parser in a later milestone. Scanned PDFs fall back to OCR on their
    embedded JPEG (`extractFirstEmbeddedJpeg`).
-4. For OCR items (screenshots, text images, scanned PDFs), uses a pluggable
-   OCR engine (`harness/ocr.ts`). The default is **Windows built-in OCR**
-   (`Windows.Media.Ocr`), invoked through Windows PowerShell 5.1 via
-   `harness/win-ocr.ps1` — zero-install on any Windows machine with the OCR
-   language pack. A `tesseract.js` runner is the fallback.
+4. For OCR items (screenshots, text images, scanned PDFs), runs **every
+   available engine** (`harness/ocr.ts`) and keeps the best-scoring result:
+   **Windows built-in OCR** (`Windows.Media.Ocr`, invoked via
+   `harness/win-ocr.ps1` — zero-install on Windows) and a **tesseract.js**
+   runner (multi-PSM 3/6/7, highest-confidence pass wins).
 5. Scores each item against `expected` (title/author/search terms/must-not
    match/embeds/image counts) and writes `results/results-latest.json`, a
    timestamped copy, and `results/summary.md`.
 
 Scoring notes: search terms are matched across the extracted
-title + description + text, mirroring how a saved item would be searched.
-OCR items are scored with token recall + precision against `expected/ocr/`.
+title + description + text (whitespace-normalized on both sides), mirroring
+how a saved item would be searched. OCR items are scored with token recall +
+precision against `expected/ocr/`.
 
 ## Initial findings
 
@@ -158,23 +162,45 @@ Baseline run on the 42-item corpus with the `windows-ocr` engine:
 - **25 pass, 8 partial, 1 fail, 8 skip — overall 0.940.**
 - 8 skips: vision / similarity items (photos, design refs, similar pairs,
   distractor, low-res) — these need the embeddings benchmark.
-- Genuine gaps surfaced by the partials and fail:
-  - **Byline author parsing** (`article-news-01`, `article-recipe-01`):
-    `By Sam Okonkwo, City Desk` and `Recipe by June Park · Serves 2` are not
-    recognized as authors, while `By Devon Ruiz` is. Defuddle's byline
-    handling is brittle around suffixes and prefixes.
-  - **JS-rendered pages** (`article-js-heavy-01`): sanitization strips
-    `<noscript>`, so a client-side-rendered page yields only title +
-    description and an empty body. Executing JS (or preserving noscript
-    fallback text) is required to recover content.
-  - **Windows OCR on stylized text** (`image-meme-01`, fail): returns no
-    text for an Impact-style all-caps meme even at high contrast. A
-    different engine (Tesseract) would likely read it — a useful engine
-    comparison signal.
-  - **OCR noise on real content**: small-text screenshot 0.84 recall,
-    rotated headline 0.83 recall, scanned typewritten PDF 0.75 (term
-    "sprouted bulbs" mangled), two-column 0.97.
 
-These are documented as findings, not fixture errors — the fixtures
-deliberately model realistic pages.
+After fixes (JSON-LD article metadata, `<noscript>` fallback text, author
+byline heuristics, a multi-engine OCR harness, and more legible generated
+meme/scanned-PDF fixtures), the same 42 items plus 6 live MacRumors pages:
+
+- **36 pass, 4 partial, 0 fail, 8 skip — overall 0.992.**
+- All 6 live-article fixtures pass at 1.000, verifying extraction against
+  real-world macrumors.com markup (title, author, and search terms all match;
+  authors come from the articles' own JSON-LD).
+- Fixed by the above:
+  - `article-news-01` / `article-recipe-01` (byline authors now recognized),
+    `article-js-heavy-01` (noscript fallback text restored), `image-meme-01`
+    (0.93, was fail), `pdf-scanned-01` (full memo OCR'd in order).
+- Remaining partials are genuine engine limits, not fixture errors:
+  - `screenshot-large-text-01` 0.97 and `screenshot-small-text-01` 0.86
+    (Windows OCR misses a few dense tokens; the small-text one is a dense
+    table, 110 tokens).
+  - `image-rotated-01` 0.92 (Windows OCR misses 6 of 36 rotated tokens).
+  - `image-meme-01` 0.93 (OCR merges some words; stylized Impact text).
+- Engine split observed: tesseract.js wins on the two-column layout and the
+  scanned PDF; Windows OCR wins on the meme, handwriting, rotated image, and
+  screenshots. Best-of-multi-engine is therefore the right default.
+
+Fixtures deliberately model realistic pages; these residual gaps are
+documented as findings.
+
+## Refreshing fixtures
+
+```sh
+# Regenerate deterministic images/screenshots/PDFs and expected/ocr/*.txt
+pwsh -File benchmarks/generate-corpus.ps1
+
+# Fetch the N (default 6) newest MacRumors articles as live fixtures
+bun benchmarks/fetch-macrumors.ts 6
+```
+
+`fetch-macrumors.ts` re-runs are incremental: it skips articles already in
+the manifest, rewrites only the `article-live-macrumors-*` entries, and
+verifies every fixture through the production ingestion pipeline before
+updating the manifest. Delete the `corpus/live/macrumors/*.html` files and
+the `article-live-macrumors-*` manifest entries to drop them.
 
