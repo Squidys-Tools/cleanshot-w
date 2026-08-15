@@ -217,6 +217,20 @@ impl JobQueue {
         Ok(jobs)
     }
 
+    /// Requeue jobs left in `processing` after an interrupted worker run.
+    ///
+    /// This is safe to call before each worker pass because the worker claims
+    /// jobs only after recovery has completed, so an active job cannot be
+    /// mistaken for an interrupted one by the same worker.
+    pub fn recover_processing_jobs(conn: &Connection) -> rusqlite::Result<usize> {
+        conn.execute(
+            "UPDATE jobs
+             SET status = 'pending', started_at = NULL, error_message = NULL
+             WHERE status = 'processing'",
+            [],
+        )
+    }
+
     pub fn count_active_jobs(conn: &Connection) -> rusqlite::Result<i64> {
         conn.query_row(
             "SELECT COUNT(*) FROM jobs WHERE status IN ('pending', 'processing')",
@@ -286,6 +300,10 @@ fn process_pending_jobs(db_path: &PathBuf) {
     };
 
     let conn = &storage.connection;
+
+    if JobQueue::recover_processing_jobs(conn).is_err() {
+        return;
+    }
 
     loop {
         let job = match JobQueue::claim_next_job(conn) {
@@ -424,4 +442,52 @@ pub fn count_active_jobs(
         .as_ref()
         .ok_or_else(|| "storage not initialized".to_string())?;
     JobQueue::count_active_jobs(&storage.connection).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_connection() -> Connection {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE items (id TEXT PRIMARY KEY NOT NULL);\n                 CREATE TABLE jobs (\n                     id TEXT PRIMARY KEY NOT NULL,\n                     item_id TEXT NOT NULL REFERENCES items(id) ON DELETE CASCADE,\n                     kind TEXT NOT NULL,\n                     status TEXT NOT NULL DEFAULT 'pending',\n                     retry_count INTEGER NOT NULL DEFAULT 0,\n                     max_retries INTEGER NOT NULL DEFAULT 3,\n                     error_message TEXT,\n                     created_at INTEGER NOT NULL,\n                     started_at INTEGER,\n                     completed_at INTEGER\n                 );",
+            )
+            .unwrap();
+        connection
+    }
+
+    #[test]
+    fn recovers_interrupted_jobs_and_preserves_deduplication() {
+        let connection = test_connection();
+        connection
+            .execute("INSERT INTO items (id) VALUES ('item-1')", [])
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO jobs (
+                    id, item_id, kind, status, error_message, created_at, started_at
+                 ) VALUES ('job-1', 'item-1', 'ocr_image', 'processing', 'old error', 1, 2)",
+                [],
+            )
+            .unwrap();
+
+        assert_eq!(JobQueue::recover_processing_jobs(&connection).unwrap(), 1);
+        let jobs = JobQueue::get_jobs_for_item(&connection, "item-1").unwrap();
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(jobs[0].status, JobStatus::Pending);
+        assert_eq!(jobs[0].started_at, None);
+        assert_eq!(jobs[0].error_message, None);
+        assert_eq!(JobQueue::count_active_jobs(&connection).unwrap(), 1);
+
+        assert_eq!(
+            JobQueue::enqueue_job(&connection, "item-1", JobKind::OcrImage).unwrap(),
+            "job-1"
+        );
+        assert_eq!(
+            JobQueue::claim_next_job(&connection).unwrap().unwrap().status,
+            JobStatus::Processing
+        );
+    }
 }
