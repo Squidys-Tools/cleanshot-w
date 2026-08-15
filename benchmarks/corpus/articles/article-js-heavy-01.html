@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>The Rendering Kitchen</title>
+  <meta name="description" content="A JavaScript-rendered article about client-side rendering, served with a script that builds the page.">
+</head>
+<body>
+  <!--
+    This page ships nearly empty and renders its content with JavaScript,
+    mimicking a client-side rendered (CSR) site. A static extractor should
+    find little or nothing; an extractor that executes JavaScript should
+    recover the article below.
+  -->
+  <div id="app"><noscript>
+    <h1>The Rendering Kitchen</h1>
+    <p>An article about how the same HTML can be cooked three ways: server side, client side, and by hand.</p>
+    <p>The first way, server-side rendering, bakes the whole meal before anyone arrives. The second way, client-side rendering, sends ingredients and lets each browser do the cooking. The third way, by hand, is what we do on slow Sundays: a single HTML file, typed with care, that needs nothing but a browser.</p>
+    <p>Most of the web is a mix of the first two. The lesson of the kitchen is that rendering is a choice about who waits: the server, the browser, or the reader.</p>
+  </noscript></div>
+
+  <script>
+    const article = {
+      title: "The Rendering Kitchen",
+      body: [
+        "An article about how the same HTML can be cooked three ways: server side, client side, and by hand.",
+        "The first way, server-side rendering, bakes the whole meal before anyone arrives. The second way, client-side rendering, sends ingredients and lets each browser do the cooking. The third way, by hand, is what we do on slow Sundays: a single HTML file, typed with care, that needs nothing but a browser.",
+        "Most of the web is a mix of the first two. The lesson of the kitchen is that rendering is a choice about who waits: the server, the browser, or the reader."
+      ]
+    };
+
+    const app = document.getElementById("app");
+    const h1 = document.createElement("h1");
+    h1.textContent = article.title;
+    app.appendChild(h1);
+    article.body.forEach((paragraph) => {
+      const p = document.createElement("p");
+      p.textContent = paragraph;
+      app.appendChild(p);
+    });
+  </script>
+</body>
+</html>

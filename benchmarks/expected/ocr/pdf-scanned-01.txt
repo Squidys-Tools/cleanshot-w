@@ -1,0 +1,24 @@
+MEMORANDUM
+
+TO:        All Hands
+FROM:      Operations
+DATE:      March 12, 2026
+RE:        Quarterly Inventory and the Persistent Ghosts of Spring
+
+Dear team,
+
+The warehouse count finished at 14,207 units, which is 112 more
+than the system predicted. The discrepancy traces back to the west
+rack, where boxes are stacked by hand and the barcode scanner gives
+up on dust. We will rescan that rack on Friday and credit the
+difference.
+
+The second item is more unusual. Two crates labeled "sprouted
+bulbs" have started to germinate in the loading bay. No one ordered
+bulbs. No one remembers ordering bulbs. The crates arrived with a
+packing slip that reads only: "You know what these are for."
+
+We are scheduling a meeting to discuss the bulbs.
+
+Signed,
+Operations

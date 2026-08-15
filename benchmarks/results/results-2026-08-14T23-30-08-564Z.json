@@ -1,0 +1,671 @@
+{
+  "generatedAt": "2026-08-14T23:30:08.562Z",
+  "engine": {
+    "ocr": null
+  },
+  "overall": {
+    "total": 42,
+    "pass": 24,
+    "partial": 3,
+    "fail": 0,
+    "skip": 15,
+    "avgScore": 0.9814814814814815
+  },
+  "byType": {
+    "article": {
+      "total": 11,
+      "pass": 9,
+      "partial": 2,
+      "fail": 0,
+      "skip": 0,
+      "avgScore": 0.962121212121212
+    },
+    "recipe": {
+      "total": 1,
+      "pass": 0,
+      "partial": 1,
+      "fail": 0,
+      "skip": 0,
+      "avgScore": 0.9166666666666666
+    },
+    "screenshot": {
+      "total": 2,
+      "pass": 0,
+      "partial": 0,
+      "fail": 0,
+      "skip": 2,
+      "avgScore": 0
+    },
+    "image": {
+      "total": 12,
+      "pass": 0,
+      "partial": 0,
+      "fail": 0,
+      "skip": 12,
+      "avgScore": 0
+    },
+    "pdf": {
+      "total": 6,
+      "pass": 5,
+      "partial": 0,
+      "fail": 0,
+      "skip": 1,
+      "avgScore": 1
+    },
+    "video": {
+      "total": 4,
+      "pass": 4,
+      "partial": 0,
+      "fail": 0,
+      "skip": 0,
+      "avgScore": 1
+    },
+    "note": {
+      "total": 4,
+      "pass": 4,
+      "partial": 0,
+      "fail": 0,
+      "skip": 0,
+      "avgScore": 1
+    },
+    "quote": {
+      "total": 2,
+      "pass": 2,
+      "partial": 0,
+      "fail": 0,
+      "skip": 0,
+      "avgScore": 1
+    }
+  },
+  "items": [
+    {
+      "id": "article-short-01",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "The Case for Slower News",
+        "author": "Mira Alderton",
+        "imageUrls": 0,
+        "safeEmbeds": 0,
+        "textLength": 558,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "article-long-essay-01",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "Notes on Attention, Winter 2026",
+        "author": "Theo Wren",
+        "imageUrls": 0,
+        "safeEmbeds": 0,
+        "textLength": 3162,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "article-news-01",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "partial",
+      "score": 0.9166666666666666,
+      "metrics": {
+        "title": "City Council Approves Riverfront Transit Line",
+        "author": "",
+        "imageUrls": 0,
+        "safeEmbeds": 0,
+        "textLength": 1291,
+        "extractor": "defuddle"
+      },
+      "messages": [
+        "author mismatch: expected \"Sam Okonkwo\", got \"\""
+      ]
+    },
+    {
+      "id": "article-recipe-01",
+      "type": "recipe",
+      "engine": "production:ingestUrl",
+      "status": "partial",
+      "score": 0.9166666666666666,
+      "metrics": {
+        "title": "One-Pan Miso Butter Salmon",
+        "author": "",
+        "imageUrls": 0,
+        "safeEmbeds": 0,
+        "textLength": 1164,
+        "extractor": "defuddle"
+      },
+      "messages": [
+        "author mismatch: expected \"June Park\", got \"\""
+      ]
+    },
+    {
+      "id": "article-docs-01",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "SQLite FTS5 for Local Search",
+        "author": "",
+        "imageUrls": 0,
+        "safeEmbeds": 0,
+        "textLength": 1376,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "article-footnotes-01",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "The Library That Grew a Door",
+        "author": "Ana Beltrán",
+        "imageUrls": 0,
+        "safeEmbeds": 0,
+        "textLength": 933,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "article-codeblocks-01",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "Parsing Dates Without Losing Your Mind",
+        "author": "",
+        "imageUrls": 0,
+        "safeEmbeds": 0,
+        "textLength": 1837,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "article-gallery-01",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "Seven Rooms Worth Saving",
+        "author": "",
+        "imageUrls": 7,
+        "safeEmbeds": 0,
+        "textLength": 558,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "article-js-heavy-01",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "partial",
+      "score": 0.6666666666666666,
+      "metrics": {
+        "title": "The Rendering Kitchen",
+        "author": "",
+        "imageUrls": 0,
+        "safeEmbeds": 0,
+        "textLength": 0,
+        "extractor": "defuddle"
+      },
+      "messages": [
+        "search term not found: \"server side\"",
+        "search term not found: \"browser\""
+      ]
+    },
+    {
+      "id": "article-ads-01",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "How to Fix a Drawer That Won't Close",
+        "author": "Devon Ruiz",
+        "imageUrls": 1,
+        "safeEmbeds": 0,
+        "textLength": 1061,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "article-paywalled-01",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "The Slow Reading Manifesto",
+        "author": "Ingrid Solberg",
+        "imageUrls": 0,
+        "safeEmbeds": 0,
+        "textLength": 568,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "screenshot-large-text-01",
+      "type": "screenshot",
+      "engine": "none",
+      "status": "skip",
+      "score": 0,
+      "metrics": {
+        "reason": "no OCR engine available (install tesseract.js or native tesseract)"
+      },
+      "messages": [
+        "no OCR engine available (install tesseract.js or native tesseract)"
+      ]
+    },
+    {
+      "id": "screenshot-small-text-01",
+      "type": "screenshot",
+      "engine": "none",
+      "status": "skip",
+      "score": 0,
+      "metrics": {
+        "reason": "no OCR engine available (install tesseract.js or native tesseract)"
+      },
+      "messages": [
+        "no OCR engine available (install tesseract.js or native tesseract)"
+      ]
+    },
+    {
+      "id": "image-photo-01",
+      "type": "image",
+      "engine": "none",
+      "status": "skip",
+      "score": 0,
+      "metrics": {
+        "reason": "vision/similarity scoring not implemented (embeddings benchmark)"
+      },
+      "messages": [
+        "vision/similarity scoring not implemented (embeddings benchmark)"
+      ]
+    },
+    {
+      "id": "image-design-ref-01",
+      "type": "image",
+      "engine": "none",
+      "status": "skip",
+      "score": 0,
+      "metrics": {
+        "reason": "vision/similarity scoring not implemented (embeddings benchmark)"
+      },
+      "messages": [
+        "vision/similarity scoring not implemented (embeddings benchmark)"
+      ]
+    },
+    {
+      "id": "image-similar-01",
+      "type": "image",
+      "engine": "none",
+      "status": "skip",
+      "score": 0,
+      "metrics": {
+        "reason": "vision/similarity scoring not implemented (embeddings benchmark)"
+      },
+      "messages": [
+        "vision/similarity scoring not implemented (embeddings benchmark)"
+      ]
+    },
+    {
+      "id": "image-similar-02",
+      "type": "image",
+      "engine": "none",
+      "status": "skip",
+      "score": 0,
+      "metrics": {
+        "reason": "vision/similarity scoring not implemented (embeddings benchmark)"
+      },
+      "messages": [
+        "vision/similarity scoring not implemented (embeddings benchmark)"
+      ]
+    },
+    {
+      "id": "image-similar-03",
+      "type": "image",
+      "engine": "none",
+      "status": "skip",
+      "score": 0,
+      "metrics": {
+        "reason": "vision/similarity scoring not implemented (embeddings benchmark)"
+      },
+      "messages": [
+        "vision/similarity scoring not implemented (embeddings benchmark)"
+      ]
+    },
+    {
+      "id": "image-similar-04",
+      "type": "image",
+      "engine": "none",
+      "status": "skip",
+      "score": 0,
+      "metrics": {
+        "reason": "vision/similarity scoring not implemented (embeddings benchmark)"
+      },
+      "messages": [
+        "vision/similarity scoring not implemented (embeddings benchmark)"
+      ]
+    },
+    {
+      "id": "image-distractor-01",
+      "type": "image",
+      "engine": "none",
+      "status": "skip",
+      "score": 0,
+      "metrics": {
+        "reason": "vision/similarity scoring not implemented (embeddings benchmark)"
+      },
+      "messages": [
+        "vision/similarity scoring not implemented (embeddings benchmark)"
+      ]
+    },
+    {
+      "id": "image-lowres-01",
+      "type": "image",
+      "engine": "none",
+      "status": "skip",
+      "score": 0,
+      "metrics": {
+        "reason": "vision/similarity scoring not implemented (embeddings benchmark)"
+      },
+      "messages": [
+        "vision/similarity scoring not implemented (embeddings benchmark)"
+      ]
+    },
+    {
+      "id": "image-meme-01",
+      "type": "image",
+      "engine": "none",
+      "status": "skip",
+      "score": 0,
+      "metrics": {
+        "reason": "no OCR engine available (install tesseract.js or native tesseract)"
+      },
+      "messages": [
+        "no OCR engine available (install tesseract.js or native tesseract)"
+      ]
+    },
+    {
+      "id": "image-handwriting-01",
+      "type": "image",
+      "engine": "none",
+      "status": "skip",
+      "score": 0,
+      "metrics": {
+        "reason": "no OCR engine available (install tesseract.js or native tesseract)"
+      },
+      "messages": [
+        "no OCR engine available (install tesseract.js or native tesseract)"
+      ]
+    },
+    {
+      "id": "image-rotated-01",
+      "type": "image",
+      "engine": "none",
+      "status": "skip",
+      "score": 0,
+      "metrics": {
+        "reason": "no OCR engine available (install tesseract.js or native tesseract)"
+      },
+      "messages": [
+        "no OCR engine available (install tesseract.js or native tesseract)"
+      ]
+    },
+    {
+      "id": "image-columns-01",
+      "type": "image",
+      "engine": "none",
+      "status": "skip",
+      "score": 0,
+      "metrics": {
+        "reason": "no OCR engine available (install tesseract.js or native tesseract)"
+      },
+      "messages": [
+        "no OCR engine available (install tesseract.js or native tesseract)"
+      ]
+    },
+    {
+      "id": "pdf-native-text-01",
+      "type": "pdf",
+      "engine": "naive-streams",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "naiveTextLength": 608,
+        "ocrText": false,
+        "embeddedImages": 0
+      },
+      "messages": []
+    },
+    {
+      "id": "pdf-scanned-01",
+      "type": "pdf",
+      "engine": "none",
+      "status": "skip",
+      "score": 0,
+      "metrics": {
+        "reason": "scanned PDF: no OCR engine available (install tesseract.js or native tesseract)"
+      },
+      "messages": [
+        "scanned PDF: no OCR engine available (install tesseract.js or native tesseract)"
+      ]
+    },
+    {
+      "id": "pdf-multicolumn-01",
+      "type": "pdf",
+      "engine": "naive-streams",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "naiveTextLength": 501,
+        "ocrText": false,
+        "embeddedImages": 0
+      },
+      "messages": []
+    },
+    {
+      "id": "pdf-tables-01",
+      "type": "pdf",
+      "engine": "naive-streams",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "naiveTextLength": 190,
+        "ocrText": false,
+        "embeddedImages": 0
+      },
+      "messages": []
+    },
+    {
+      "id": "pdf-images-captions-01",
+      "type": "pdf",
+      "engine": "naive-streams",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "naiveTextLength": 209,
+        "ocrText": false,
+        "embeddedImages": 1
+      },
+      "messages": []
+    },
+    {
+      "id": "pdf-bad-metadata-01",
+      "type": "pdf",
+      "engine": "naive-streams",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "naiveTextLength": 124,
+        "ocrText": false,
+        "embeddedImages": 0
+      },
+      "messages": []
+    },
+    {
+      "id": "video-youtube-01",
+      "type": "video",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "Why Libraries Smell Like Paper",
+        "author": "",
+        "imageUrls": 0,
+        "safeEmbeds": 1,
+        "textLength": 362,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "video-vimeo-01",
+      "type": "video",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "Field Study: A Morning in the Print Shop",
+        "author": "",
+        "imageUrls": 0,
+        "safeEmbeds": 1,
+        "textLength": 345,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "video-article-embed-01",
+      "type": "video",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "How to Fold a Paper Airplane That Flies Home",
+        "author": "",
+        "imageUrls": 0,
+        "safeEmbeds": 1,
+        "textLength": 445,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "video-unsupported-iframe-01",
+      "type": "video",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "Streams of the Week",
+        "author": "",
+        "imageUrls": 0,
+        "safeEmbeds": 0,
+        "textLength": 296,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "video-no-media-01",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "An Essay With No Media",
+        "author": "the quiet desk",
+        "imageUrls": 0,
+        "safeEmbeds": 0,
+        "textLength": 520,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "note-quick-01",
+      "type": "note",
+      "engine": "raw-file",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "textLength": 96
+      },
+      "messages": []
+    },
+    {
+      "id": "note-long-01",
+      "type": "note",
+      "engine": "raw-file",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "textLength": 1070
+      },
+      "messages": []
+    },
+    {
+      "id": "note-markdown-01",
+      "type": "note",
+      "engine": "raw-file",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "textLength": 895
+      },
+      "messages": []
+    },
+    {
+      "id": "note-todo-01",
+      "type": "note",
+      "engine": "raw-file",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "textLength": 572
+      },
+      "messages": []
+    },
+    {
+      "id": "quote-source-01",
+      "type": "quote",
+      "engine": "raw-file",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "textLength": 180
+      },
+      "messages": []
+    },
+    {
+      "id": "quote-nosource-01",
+      "type": "quote",
+      "engine": "raw-file",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "textLength": 181
+      },
+      "messages": []
+    }
+  ]
+}

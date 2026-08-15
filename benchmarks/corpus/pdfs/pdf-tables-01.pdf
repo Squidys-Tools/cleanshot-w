@@ -1,0 +1,81 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 1513 >>
+stream
+BT /F1 20 Tf 1 0 0 1 72 750 Tm (Quarterly Operating Summary) Tj ET
+BT /F1 10 Tf 1 0 0 1 72 730 Tm (All figures in local currency, unaudited.) Tj ET
+
+0.86 0.86 0.84 rg
+90 690 510 30 re f
+0 0 0 rg
+BT /F1 12 Tf 1 0 0 1 98 698 Tm (Quarter) Tj ET
+BT /F1 12 Tf 1 0 0 1 208 698 Tm (Revenue) Tj ET
+BT /F1 12 Tf 1 0 0 1 348 698 Tm (Expenses) Tj ET
+BT /F1 12 Tf 1 0 0 1 488 698 Tm (Notes) Tj ET
+0.93 0.93 0.92 rg
+90 660 510 30 re f
+0 0 0 rg
+BT /F1 12 Tf 1 0 0 1 98 668 Tm (Q1) Tj ET
+BT /F1 12 Tf 1 0 0 1 208 668 Tm (28,400) Tj ET
+BT /F1 12 Tf 1 0 0 1 348 668 Tm (19,700) Tj ET
+BT /F1 12 Tf 1 0 0 1 488 668 Tm (flat) Tj ET
+0.93 0.93 0.92 rg
+90 630 510 30 re f
+0 0 0 rg
+BT /F1 12 Tf 1 0 0 1 98 638 Tm (Q2) Tj ET
+BT /F1 12 Tf 1 0 0 1 208 638 Tm (31,150) Tj ET
+BT /F1 12 Tf 1 0 0 1 348 638 Tm (21,300) Tj ET
+BT /F1 12 Tf 1 0 0 1 488 638 Tm (grew) Tj ET
+0.93 0.93 0.92 rg
+90 600 510 30 re f
+0 0 0 rg
+BT /F1 12 Tf 1 0 0 1 98 608 Tm (Q3) Tj ET
+BT /F1 12 Tf 1 0 0 1 208 608 Tm (29,900) Tj ET
+BT /F1 12 Tf 1 0 0 1 348 608 Tm (22,100) Tj ET
+BT /F1 12 Tf 1 0 0 1 488 608 Tm (dipped) Tj ET
+0.93 0.93 0.92 rg
+90 570 510 30 re f
+0 0 0 rg
+BT /F1 12 Tf 1 0 0 1 98 578 Tm (Q4) Tj ET
+BT /F1 12 Tf 1 0 0 1 208 578 Tm (34,600) Tj ET
+BT /F1 12 Tf 1 0 0 1 348 578 Tm (23,400) Tj ET
+BT /F1 12 Tf 1 0 0 1 488 578 Tm (best) Tj ET
+0.7 0.7 0.7 RG
+90 570 1 150 re S
+200 570 1 150 re S
+340 570 1 150 re S
+480 570 1 150 re S
+90 570 510 150 re S
+90 720 510 1 re S
+90 690 510 1 re S
+90 660 510 1 re S
+90 630 510 1 re S
+90 600 510 1 re S
+90 570 510 1 re S
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f
+0000000009 00000 n
+0000000058 00000 n
+0000000115 00000 n
+0000000241 00000 n
+0000001805 00000 n
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1875
+%%EOF
