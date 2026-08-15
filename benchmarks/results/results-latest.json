@@ -1,32 +1,35 @@
 {
-  "generatedAt": "2026-08-15T00:55:05.433Z",
+  "generatedAt": "2026-08-15T03:11:15.473Z",
   "engine": {
-    "ocr": "windows-ocr"
+    "ocr": [
+      "windows-ocr",
+      "tesseract.js"
+    ]
   },
   "overall": {
-    "total": 42,
-    "pass": 25,
-    "partial": 8,
-    "fail": 1,
+    "total": 48,
+    "pass": 36,
+    "partial": 4,
+    "fail": 0,
     "skip": 8,
-    "avgScore": 0.9400796534028631
+    "avgScore": 0.9917566287878788
   },
   "byType": {
     "article": {
-      "total": 11,
-      "pass": 9,
-      "partial": 2,
+      "total": 17,
+      "pass": 17,
+      "partial": 0,
       "fail": 0,
       "skip": 0,
-      "avgScore": 0.962121212121212
+      "avgScore": 1
     },
     "recipe": {
       "total": 1,
-      "pass": 0,
-      "partial": 1,
+      "pass": 1,
+      "partial": 0,
       "fail": 0,
       "skip": 0,
-      "avgScore": 0.9166666666666666
+      "avgScore": 1
     },
     "screenshot": {
       "total": 2,
@@ -38,19 +41,19 @@
     },
     "image": {
       "total": 12,
-      "pass": 1,
+      "pass": 2,
       "partial": 2,
-      "fail": 1,
+      "fail": 0,
       "skip": 8,
-      "avgScore": 0.7219202898550725
+      "avgScore": 0.9613095238095238
     },
     "pdf": {
       "total": 6,
-      "pass": 5,
-      "partial": 1,
+      "pass": 6,
+      "partial": 0,
       "fail": 0,
       "skip": 0,
-      "avgScore": 0.9583333333333334
+      "avgScore": 1
     },
     "video": {
       "total": 4,
@@ -114,37 +117,33 @@
       "id": "article-news-01",
       "type": "article",
       "engine": "production:ingestUrl",
-      "status": "partial",
-      "score": 0.9166666666666666,
+      "status": "pass",
+      "score": 1,
       "metrics": {
         "title": "City Council Approves Riverfront Transit Line",
-        "author": "",
+        "author": "Sam Okonkwo",
         "imageUrls": 0,
         "safeEmbeds": 0,
         "textLength": 1291,
         "extractor": "defuddle"
       },
-      "messages": [
-        "author mismatch: expected \"Sam Okonkwo\", got \"\""
-      ]
+      "messages": []
     },
     {
       "id": "article-recipe-01",
       "type": "recipe",
       "engine": "production:ingestUrl",
-      "status": "partial",
-      "score": 0.9166666666666666,
+      "status": "pass",
+      "score": 1,
       "metrics": {
         "title": "One-Pan Miso Butter Salmon",
-        "author": "",
+        "author": "June Park",
         "imageUrls": 0,
         "safeEmbeds": 0,
         "textLength": 1164,
         "extractor": "defuddle"
       },
-      "messages": [
-        "author mismatch: expected \"June Park\", got \"\""
-      ]
+      "messages": []
     },
     {
       "id": "article-docs-01",
@@ -214,20 +213,17 @@
       "id": "article-js-heavy-01",
       "type": "article",
       "engine": "production:ingestUrl",
-      "status": "partial",
-      "score": 0.6666666666666666,
+      "status": "pass",
+      "score": 1,
       "metrics": {
         "title": "The Rendering Kitchen",
         "author": "",
         "imageUrls": 0,
         "safeEmbeds": 0,
-        "textLength": 0,
-        "extractor": "defuddle"
+        "textLength": 580,
+        "extractor": "fallback"
       },
-      "messages": [
-        "search term not found: \"server side\"",
-        "search term not found: \"browser\""
-      ]
+      "messages": []
     },
     {
       "id": "article-ads-01",
@@ -405,18 +401,17 @@
       "id": "image-meme-01",
       "type": "image",
       "engine": "windows-ocr",
-      "status": "fail",
-      "score": 0,
+      "status": "partial",
+      "score": 0.9285714285714286,
       "metrics": {
-        "recall": 0,
-        "precision": 0,
+        "recall": 0.8571428571428571,
+        "precision": 1,
         "expectedCount": 14,
-        "actualCount": 0
+        "actualCount": 12
       },
       "messages": [
-        "OCR recall 0.00 (14 expected tokens)",
-        "missing tokens (sample): me, i, will, just, save, one, link, 10",
-        "OCR precision 0.00"
+        "OCR recall 0.86 (14 expected tokens)",
+        "missing tokens (sample): i, will"
       ]
     },
     {
@@ -453,20 +448,16 @@
     {
       "id": "image-columns-01",
       "type": "image",
-      "engine": "windows-ocr",
-      "status": "partial",
-      "score": 0.9710144927536232,
+      "engine": "tesseract.js",
+      "status": "pass",
+      "score": 1,
       "metrics": {
-        "recall": 0.9710144927536232,
-        "precision": 0.9710144927536232,
+        "recall": 1,
+        "precision": 1,
         "expectedCount": 69,
         "actualCount": 69
       },
-      "messages": [
-        "OCR recall 0.97 (69 expected tokens)",
-        "missing tokens (sample): ",
-        "OCR precision 0.97"
-      ]
+      "messages": []
     },
     {
       "id": "pdf-native-text-01",
@@ -484,17 +475,15 @@
     {
       "id": "pdf-scanned-01",
       "type": "pdf",
-      "engine": "windows-ocr",
-      "status": "partial",
-      "score": 0.75,
+      "engine": "tesseract.js",
+      "status": "pass",
+      "score": 1,
       "metrics": {
         "naiveTextLength": 0,
         "ocrText": true,
         "embeddedImages": 1
       },
-      "messages": [
-        "search term not found: \"sprouted bulbs\""
-      ]
+      "messages": []
     },
     {
       "id": "pdf-multicolumn-01",
@@ -635,7 +624,7 @@
       "status": "pass",
       "score": 1,
       "metrics": {
-        "textLength": 96
+        "textLength": 99
       },
       "messages": []
     },
@@ -646,7 +635,7 @@
       "status": "pass",
       "score": 1,
       "metrics": {
-        "textLength": 1070
+        "textLength": 1095
       },
       "messages": []
     },
@@ -657,7 +646,7 @@
       "status": "pass",
       "score": 1,
       "metrics": {
-        "textLength": 895
+        "textLength": 926
       },
       "messages": []
     },
@@ -668,7 +657,7 @@
       "status": "pass",
       "score": 1,
       "metrics": {
-        "textLength": 572
+        "textLength": 590
       },
       "messages": []
     },
@@ -679,7 +668,7 @@
       "status": "pass",
       "score": 1,
       "metrics": {
-        "textLength": 180
+        "textLength": 185
       },
       "messages": []
     },
@@ -690,7 +679,103 @@
       "status": "pass",
       "score": 1,
       "metrics": {
-        "textLength": 181
+        "textLength": 186
+      },
+      "messages": []
+    },
+    {
+      "id": "article-live-macrumors-the-macrumors-show-where-does-the-apple-watch-go-next",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "The MacRumors Show: Where Does the Apple Watch Go Next?",
+        "author": "Hartley Charlton",
+        "imageUrls": 13,
+        "safeEmbeds": 1,
+        "textLength": 5422,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "article-live-macrumors-new-things-your-iphone-can-do-ios-27",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "30 New Things Your iPhone Can Do in iOS 27",
+        "author": "Tim Hardwick",
+        "imageUrls": 136,
+        "safeEmbeds": 0,
+        "textLength": 14945,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "article-live-macrumors-iphone-18-pro-next-month-12-rumored-features",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "iPhone 18 Pro Launching Next Month With These 12 New Features",
+        "author": "Joe Rossignol",
+        "imageUrls": 15,
+        "safeEmbeds": 0,
+        "textLength": 4166,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "article-live-macrumors-iphone-17-vs-iphone-18-buying",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "Should You Buy an iPhone 17 Now or Wait for iPhone 18?",
+        "author": "Juli Clover",
+        "imageUrls": 13,
+        "safeEmbeds": 1,
+        "textLength": 4508,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "article-live-macrumors-best-apple-deals-of-the-week-8-14-26",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "Best Apple Deals of the Week: Steep Discounts Hit AirPods, MacBook Pro, and Anker Accessories",
+        "author": "Mitchel Broussard",
+        "imageUrls": 32,
+        "safeEmbeds": 0,
+        "textLength": 2317,
+        "extractor": "defuddle"
+      },
+      "messages": []
+    },
+    {
+      "id": "article-live-macrumors-apple-trained-own-ai-model-for-china",
+      "type": "article",
+      "engine": "production:ingestUrl",
+      "status": "pass",
+      "score": 1,
+      "metrics": {
+        "title": "Apple Trained Own AI Model for China Market With Help From Alibaba",
+        "author": "Tim Hardwick",
+        "imageUrls": 15,
+        "safeEmbeds": 0,
+        "textLength": 1511,
+        "extractor": "defuddle"
       },
       "messages": []
     }

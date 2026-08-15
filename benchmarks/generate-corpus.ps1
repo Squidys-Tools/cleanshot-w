@@ -317,7 +317,10 @@ function Write-Meme {
 
     $topText = 'ME: I WILL JUST SAVE ONE LINK'
     $bottomText = 'ME 10 SECONDS LATER: ANOTHER 47 TABS'
-    $brush = Brush (C 20 20 20)
+    $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAlias
+    $outlinePen = [System.Drawing.Pen]::new((C 0 0 0), 5)
+    $outlinePen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
+    $fill = Brush (C 255 255 255)
 
     foreach ($entry in @(
             @{ Text = $topText; Y = 40 },
@@ -326,9 +329,18 @@ function Write-Meme {
         $font = New-Font 'Impact' 52 ([System.Drawing.FontStyle]::Bold)
         $size = $g.MeasureString($entry.Text, $font)
         $x = ($W - $size.Width) / 2
-        $g.DrawString($entry.Text, $font, $brush, $x - 3, $entry.Y + 3)
-        $g.DrawString($entry.Text, $font, $brush, $x + 3, $entry.Y - 3)
-        $g.DrawString($entry.Text, $font, $brush, $x, $entry.Y)
+        $path = [System.Drawing.Drawing2D.GraphicsPath]::new()
+        $path.AddString(
+            $entry.Text,
+            $font.FontFamily,
+            [int][System.Drawing.FontStyle]::Bold,
+            52,
+            [System.Drawing.PointF]::new($x, $entry.Y),
+            [System.Drawing.StringFormat]::GenericDefault
+        )
+        $g.DrawPath($outlinePen, $path)
+        $g.FillPath($fill, $path)
+        $path.Dispose()
         $font.Dispose()
     }
 
@@ -695,24 +707,41 @@ $memorandum = @(
 
 function Write-ScannedPdf {
     # Render a typewriter-style page, save as JPEG, embed as a scanned PDF.
-    $W = 1240; $H = 1754
+    $margin = 150
+    $startY = 180
+    $lineHeight = 62
+    $font = New-Font 'Courier New' 34
+
+    # Size the canvas to fit the widest line so the right edge is never clipped.
+    $temp = New-Canvas 1 1 (C 250 247 240)
+    $gTemp = $temp[1]
+    $maxWidth = 0
+    foreach ($lineText in $memorandum) {
+        if (-not $lineText) { continue }
+        $width = $gTemp.MeasureString($lineText, $font).Width
+        if ($width -gt $maxWidth) { $maxWidth = $width }
+    }
+    Dispose-Canvas $temp
+
+    $W = [int][Math]::Ceiling($maxWidth) + 2 * $margin
+    $H = $startY + $memorandum.Count * $lineHeight + $margin
     $canvas = New-Canvas $W $H (C 250 247 240)
     $g = $canvas[1]
 
-    $font = New-Font 'Courier New' 34
     $ink = Brush (C 30 40 50)
-    $y = 180
+    $y = $startY
     foreach ($lineText in $memorandum) {
-        $g.DrawString($lineText, $font, $ink, 150, $y)
-        $y += 62
+        $g.DrawString($lineText, $font, $ink, $margin, $y)
+        $y += $lineHeight
     }
+    $font.Dispose()
 
     $tmpJpeg = Join-Path $PdfDir '_scanned-page-01.tmp.jpg'
     Save-Jpeg $canvas[0] $tmpJpeg 85
     $jpegBytes = [System.IO.File]::ReadAllBytes($tmpJpeg)
     Dispose-Canvas $canvas
 
-    New-Pdf (Join-Path $PdfDir 'pdf-scanned-01.pdf') ("q`n612 0 0 792 0 0 cm`n/Im0 Do`nQ`n") $jpegBytes 1240 1754
+    New-Pdf (Join-Path $PdfDir 'pdf-scanned-01.pdf') ("q`n612 0 0 792 0 0 cm`n/Im0 Do`nQ`n") $jpegBytes $W $H
     Remove-Item $tmpJpeg -Force
 
     Write-ExpectedOcr 'pdf-scanned-01' ($memorandum -join "`n")

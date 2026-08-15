@@ -1,6 +1,8 @@
 import Defuddle from "defuddle";
 import type { DefuddleResponse } from "defuddle";
-import { normalizeHttpUrl, normalizePublishedDate } from "./url";
+import { hasReadableText } from "./html-safety";
+import { extractJsonLdMetadata } from "./json-ld";
+import { normalizeHttpUrl, normalizePublishedDate, normalizeText, uniqueStrings } from "./url";
 import type { DefuddleAdapter, RawArticleExtraction } from "./types";
 
 function imageUrlsFromResult(result: DefuddleResponse, url: string): string[] {
@@ -26,14 +28,19 @@ export class DefaultDefuddleAdapter implements DefuddleAdapter {
       useAsync: false,
     }).parse();
 
+    const structured = extractJsonLdMetadata(document, url);
+
     return {
-      title: result.title,
-      description: result.description,
-      author: result.author,
-      publishedDate: normalizePublishedDate(result.published),
+      title: normalizeText(result.title) || structured.title,
+      description: normalizeText(result.description) || structured.description,
+      author: normalizeText(result.author) || structured.author,
+      publishedDate: normalizePublishedDate(result.published ?? structured.publishedDate ?? null),
       canonicalUrl: canonicalUrl ?? undefined,
-      contentHtml: result.content,
-      imageUrls: imageUrlsFromResult(result, url),
+      contentHtml: hasReadableText(result.content) ? result.content : "",
+      imageUrls: uniqueStrings([
+        ...imageUrlsFromResult(result, url),
+        ...(structured.imageUrls ?? []),
+      ]),
     };
   }
 }

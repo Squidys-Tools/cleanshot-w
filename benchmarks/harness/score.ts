@@ -16,13 +16,13 @@ export interface TermMatch {
 }
 
 export function termMatches(text: string, terms: string[]): TermMatch[] {
-  const haystack = text.toLowerCase();
-  return terms.map((term) => ({ term, found: haystack.includes(term.toLowerCase()) }));
+  const haystack = normalizeForMatch(text);
+  return terms.map((term) => ({ term, found: haystack.includes(normalizeForMatch(term)) }));
 }
 
 export function bannedTermHits(text: string, terms: string[]): string[] {
-  const haystack = text.toLowerCase();
-  return terms.filter((term) => haystack.includes(term.toLowerCase()));
+  const haystack = normalizeForMatch(text);
+  return terms.filter((term) => haystack.includes(normalizeForMatch(term)));
 }
 
 export interface TokenStats {

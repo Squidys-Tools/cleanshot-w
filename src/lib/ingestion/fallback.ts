@@ -1,3 +1,4 @@
+import { extractJsonLdMetadata } from "./json-ld";
 import { normalizeHttpUrl, normalizePublishedDate, normalizeText, uniqueStrings } from "./url";
 import type { RawArticleExtraction } from "./types";
 
@@ -65,6 +66,50 @@ function contentRoot(document: Document): Element | null {
   return candidates.find((candidate) => normalizeText(candidate.textContent).length > 80) ?? candidates[0] ?? document.body;
 }
 
+const BYLINE_SELECTOR = [
+  '[rel="author"]',
+  '[itemprop="author"]',
+  '[class*="byline"]',
+  '[class*="byLine"]',
+  '[class*="author"]',
+  '[class*="writer"]',
+].join(", ");
+
+const BYLINE_PREFIXES = /^(?:by|written by|recipe by|words by|story by|text by)\b/i;
+
+const NAME_PATTERN = /^[A-ZÀ-ÖØ-Þ][\w'.&À-ÖØ-Þ-]*(?:\s+[A-ZÀ-ÖØ-Þ][\w'.&À-ÖØ-Þ-]*){1,2}$/u;
+const NAME_WORD_PATTERN = /^[A-ZÀ-ÖØ-Þ][\w'.&À-ÖØ-Þ-]*$/u;
+
+function bylineAuthor(document: Document): string {
+  const candidates = [...document.querySelectorAll(BYLINE_SELECTOR)];
+
+  for (const candidate of candidates) {
+    const anchored = [...candidate.querySelectorAll("a")]
+      .map((anchor) => normalizeText(anchor.textContent))
+      .filter(Boolean);
+    const anchoredName = anchored.find((value) => NAME_PATTERN.test(value));
+    if (anchoredName) return anchoredName;
+
+    const text = normalizeText(candidate.textContent);
+    if (!text) continue;
+
+    const prefixed = text.match(BYLINE_PREFIXES);
+    if (!prefixed) continue;
+
+    const rest = text.slice(prefixed[0].length).trim();
+    const head = rest.split(/[,·|—–/]/u)[0].trim();
+    const nameWords: string[] = [];
+    for (const word of head.split(/\s+/)) {
+      if (!NAME_WORD_PATTERN.test(word) || nameWords.length === 3) break;
+      nameWords.push(word);
+    }
+    const name = nameWords.join(" ");
+    if (NAME_PATTERN.test(name)) return name;
+  }
+
+  return "";
+}
+
 export function extractFallback(document: Document, url: string): RawArticleExtraction {
   const root = contentRoot(document);
   const canonical = normalizeHttpUrl(document.querySelector('link[rel="canonical"]')?.getAttribute("href"), url);
@@ -72,17 +117,25 @@ export function extractFallback(document: Document, url: string): RawArticleExtr
     metaContent(document, META_DATE_NAMES) ??
     document.querySelector("time[datetime]")?.getAttribute("datetime") ??
     null;
+  const structured = extractJsonLdMetadata(document, url);
 
   return {
     title:
+      structured.title ??
       metaContent(document, ["og:title", "twitter:title"]) ??
       firstMeaningfulText(document, ["h1", "title"]) ??
       new URL(url).hostname,
-    description: metaContent(document, META_DESCRIPTION_NAMES) ?? "",
-    author: metaContent(document, META_AUTHOR_NAMES) ?? firstMeaningfulText(document, ["[rel=author]"]),
-    publishedDate: normalizePublishedDate(published),
+    description: structured.description ?? metaContent(document, META_DESCRIPTION_NAMES) ?? "",
+    author:
+      structured.author ??
+      metaContent(document, META_AUTHOR_NAMES) ??
+      bylineAuthor(document),
+    publishedDate: normalizePublishedDate(structured.publishedDate ?? published),
     canonicalUrl: canonical ?? url,
     contentHtml: root?.innerHTML ?? "",
-    imageUrls: extractImageUrls(document, url),
+    imageUrls: uniqueStrings([
+      ...(structured.imageUrls ?? []),
+      ...extractImageUrls(document, url),
+    ]),
   };
 }
