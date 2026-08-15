@@ -8,6 +8,7 @@
     "build": "tsc -p benchmarks/harness/tsconfig.json && tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "ingest:smoke": "bun src/lib/ingestion/ingestion.smoke.ts",
     "bench": "bun benchmarks/harness/index.ts",
     "typecheck:benchmarks": "tsc -p benchmarks/harness/tsconfig.json"
   },

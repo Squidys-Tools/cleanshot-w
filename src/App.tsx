@@ -47,6 +47,7 @@ type LibraryItem = {
   source: string;
   date: string;
   tags: string[];
+  ocrText?: string;
   image?: string;
   accent?: string;
   featured?: boolean;
@@ -95,10 +96,14 @@ async function storedItemToLibraryItem(item: StoredLibraryItem): Promise<Library
     id: item.id,
     kind,
     title: item.title?.trim() || "Untitled note",
-    description: item.description?.trim() || "Saved to your mind.",
+    description:
+      item.description?.trim() ||
+      item.ocrText?.trim().slice(0, 180) ||
+      "Saved to your mind.",
     source: item.sourceLabel || item.sourceUrl || "Quick note",
     date: formatItemDate(item.createdAt),
     tags,
+    ocrText: item.ocrText,
     image,
     favorite: item.favorite,
   };

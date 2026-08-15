@@ -15,7 +15,7 @@ use tauri::{AppHandle, Manager, State};
 use url::Url;
 use uuid::Uuid;
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 const MAX_FILE_BYTES: usize = 50 * 1024 * 1024;
 const MAX_IMAGE_DIMENSION: u32 = 20_000;
 const MAX_IMAGE_ALLOC_BYTES: u64 = 256 * 1024 * 1024;
@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS items (
     source_label TEXT,
     local_asset_path TEXT,
     thumbnail_path TEXT,
+    ocr_text TEXT NOT NULL DEFAULT '',
     metadata TEXT NOT NULL DEFAULT '{}',
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
@@ -108,9 +109,9 @@ pub struct StorageState {
 }
 
 pub struct LibraryStorage {
-    connection: Connection,
-    database_path: PathBuf,
-    fts5_enabled: bool,
+    pub(crate) connection: Connection,
+    pub(crate) database_path: PathBuf,
+    pub(crate) fts5_enabled: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -132,6 +133,7 @@ pub struct ItemDto {
     pub source_label: Option<String>,
     pub local_asset_path: Option<String>,
     pub thumbnail_path: Option<String>,
+    pub ocr_text: String,
     pub metadata: Value,
     pub created_at: i64,
     pub updated_at: i64,
@@ -183,7 +185,7 @@ pub struct UpdateItemInput {
 }
 
 impl StorageState {
-    fn lock(&self) -> Result<MutexGuard<'_, Option<LibraryStorage>>, StorageError> {
+    pub(crate) fn lock(&self) -> Result<MutexGuard<'_, Option<LibraryStorage>>, StorageError> {
         self.database
             .lock()
             .map_err(|_| StorageError::InvalidInput("storage lock was poisoned".into()))
@@ -199,11 +201,32 @@ impl StorageState {
 }
 
 impl LibraryStorage {
-    fn open(database_path: PathBuf) -> Result<Self, StorageError> {
+    pub(crate) fn open(database_path: PathBuf) -> Result<Self, StorageError> {
         let connection = Connection::open(&database_path)?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
-        connection.execute_batch(ITEMS_SCHEMA)?;
 
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap_or(0);
+
+        if version < 1 {
+            connection.execute_batch(ITEMS_SCHEMA)?;
+        } else if version == 1 {
+            connection.execute(
+                "ALTER TABLE items ADD COLUMN ocr_text TEXT NOT NULL DEFAULT ''",
+                [],
+            )
+            .ok();
+            connection.execute_batch(
+                "DROP TRIGGER IF EXISTS items_fts_after_insert;
+                 DROP TRIGGER IF EXISTS items_fts_after_update;
+                 DROP TRIGGER IF EXISTS items_fts_after_delete;
+                 DROP TABLE IF EXISTS items_fts;",
+            )
+            .ok();
+        }
+
+        connection.execute_batch(crate::jobs::JOBS_SCHEMA)?;
         let fts5_enabled = setup_fts5(&connection);
         connection.pragma_update(None, "user_version", SCHEMA_VERSION)?;
 
@@ -225,7 +248,7 @@ impl LibraryStorage {
     fn list_active_items(&self) -> Result<Vec<ItemDto>, StorageError> {
         let mut statement = self.connection.prepare(
             "SELECT id, kind, title, description, source_url, source_label,
-                    local_asset_path, thumbnail_path, metadata, created_at,
+                    local_asset_path, thumbnail_path, ocr_text, metadata, created_at,
                     updated_at, archived, favorite
              FROM items
              WHERE archived = 0
@@ -255,8 +278,9 @@ impl LibraryStorage {
 
         self.connection.execute(
             "INSERT INTO items (
-                id, kind, title, description, metadata, created_at, updated_at
-             ) VALUES (?1, 'note', ?2, ?3, ?4, ?5, ?5)",
+                id, kind, title, description, metadata, ocr_text,
+                created_at, updated_at
+             ) VALUES (?1, 'note', ?2, ?3, ?4, '', ?5, ?5)",
             params![id, title, body, metadata_json, timestamp],
         )?;
 
@@ -282,8 +306,8 @@ impl LibraryStorage {
         self.connection.execute(
             "INSERT INTO items (
                 id, kind, title, description, source_url, source_label,
-                metadata, created_at, updated_at
-             ) VALUES (?1, 'url', ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
+                metadata, ocr_text, created_at, updated_at
+             ) VALUES (?1, 'url', ?2, ?3, ?4, ?5, ?6, '', ?7, ?7)",
             params![
                 id,
                 title,
@@ -356,8 +380,8 @@ impl LibraryStorage {
                 "UPDATE items
                  SET kind = ?2, title = ?3, source_label = ?4,
                      local_asset_path = ?5, thumbnail_path = ?6,
-                     metadata = ?7, archived = 0, updated_at = ?8
-                 WHERE id = ?1",
+                     ocr_text = '', metadata = ?7, archived = 0, updated_at = ?8
+                  WHERE id = ?1",
                 params![
                     id,
                     kind,
@@ -373,8 +397,8 @@ impl LibraryStorage {
             self.connection.execute(
                 "INSERT INTO items (
                     id, kind, title, source_label, local_asset_path,
-                    thumbnail_path, metadata, created_at, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)",
+                    thumbnail_path, metadata, ocr_text, created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, '', ?8, ?8)",
                 params![
                     id,
                     kind,
@@ -403,7 +427,7 @@ impl LibraryStorage {
         self.assets_root().join("items")
     }
 
-    fn resolve_asset_path(&self, relative_path: &str) -> Result<String, StorageError> {
+    pub(crate) fn resolve_asset_path(&self, relative_path: &str) -> Result<String, StorageError> {
         let normalized = relative_path.replace('\\', "/");
         let relative = normalized.strip_prefix("assets/").ok_or_else(|| {
             StorageError::InvalidInput("asset path must be relative to the managed assets directory".into())
@@ -483,6 +507,45 @@ impl LibraryStorage {
         self.get_item(id)?.ok_or_else(|| StorageError::NotFound(id.to_owned()))
     }
 
+    pub(crate) fn update_item_ocr_text(
+        &self,
+        id: &str,
+        ocr_text: &str,
+        engine: &str,
+    ) -> Result<(), StorageError> {
+        let now = now_millis()?;
+
+        let current_metadata: String = self
+            .connection
+            .query_row("SELECT metadata FROM items WHERE id = ?1", params![id], |row| {
+                row.get::<_, String>(0)
+            })?;
+
+        let mut metadata: serde_json::Map<String, Value> =
+            serde_json::from_str(&current_metadata).unwrap_or_else(|_| {
+                serde_json::Map::new()
+            });
+
+        metadata.remove("ocrText");
+        metadata.insert(
+            "ocrEngine".into(),
+            Value::String(engine.to_owned()),
+        );
+        metadata.insert(
+            "ocrCompletedAt".into(),
+            Value::Number(serde_json::Number::from(now)),
+        );
+
+        let metadata_json = serde_json::to_string(&Value::Object(metadata))?;
+
+        self.connection.execute(
+            "UPDATE items SET ocr_text = ?1, metadata = ?2, updated_at = ?3 WHERE id = ?4",
+            params![ocr_text, metadata_json, now, id],
+        )?;
+
+        Ok(())
+    }
+
     fn search_items(&self, query: &str, limit: u32) -> Result<Vec<ItemDto>, StorageError> {
         let limit = i64::from(limit.clamp(1, 200));
         let query = query.trim();
@@ -496,7 +559,7 @@ impl LibraryStorage {
             let mut statement = self.connection.prepare(
                 "SELECT i.id, i.kind, i.title, i.description, i.source_url,
                         i.source_label, i.local_asset_path, i.thumbnail_path,
-                        i.metadata, i.created_at, i.updated_at, i.archived,
+                        i.ocr_text, i.metadata, i.created_at, i.updated_at, i.archived,
                         i.favorite
                  FROM items_fts f
                  JOIN items i ON i.id = f.item_id
@@ -514,13 +577,14 @@ impl LibraryStorage {
         let pattern = format!("%{query}%");
         let mut statement = self.connection.prepare(
             "SELECT id, kind, title, description, source_url, source_label,
-                    local_asset_path, thumbnail_path, metadata, created_at,
+                    local_asset_path, thumbnail_path, ocr_text, metadata, created_at,
                     updated_at, archived, favorite
              FROM items
              WHERE archived = 0
                AND (title LIKE ?1 COLLATE NOCASE
                     OR description LIKE ?1 COLLATE NOCASE
                     OR source_label LIKE ?1 COLLATE NOCASE
+                    OR ocr_text LIKE ?1 COLLATE NOCASE
                     OR metadata LIKE ?1 COLLATE NOCASE)
              ORDER BY updated_at DESC, created_at DESC
              LIMIT ?2",
@@ -532,10 +596,10 @@ impl LibraryStorage {
         Ok(items)
     }
 
-    fn list_active_items_limited(&self, limit: i64) -> Result<Vec<ItemDto>, StorageError> {
+     fn list_active_items_limited(&self, limit: i64) -> Result<Vec<ItemDto>, StorageError> {
         let mut statement = self.connection.prepare(
             "SELECT id, kind, title, description, source_url, source_label,
-                    local_asset_path, thumbnail_path, metadata, created_at,
+                    local_asset_path, thumbnail_path, ocr_text, metadata, created_at,
                     updated_at, archived, favorite
              FROM items
              WHERE archived = 0
@@ -549,11 +613,11 @@ impl LibraryStorage {
         Ok(items)
     }
 
-    fn get_item(&self, id: &str) -> Result<Option<ItemDto>, StorageError> {
+    pub(crate) fn get_item(&self, id: &str) -> Result<Option<ItemDto>, StorageError> {
         self.connection
             .query_row(
                 "SELECT id, kind, title, description, source_url, source_label,
-                        local_asset_path, thumbnail_path, metadata, created_at,
+                        local_asset_path, thumbnail_path, ocr_text, metadata, created_at,
                         updated_at, archived, favorite
                  FROM items WHERE id = ?1",
                 params![id],
@@ -568,6 +632,7 @@ impl LibraryStorage {
 pub fn initialize_storage(
     app: AppHandle,
     state: State<'_, StorageState>,
+    processing: State<'_, crate::jobs::ProcessingState>,
 ) -> Result<StorageStatus, String> {
     let database_directory = app
         .path()
@@ -584,9 +649,12 @@ pub fn initialize_storage(
         }
     }
 
-    let storage = LibraryStorage::open(database_path).map_err(String::from)?;
+    let storage = LibraryStorage::open(database_path.clone()).map_err(String::from)?;
     let status = storage.status();
     *database = Some(storage);
+    drop(database);
+
+    processing.set_database_path(database_path);
     Ok(status)
 }
 
@@ -630,13 +698,29 @@ pub fn create_url(
 pub fn save_file(
     input: SaveFileInput,
     state: State<'_, StorageState>,
+    processing: State<'_, crate::jobs::ProcessingState>,
 ) -> Result<ItemDto, String> {
     let database = state.require_storage().map_err(String::from)?;
-    database
+    let item = database
         .as_ref()
         .expect("require_storage guarantees initialization")
         .save_file(input)
         .map_err(String::from)
+        ?;
+    let job_id = crate::jobs::enqueue_ocr_for_item(
+        &database
+            .as_ref()
+            .expect("require_storage guarantees initialization")
+            .connection,
+        &item.id,
+        &item.kind,
+    )
+    .map_err(|error| error.to_string())?;
+    drop(database);
+    if job_id.is_some() {
+        processing.enqueue_and_wake(&item.id, crate::jobs::JobKind::OcrImage);
+    }
+    Ok(item)
 }
 
 #[tauri::command]
@@ -701,13 +785,14 @@ fn setup_fts5(connection: &Connection) -> bool {
             title,
             description,
             source_label,
+            ocr_text,
             metadata
         );
 
         CREATE TRIGGER IF NOT EXISTS items_fts_after_insert
         AFTER INSERT ON items BEGIN
-            INSERT INTO items_fts(item_id, title, description, source_label, metadata)
-            VALUES (new.id, new.title, new.description, new.source_label, new.metadata);
+            INSERT INTO items_fts(item_id, title, description, source_label, ocr_text, metadata)
+            VALUES (new.id, new.title, new.description, new.source_label, new.ocr_text, new.metadata);
         END;
 
         CREATE TRIGGER IF NOT EXISTS items_fts_after_delete
@@ -718,13 +803,13 @@ fn setup_fts5(connection: &Connection) -> bool {
         CREATE TRIGGER IF NOT EXISTS items_fts_after_update
         AFTER UPDATE ON items BEGIN
             DELETE FROM items_fts WHERE item_id = old.id;
-            INSERT INTO items_fts(item_id, title, description, source_label, metadata)
-            VALUES (new.id, new.title, new.description, new.source_label, new.metadata);
+            INSERT INTO items_fts(item_id, title, description, source_label, ocr_text, metadata)
+            VALUES (new.id, new.title, new.description, new.source_label, new.ocr_text, new.metadata);
         END;
 
         DELETE FROM items_fts;
-        INSERT INTO items_fts(item_id, title, description, source_label, metadata)
-        SELECT id, title, description, source_label, metadata FROM items;
+        INSERT INTO items_fts(item_id, title, description, source_label, ocr_text, metadata)
+        SELECT id, title, description, source_label, ocr_text, metadata FROM items;
         "#,
     );
 
@@ -737,7 +822,7 @@ fn setup_fts5(connection: &Connection) -> bool {
 }
 
 fn item_from_row(row: &Row<'_>) -> rusqlite::Result<ItemDto> {
-    let metadata_json: String = row.get(8)?;
+    let metadata_json: String = row.get(9)?;
     let metadata = serde_json::from_str(&metadata_json).unwrap_or_else(|_| Value::Object(Map::new()));
 
     Ok(ItemDto {
@@ -749,11 +834,12 @@ fn item_from_row(row: &Row<'_>) -> rusqlite::Result<ItemDto> {
         source_label: row.get(5)?,
         local_asset_path: row.get(6)?,
         thumbnail_path: row.get(7)?,
+        ocr_text: row.get(8)?,
         metadata,
-        created_at: row.get(9)?,
-        updated_at: row.get(10)?,
-        archived: row.get::<_, i64>(11)? != 0,
-        favorite: row.get::<_, i64>(12)? != 0,
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
+        archived: row.get::<_, i64>(12)? != 0,
+        favorite: row.get::<_, i64>(13)? != 0,
     })
 }
 

@@ -11,6 +11,7 @@ export type StoredLibraryItem = {
   sourceLabel: string | null;
   localAssetPath: string | null;
   thumbnailPath: string | null;
+  ocrText: string;
   metadata: Record<string, unknown>;
   createdAt: number;
   updatedAt: number;
@@ -37,6 +38,19 @@ export type SaveFileInput = {
   mimeType: string;
   kind: "image" | "pdf" | "video" | "other";
   bytes: number[];
+};
+
+export type ProcessingJob = {
+  id: string;
+  itemId: string;
+  kind: "ocr_image" | "ocr_pdf_page" | "generate_embedding";
+  status: "pending" | "processing" | "completed" | "failed";
+  retryCount: number;
+  maxRetries: number;
+  errorMessage: string | null;
+  createdAt: number;
+  startedAt: number | null;
+  completedAt: number | null;
 };
 
 const runtimeIsTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -79,4 +93,16 @@ export async function assetUrl(path: string | null) {
 
 export async function archiveItem(id: string) {
   return invoke<StoredLibraryItem>("archive_item", { id, archived: true });
+}
+
+export async function enqueueOcrJob(itemId: string) {
+  return invoke<string>("enqueue_ocr_job", { itemId });
+}
+
+export async function getJobStatus(itemId: string) {
+  return invoke<ProcessingJob[]>("get_job_status", { itemId });
+}
+
+export async function countActiveJobs() {
+  return invoke<number>("count_active_jobs");
 }
