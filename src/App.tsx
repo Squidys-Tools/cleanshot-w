@@ -32,7 +32,7 @@ function App() {
   const urlRef = useRef<string | null>(null);
   const recRef = useRef<CaptureRecord | null>(null);
   const exporterRef = useRef<Exporter | null>(null);
-  const saveTimer = useRef<number | null>(null);
+  const saveTimers = useRef(new Map<string, number>());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -90,13 +90,16 @@ function App() {
   const onAnnotationsChange = useCallback(
     (recordId: string, annotations: TldrawState) => {
       setRec((r) => (r && r.id === recordId ? { ...r, annotations, updatedAt: Date.now() } : r));
-      if (saveTimer.current) window.clearTimeout(saveTimer.current);
-      saveTimer.current = window.setTimeout(async () => {
+      const pending = saveTimers.current.get(recordId);
+      if (pending) window.clearTimeout(pending);
+      const timer = window.setTimeout(async () => {
+        saveTimers.current.delete(recordId);
         const stored = await host.getCapture(recordId);
         if (!stored) return;
         await host.saveCapture({ ...stored, annotations, updatedAt: Date.now() });
         setHistory(await host.listCaptures());
       }, 400);
+      saveTimers.current.set(recordId, timer);
     },
     [],
   );
