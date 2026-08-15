@@ -5,7 +5,7 @@ import TldrawCanvas from "./editor/TldrawCanvas";
 type EditorProps = {
   doc: CaptureDoc;
   imageUrl: string;
-  onChange: (annotations: TldrawState) => void;
+  onChange: (recordId: string, annotations: TldrawState) => void;
   exportRef: { current: Exporter | null };
 };
 
@@ -18,7 +18,7 @@ function Editor({ doc, imageUrl, onChange, exportRef }: EditorProps) {
         imgH={doc.image.height}
         title={doc.title}
         initialDoc={doc.annotations}
-        onChange={onChange}
+        onChange={(annotations) => onChange(doc.id, annotations)}
         exportRef={exportRef}
       />
     </div>

@@ -88,13 +88,13 @@ function App() {
   );
 
   const onAnnotationsChange = useCallback(
-    (annotations: TldrawState) => {
-      setRec((r) => (r ? { ...r, annotations, updatedAt: Date.now() } : r));
+    (recordId: string, annotations: TldrawState) => {
+      setRec((r) => (r && r.id === recordId ? { ...r, annotations, updatedAt: Date.now() } : r));
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
       saveTimer.current = window.setTimeout(async () => {
-        const r = recRef.current;
-        if (!r) return;
-        await host.saveCapture(r);
+        const stored = await host.getCapture(recordId);
+        if (!stored) return;
+        await host.saveCapture({ ...stored, annotations, updatedAt: Date.now() });
         setHistory(await host.listCaptures());
       }, 400);
     },

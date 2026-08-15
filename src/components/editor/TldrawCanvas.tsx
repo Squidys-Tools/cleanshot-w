@@ -110,11 +110,16 @@ export default function TldrawCanvas({ imageUrl, imgW, imgH, title, initialDoc, 
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const saveTimer = useRef<number | null>(null);
+  const pendingRef = useRef<TldrawState>(null);
 
   const scheduleSave = useCallback(() => {
+    pendingRef.current = serializeTldraw(editor!);
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
-      onChangeRef.current(serializeTldraw(editor!));
+      saveTimer.current = null;
+      const snap = pendingRef.current;
+      pendingRef.current = null;
+      if (snap) onChangeRef.current(snap);
     }, 350);
   }, [editor]);
 
@@ -141,7 +146,16 @@ export default function TldrawCanvas({ imageUrl, imgW, imgH, title, initialDoc, 
     editor.setCurrentTool("select");
     editor.zoomToBounds(new Box(0, 0, imgW, imgH), { inset: 48 });
     const unsub = editor.store.listen(() => scheduleSave());
-    return () => unsub();
+    return () => {
+      unsub();
+      if (saveTimer.current) {
+        window.clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        const snap = pendingRef.current;
+        pendingRef.current = null;
+        if (snap) onChangeRef.current(snap);
+      }
+    };
   }, [editor, imgW, imgH, scheduleSave]);
 
   useEffect(() => {

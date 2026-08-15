@@ -672,6 +672,10 @@ kbd {
   background: radial-gradient(circle at 50% 40%, #171b23, var(--bg) 70%);
 }
 
+.cs-redact-fill {
+  background: #111827;
+}
+
 .cs-ui {
   position: absolute;
   inset: 0;
