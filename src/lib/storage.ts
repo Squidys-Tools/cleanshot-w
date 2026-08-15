@@ -1,4 +1,4 @@
-import type { CaptureRecord } from "../types";
+import type { CaptureRecord, TldrawState } from "../types";
 
 const DB_NAME = "cleanshotw";
 const STORE = "captures";
@@ -48,6 +48,32 @@ export async function getCapture(id: string): Promise<CaptureRecord | undefined>
 
 export async function deleteCapture(id: string): Promise<void> {
   await tx("readwrite", (s) => s.delete(id));
+}
+
+/**
+ * Merge annotations into an existing capture atomically. Reads and writes in a
+ * single transaction so a save can never clobber a newer snapshot that landed
+ * in between, and a deleted capture can never be resurrected. Returns false
+ * when the capture no longer exists.
+ */
+export async function updateCaptureAnnotations(id: string, annotations: TldrawState): Promise<boolean> {
+  const db = await open();
+  return new Promise<boolean>((resolve, reject) => {
+    const t = db.transaction(STORE, "readwrite");
+    const store = t.objectStore(STORE);
+    const get = store.get(id) as IDBRequest<CaptureRecord | undefined>;
+    get.onsuccess = () => {
+      const rec = get.result;
+      if (!rec) {
+        resolve(false);
+        return;
+      }
+      const put = store.put({ ...rec, annotations, updatedAt: Date.now() });
+      put.onsuccess = () => resolve(true);
+      put.onerror = () => reject(put.error);
+    };
+    get.onerror = () => reject(get.error);
+  });
 }
 
 export async function clearCaptures(): Promise<void> {

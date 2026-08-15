@@ -32,7 +32,7 @@ function App() {
   const urlRef = useRef<string | null>(null);
   const recRef = useRef<CaptureRecord | null>(null);
   const exporterRef = useRef<Exporter | null>(null);
-  const saveTimers = useRef(new Map<string, number>());
+  const saveTimers = useRef(new Map<string, { version: number; timer: number }>());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -87,21 +87,31 @@ function App() {
     [openCapture, refreshHistory],
   );
 
+  const persistAnnotations = useCallback(
+    async (recordId: string, annotations: TldrawState, version: number) => {
+      const s = saveTimers.current.get(recordId);
+      if (!s || s.version !== version) return;
+      await host.updateCaptureAnnotations(recordId, annotations);
+      if (saveTimers.current.get(recordId)?.version === version) {
+        saveTimers.current.delete(recordId);
+        setHistory(await host.listCaptures());
+      }
+    },
+    [],
+  );
+
   const onAnnotationsChange = useCallback(
     (recordId: string, annotations: TldrawState) => {
       setRec((r) => (r && r.id === recordId ? { ...r, annotations, updatedAt: Date.now() } : r));
-      const pending = saveTimers.current.get(recordId);
-      if (pending) window.clearTimeout(pending);
-      const timer = window.setTimeout(async () => {
-        saveTimers.current.delete(recordId);
-        const stored = await host.getCapture(recordId);
-        if (!stored) return;
-        await host.saveCapture({ ...stored, annotations, updatedAt: Date.now() });
-        setHistory(await host.listCaptures());
+      const prev = saveTimers.current.get(recordId);
+      if (prev) window.clearTimeout(prev.timer);
+      const version = (prev?.version ?? 0) + 1;
+      const timer = window.setTimeout(() => {
+        void persistAnnotations(recordId, annotations, version);
       }, 400);
-      saveTimers.current.set(recordId, timer);
+      saveTimers.current.set(recordId, { version, timer });
     },
-    [],
+    [persistAnnotations],
   );
 
   const closeCapture = useCallback(() => {
@@ -114,6 +124,11 @@ function App() {
 
   const deleteCapture = useCallback(
     async (id: string) => {
+      const s = saveTimers.current.get(id);
+      if (s) {
+        window.clearTimeout(s.timer);
+        saveTimers.current.delete(id);
+      }
       await host.deleteCapture(id);
       await refreshHistory();
       if (recRef.current?.id === id) closeCapture();
