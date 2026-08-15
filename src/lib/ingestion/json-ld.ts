@@ -106,9 +106,14 @@ function mergeMetadata(
   };
 }
 
-function walk(value: unknown, visit: (node: Record<string, unknown>) => void): void {
+function walk(
+  value: unknown,
+  visit: (node: Record<string, unknown>) => void,
+  depth = 0,
+): void {
+  if (depth > 100) return;
   if (Array.isArray(value)) {
-    for (const entry of value) walk(entry, visit);
+    for (const entry of value) walk(entry, visit, depth + 1);
     return;
   }
   if (!value || typeof value !== "object") return;
@@ -117,7 +122,7 @@ function walk(value: unknown, visit: (node: Record<string, unknown>) => void): v
     visit(record);
   }
   for (const key of ["@graph", "@type", "mainEntityOfPage"]) {
-    walk(record[key], visit);
+    walk(record[key], visit, depth + 1);
   }
 }
 
