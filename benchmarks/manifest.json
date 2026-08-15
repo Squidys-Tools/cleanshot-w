@@ -9,8 +9,15 @@
       "expected": {
         "title": "The Case for Slower News",
         "author": "Mira Alderton",
-        "search_terms": ["slower", "news", "over-informed"],
-        "must_not_match": ["paywall", "recipe"]
+        "search_terms": [
+          "slower",
+          "news",
+          "over-informed"
+        ],
+        "must_not_match": [
+          "paywall",
+          "recipe"
+        ]
       },
       "notes": "Short blog post; canonical link present; date via time element."
     },
@@ -22,8 +29,18 @@
       "expected": {
         "title": "Notes on Attention, Winter 2026",
         "author": "Theo Wren",
-        "search_terms": ["attention", "bookmark", "serendipity", "archive", "Theo"],
-        "must_not_match": ["salmon", "transit", "electric"]
+        "search_terms": [
+          "attention",
+          "bookmark",
+          "serendipity",
+          "archive",
+          "Theo"
+        ],
+        "must_not_match": [
+          "salmon",
+          "transit",
+          "electric"
+        ]
       },
       "notes": "Long-form essay; multiple h2 sections; good extraction target."
     },
@@ -35,8 +52,18 @@
       "expected": {
         "title": "City Council Approves Riverfront Transit Line",
         "author": "Sam Okonkwo",
-        "search_terms": ["council", "riverfront", "light rail", "Eastgate", "Lena Voss"],
-        "must_not_match": ["salmon", "drawer", "FTS5"]
+        "search_terms": [
+          "council",
+          "riverfront",
+          "light rail",
+          "Eastgate",
+          "Lena Voss"
+        ],
+        "must_not_match": [
+          "salmon",
+          "drawer",
+          "FTS5"
+        ]
       },
       "notes": "News article with byline, updated timestamp, quotes."
     },
@@ -48,8 +75,19 @@
       "expected": {
         "title": "One-Pan Miso Butter Salmon",
         "author": "June Park",
-        "search_terms": ["miso", "salmon", "leeks", "butter", "jasmine rice", "skillet"],
-        "must_not_match": ["transit", "news", "drawer"]
+        "search_terms": [
+          "miso",
+          "salmon",
+          "leeks",
+          "butter",
+          "jasmine rice",
+          "skillet"
+        ],
+        "must_not_match": [
+          "transit",
+          "news",
+          "drawer"
+        ]
       },
       "notes": "Recipe: ingredients list and ordered method; test structured extraction."
     },
@@ -60,8 +98,17 @@
       "language": "en",
       "expected": {
         "title": "SQLite FTS5 for Local Search",
-        "search_terms": ["fts5", "sqlite", "virtual table", "bm25", "trigger"],
-        "must_not_match": ["salmon", "serendipity"]
+        "search_terms": [
+          "fts5",
+          "sqlite",
+          "virtual table",
+          "bm25",
+          "trigger"
+        ],
+        "must_not_match": [
+          "salmon",
+          "serendipity"
+        ]
       },
       "notes": "Technical documentation with code blocks; no byline."
     },
@@ -73,8 +120,16 @@
       "expected": {
         "title": "The Library That Grew a Door",
         "author": "Ana Beltrán",
-        "search_terms": ["library", "door", "catalog", "reading room"],
-        "must_not_match": ["transit", "recipe"]
+        "search_terms": [
+          "library",
+          "door",
+          "catalog",
+          "reading room"
+        ],
+        "must_not_match": [
+          "transit",
+          "recipe"
+        ]
       },
       "notes": "Footnote links with an end notes list; tests note/reference handling."
     },
@@ -85,8 +140,17 @@
       "language": "en",
       "expected": {
         "title": "Parsing Dates Without Losing Your Mind",
-        "search_terms": ["parsing", "date", "ISO", "schema.org", "MONTHS"],
-        "must_not_match": ["salmon", "riverfront"]
+        "search_terms": [
+          "parsing",
+          "date",
+          "ISO",
+          "schema.org",
+          "MONTHS"
+        ],
+        "must_not_match": [
+          "salmon",
+          "riverfront"
+        ]
       },
       "notes": "Multiple pre/code blocks with JS source; tests code preservation."
     },
@@ -97,8 +161,15 @@
       "language": "en",
       "expected": {
         "title": "Seven Rooms Worth Saving",
-        "search_terms": ["rooms", "gallery", "warm light"],
-        "must_not_match": ["drawer", "miso"],
+        "search_terms": [
+          "rooms",
+          "gallery",
+          "warm light"
+        ],
+        "must_not_match": [
+          "drawer",
+          "miso"
+        ],
         "image_urls_min": 7
       },
       "notes": "Seven figures referencing local corpus images; tests image URL collection."
@@ -110,8 +181,14 @@
       "language": "en",
       "expected": {
         "title": "The Rendering Kitchen",
-        "search_terms": ["rendering", "server side", "browser"],
-        "must_not_match": ["paywall"]
+        "search_terms": [
+          "rendering",
+          "server side",
+          "browser"
+        ],
+        "must_not_match": [
+          "paywall"
+        ]
       },
       "notes": "Client-side rendered: content built by script, noscript fallback present. Extractor must execute JS or use noscript to recover body."
     },
@@ -123,8 +200,18 @@
       "expected": {
         "title": "How to Fix a Drawer That Won't Close",
         "author": "Devon Ruiz",
-        "search_terms": ["drawer", "runners", "slides", "carpenter's square"],
-        "must_not_match": ["Advertisement", "Sponsored", "transit", "salmon"]
+        "search_terms": [
+          "drawer",
+          "runners",
+          "slides",
+          "carpenter's square"
+        ],
+        "must_not_match": [
+          "Advertisement",
+          "Sponsored",
+          "transit",
+          "salmon"
+        ]
       },
       "notes": "Sticky nav plus leaderboard, in-content, and footer ad blocks; extractor should drop them."
     },
@@ -136,7 +223,11 @@
       "expected": {
         "title": "The Slow Reading Manifesto",
         "author": "Ingrid Solberg",
-        "search_terms": ["reading", "manifesto", "subscribe"],
+        "search_terms": [
+          "reading",
+          "manifesto",
+          "subscribe"
+        ],
         "must_not_match": []
       },
       "notes": "Paywalled: overlay + hidden rest of essay. Tests failure handling; extractor should retain lead paragraph and not fabricate content."
@@ -148,8 +239,15 @@
       "language": "en",
       "expected": {
         "ocr_text_file": "expected/ocr/screenshot-large-text-01.txt",
-        "search_terms": ["quiet web", "slower corner", "join the list"],
-        "must_not_match": ["salmon", "transit"]
+        "search_terms": [
+          "quiet web",
+          "slower corner",
+          "join the list"
+        ],
+        "must_not_match": [
+          "salmon",
+          "transit"
+        ]
       },
       "notes": "Landing-page style screenshot with a large headline and button text."
     },
@@ -160,8 +258,16 @@
       "language": "en",
       "expected": {
         "ocr_text_file": "expected/ocr/screenshot-small-text-01.txt",
-        "search_terms": ["annual-report-2025.pdf", "sketchbook-scan.jpg", "timeline-draft.xlsx", "4.2 MB"],
-        "must_not_match": ["salmon", "council"]
+        "search_terms": [
+          "annual-report-2025.pdf",
+          "sketchbook-scan.jpg",
+          "timeline-draft.xlsx",
+          "4.2 MB"
+        ],
+        "must_not_match": [
+          "salmon",
+          "council"
+        ]
       },
       "notes": "Dense file table with many small-text rows; small-text OCR tolerance test."
     },
@@ -171,8 +277,16 @@
       "type": "image",
       "language": "und",
       "expected": {
-        "search_terms": ["landscape", "mountains", "sun", "dusk"],
-        "must_not_match": ["salmon", "transit"]
+        "search_terms": [
+          "landscape",
+          "mountains",
+          "sun",
+          "dusk"
+        ],
+        "must_not_match": [
+          "salmon",
+          "transit"
+        ]
       },
       "notes": "Synthetic photographic-style landscape used as gallery and concept image."
     },
@@ -182,8 +296,16 @@
       "type": "image",
       "language": "und",
       "expected": {
-        "search_terms": ["pastel", "palette", "moodboard", "swatches"],
-        "must_not_match": ["drawer", "council"]
+        "search_terms": [
+          "pastel",
+          "palette",
+          "moodboard",
+          "swatches"
+        ],
+        "must_not_match": [
+          "drawer",
+          "council"
+        ]
       },
       "notes": "Pastel palette study; concept/color test image."
     },
@@ -194,8 +316,17 @@
       "language": "und",
       "similarity_group": "moodboard-a",
       "expected": {
-        "search_terms": ["interior", "window", "plant", "chair", "warm"],
-        "must_not_match": ["desert", "ocean"]
+        "search_terms": [
+          "interior",
+          "window",
+          "plant",
+          "chair",
+          "warm"
+        ],
+        "must_not_match": [
+          "desert",
+          "ocean"
+        ]
       },
       "notes": "Warm interior scene; pairs with image-similar-02."
     },
@@ -206,8 +337,16 @@
       "language": "und",
       "similarity_group": "moodboard-a",
       "expected": {
-        "search_terms": ["interior", "window", "plant", "chair"],
-        "must_not_match": ["desert", "ocean"]
+        "search_terms": [
+          "interior",
+          "window",
+          "plant",
+          "chair"
+        ],
+        "must_not_match": [
+          "desert",
+          "ocean"
+        ]
       },
       "notes": "Same interior layout in cooler tones; similarity partner for image-similar-01."
     },
@@ -218,8 +357,16 @@
       "language": "und",
       "similarity_group": "moodboard-b",
       "expected": {
-        "search_terms": ["desert", "dunes", "sunset", "orange"],
-        "must_not_match": ["interior", "ocean"]
+        "search_terms": [
+          "desert",
+          "dunes",
+          "sunset",
+          "orange"
+        ],
+        "must_not_match": [
+          "interior",
+          "ocean"
+        ]
       },
       "notes": "Warm dune scene at dusk; pairs with image-similar-04."
     },
@@ -230,8 +377,16 @@
       "language": "und",
       "similarity_group": "moodboard-b",
       "expected": {
-        "search_terms": ["desert", "dunes", "dusk", "violet"],
-        "must_not_match": ["interior", "ocean"]
+        "search_terms": [
+          "desert",
+          "dunes",
+          "dusk",
+          "violet"
+        ],
+        "must_not_match": [
+          "interior",
+          "ocean"
+        ]
       },
       "notes": "Same dune composition in violet tones; similarity partner for image-similar-03."
     },
@@ -242,8 +397,17 @@
       "language": "und",
       "similarity_group": "distractors",
       "expected": {
-        "search_terms": ["ocean", "night", "waves", "moon"],
-        "must_not_match": ["interior", "desert", "palette"]
+        "search_terms": [
+          "ocean",
+          "night",
+          "waves",
+          "moon"
+        ],
+        "must_not_match": [
+          "interior",
+          "desert",
+          "palette"
+        ]
       },
       "notes": "Dark ocean at night; distractor for both similarity groups."
     },
@@ -253,7 +417,11 @@
       "type": "image",
       "language": "und",
       "expected": {
-        "search_terms": ["fruit", "apple", "table"],
+        "search_terms": [
+          "fruit",
+          "apple",
+          "table"
+        ],
         "must_not_match": []
       },
       "notes": "120x90 low-resolution image; tests low-res concept and similarity handling."
@@ -265,8 +433,15 @@
       "language": "en",
       "expected": {
         "ocr_text_file": "expected/ocr/image-meme-01.txt",
-        "search_terms": ["save one link", "47 tabs", "tabs"],
-        "must_not_match": ["salmon", "transit"]
+        "search_terms": [
+          "save one link",
+          "47 tabs",
+          "tabs"
+        ],
+        "must_not_match": [
+          "salmon",
+          "transit"
+        ]
       },
       "notes": "Meme with Impact top/bottom text; OCR plus concept test. On-message content."
     },
@@ -277,8 +452,15 @@
       "language": "en",
       "expected": {
         "ocr_text_file": "expected/ocr/image-handwriting-01.txt",
-        "search_terms": ["friday", "reading list", "water the plants"],
-        "must_not_match": ["salmon", "council"]
+        "search_terms": [
+          "friday",
+          "reading list",
+          "water the plants"
+        ],
+        "must_not_match": [
+          "salmon",
+          "council"
+        ]
       },
       "notes": "Lined-paper note rendered in a handwriting-style face; rough OCR expected."
     },
@@ -289,8 +471,15 @@
       "language": "en",
       "expected": {
         "ocr_text_file": "expected/ocr/image-rotated-01.txt",
-        "search_terms": ["field report", "expedition", "fog"],
-        "must_not_match": ["salmon", "drawer"]
+        "search_terms": [
+          "field report",
+          "expedition",
+          "fog"
+        ],
+        "must_not_match": [
+          "salmon",
+          "drawer"
+        ]
       },
       "notes": "Headline and paragraph rotated 14 degrees; tests rotation tolerance."
     },
@@ -301,8 +490,15 @@
       "language": "en",
       "expected": {
         "ocr_text_file": "expected/ocr/image-columns-01.txt",
-        "search_terms": ["field notes", "left", "right", "libraries"],
-        "must_not_match": ["salmon"]
+        "search_terms": [
+          "field notes",
+          "left",
+          "right",
+          "libraries"
+        ],
+        "must_not_match": [
+          "salmon"
+        ]
       },
       "notes": "Two-column layout page; tests reading order and column handling."
     },
@@ -312,8 +508,16 @@
       "type": "pdf",
       "language": "en",
       "expected": {
-        "search_terms": ["local first", "capture rule", "retrieval", "field guide"],
-        "must_not_match": ["salmon", "transit"]
+        "search_terms": [
+          "local first",
+          "capture rule",
+          "retrieval",
+          "field guide"
+        ],
+        "must_not_match": [
+          "salmon",
+          "transit"
+        ]
       },
       "notes": "Native-text PDF with headings; tests text extraction layer."
     },
@@ -324,8 +528,15 @@
       "language": "en",
       "expected": {
         "ocr_text_file": "expected/ocr/pdf-scanned-01.txt",
-        "search_terms": ["memorandum", "inventory", "warehouse", "sprouted bulbs"],
-        "must_not_match": ["salmon"]
+        "search_terms": [
+          "memorandum",
+          "inventory",
+          "warehouse",
+          "sprouted bulbs"
+        ],
+        "must_not_match": [
+          "salmon"
+        ]
       },
       "notes": "Scanned PDF: embedded JPEG of a typewritten page; OCR required."
     },
@@ -335,8 +546,15 @@
       "type": "pdf",
       "language": "en",
       "expected": {
-        "search_terms": ["field notes", "newspapers", "column", "margin"],
-        "must_not_match": ["salmon"]
+        "search_terms": [
+          "field notes",
+          "newspapers",
+          "column",
+          "margin"
+        ],
+        "must_not_match": [
+          "salmon"
+        ]
       },
       "notes": "Two-column magazine-style text; tests column reading order."
     },
@@ -346,8 +564,17 @@
       "type": "pdf",
       "language": "en",
       "expected": {
-        "search_terms": ["quarterly", "operating", "revenue", "Q4", "unaudited"],
-        "must_not_match": ["salmon", "council"]
+        "search_terms": [
+          "quarterly",
+          "operating",
+          "revenue",
+          "Q4",
+          "unaudited"
+        ],
+        "must_not_match": [
+          "salmon",
+          "council"
+        ]
       },
       "notes": "Table with grid lines and four rows; tests table extraction."
     },
@@ -357,8 +584,16 @@
       "type": "pdf",
       "language": "en",
       "expected": {
-        "search_terms": ["site survey", "west meadow", "oaks", "wildflower"],
-        "must_not_match": ["salmon", "transit"],
+        "search_terms": [
+          "site survey",
+          "west meadow",
+          "oaks",
+          "wildflower"
+        ],
+        "must_not_match": [
+          "salmon",
+          "transit"
+        ],
         "embedded_images_min": 1
       },
       "notes": "Embedded figure with caption; tests image extraction and caption text."
@@ -369,7 +604,11 @@
       "type": "pdf",
       "language": "en",
       "expected": {
-        "search_terms": ["untitled fragment", "no title", "metadata"],
+        "search_terms": [
+          "untitled fragment",
+          "no title",
+          "metadata"
+        ],
         "must_not_match": []
       },
       "notes": "Minimal PDF with no title/author/info dict; tests graceful metadata handling."
@@ -381,9 +620,20 @@
       "language": "en",
       "expected": {
         "title": "Why Libraries Smell Like Paper",
-        "search_terms": ["libraries", "smell", "documentary", "paper", "vanillin"],
+        "search_terms": [
+          "libraries",
+          "smell",
+          "documentary",
+          "paper",
+          "vanillin"
+        ],
         "must_not_match": [],
-        "safe_embeds": [{ "provider": "youtube", "min": 1 }]
+        "safe_embeds": [
+          {
+            "provider": "youtube",
+            "min": 1
+          }
+        ]
       },
       "notes": "YouTube embed via youtube-nocookie; should pass the safe-embeds allowlist."
     },
@@ -394,9 +644,19 @@
       "language": "en",
       "expected": {
         "title": "Field Study: A Morning in the Print Shop",
-        "search_terms": ["print shop", "letterpress", "field study", "press"],
+        "search_terms": [
+          "print shop",
+          "letterpress",
+          "field study",
+          "press"
+        ],
         "must_not_match": [],
-        "safe_embeds": [{ "provider": "vimeo", "min": 1 }]
+        "safe_embeds": [
+          {
+            "provider": "vimeo",
+            "min": 1
+          }
+        ]
       },
       "notes": "Vimeo embed; should pass the safe-embeds allowlist."
     },
@@ -407,9 +667,19 @@
       "language": "en",
       "expected": {
         "title": "How to Fold a Paper Airplane That Flies Home",
-        "search_terms": ["paper airplane", "fold", "centerline", "reflexed"],
+        "search_terms": [
+          "paper airplane",
+          "fold",
+          "centerline",
+          "reflexed"
+        ],
         "must_not_match": [],
-        "safe_embeds": [{ "provider": "youtube", "min": 1 }]
+        "safe_embeds": [
+          {
+            "provider": "youtube",
+            "min": 1
+          }
+        ]
       },
       "notes": "Craft article with an embedded YouTube video in the middle."
     },
@@ -420,7 +690,12 @@
       "language": "en",
       "expected": {
         "title": "Streams of the Week",
-        "search_terms": ["streams", "bread baker", "storm chaser", "Lisbon"],
+        "search_terms": [
+          "streams",
+          "bread baker",
+          "storm chaser",
+          "Lisbon"
+        ],
         "must_not_match": [],
         "safe_embeds_max": 0
       },
@@ -433,7 +708,11 @@
       "language": "en",
       "expected": {
         "title": "An Essay With No Media",
-        "search_terms": ["no media", "essay", "reader"],
+        "search_terms": [
+          "no media",
+          "essay",
+          "reader"
+        ],
         "must_not_match": [],
         "safe_embeds_max": 0
       },
@@ -445,8 +724,14 @@
       "type": "note",
       "language": "en",
       "expected": {
-        "search_terms": ["oat milk", "thank-you card"],
-        "must_not_match": ["transit", "salmon"]
+        "search_terms": [
+          "oat milk",
+          "thank-you card"
+        ],
+        "must_not_match": [
+          "transit",
+          "salmon"
+        ]
       },
       "notes": "Two-line quick note."
     },
@@ -456,8 +741,16 @@
       "type": "note",
       "language": "en",
       "expected": {
-        "search_terms": ["journal", "reading room", "garden", "postcard"],
-        "must_not_match": ["salmon", "transit"]
+        "search_terms": [
+          "journal",
+          "reading room",
+          "garden",
+          "postcard"
+        ],
+        "must_not_match": [
+          "salmon",
+          "transit"
+        ]
       },
       "notes": "Multi-paragraph journal entry."
     },
@@ -467,8 +760,15 @@
       "type": "note",
       "language": "en",
       "expected": {
-        "search_terms": ["FTS5", "content-addressed", "background processing", "semantic"],
-        "must_not_match": ["salmon"]
+        "search_terms": [
+          "FTS5",
+          "content-addressed",
+          "background processing",
+          "semantic"
+        ],
+        "must_not_match": [
+          "salmon"
+        ]
       },
       "notes": "Markdown note with headings, lists, links, and a quote."
     },
@@ -478,8 +778,16 @@
       "type": "note",
       "language": "en",
       "expected": {
-        "search_terms": ["reading room", "walnut", "chairs", "drawer"],
-        "must_not_match": ["salmon", "transit"]
+        "search_terms": [
+          "reading room",
+          "walnut",
+          "chairs",
+          "drawer"
+        ],
+        "must_not_match": [
+          "salmon",
+          "transit"
+        ]
       },
       "notes": "Checklist-style note with checked and unchecked items."
     },
@@ -489,8 +797,15 @@
       "type": "quote",
       "language": "en",
       "expected": {
-        "search_terms": ["Annie Dillard", "mind", "weather", "Pilgrim"],
-        "must_not_match": ["salmon"]
+        "search_terms": [
+          "Annie Dillard",
+          "mind",
+          "weather",
+          "Pilgrim"
+        ],
+        "must_not_match": [
+          "salmon"
+        ]
       },
       "notes": "Quote with attributed author and a source URL."
     },
@@ -500,10 +815,118 @@
       "type": "quote",
       "language": "en",
       "expected": {
-        "search_terms": ["attention", "generosity", "rarest"],
-        "must_not_match": ["salmon"]
+        "search_terms": [
+          "attention",
+          "generosity",
+          "rarest"
+        ],
+        "must_not_match": [
+          "salmon"
+        ]
       },
       "notes": "Quote with no verifiable source; attribution uncertain."
+    },
+    {
+      "id": "article-live-macrumors-the-macrumors-show-where-does-the-apple-watch-go-next",
+      "path": "corpus/live/macrumors/2026-08-14-the-macrumors-show-where-does-the-apple-watch-go-next.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "The MacRumors Show: Where Does the Apple Watch Go Next?",
+        "author": "Hartley Charlton",
+        "search_terms": [
+          "apple",
+          "series",
+          "macrumors",
+          "watch"
+        ]
+      },
+      "notes": "Live MacRumors article (fetched 2026-08-15); https://www.macrumors.com/2026/08/14/the-macrumors-show-where-does-the-apple-watch-go-next/"
+    },
+    {
+      "id": "article-live-macrumors-new-things-your-iphone-can-do-ios-27",
+      "path": "corpus/live/macrumors/2026-08-14-new-things-your-iphone-can-do-ios-27.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "30 New Things Your iPhone Can Do in iOS 27",
+        "author": "Tim Hardwick",
+        "search_terms": [
+          "apple",
+          "feature",
+          "photos",
+          "siri"
+        ]
+      },
+      "notes": "Live MacRumors article (fetched 2026-08-15); https://www.macrumors.com/2026/08/14/new-things-your-iphone-can-do-ios-27/"
+    },
+    {
+      "id": "article-live-macrumors-iphone-18-pro-next-month-12-rumored-features",
+      "path": "corpus/live/macrumors/2026-08-14-iphone-18-pro-next-month-12-rumored-features.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "iPhone 18 Pro Launching Next Month With These 12 New Features",
+        "author": "Joe Rossignol",
+        "search_terms": [
+          "iphone",
+          "models",
+          "chip",
+          "expected"
+        ]
+      },
+      "notes": "Live MacRumors article (fetched 2026-08-15); https://www.macrumors.com/2026/08/14/iphone-18-pro-next-month-12-rumored-features/"
+    },
+    {
+      "id": "article-live-macrumors-iphone-17-vs-iphone-18-buying",
+      "path": "corpus/live/macrumors/2026-08-14-iphone-17-vs-iphone-18-buying.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "Should You Buy an iPhone 17 Now or Wait for iPhone 18?",
+        "author": "Juli Clover",
+        "search_terms": [
+          "iphone",
+          "apple",
+          "features",
+          "12gb"
+        ]
+      },
+      "notes": "Live MacRumors article (fetched 2026-08-15); https://www.macrumors.com/2026/08/14/iphone-17-vs-iphone-18-buying/"
+    },
+    {
+      "id": "article-live-macrumors-best-apple-deals-of-the-week-8-14-26",
+      "path": "corpus/live/macrumors/2026-08-14-best-apple-deals-of-the-week-8-14-26.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "Best Apple Deals of the Week: Steep Discounts Hit AirPods, MacBook Pro, and Anker Accessories",
+        "author": "Mitchel Broussard",
+        "search_terms": [
+          "airpods",
+          "apple",
+          "deals",
+          "macbook"
+        ]
+      },
+      "notes": "Live MacRumors article (fetched 2026-08-15); https://www.macrumors.com/2026/08/14/best-apple-deals-of-the-week-8-14-26/"
+    },
+    {
+      "id": "article-live-macrumors-apple-trained-own-ai-model-for-china",
+      "path": "corpus/live/macrumors/2026-08-14-apple-trained-own-ai-model-for-china.html",
+      "type": "article",
+      "language": "en",
+      "expected": {
+        "title": "Apple Trained Own AI Model for China Market With Help From Alibaba",
+        "author": "Tim Hardwick",
+        "search_terms": [
+          "apple",
+          "china",
+          "model",
+          "trained"
+        ]
+      },
+      "notes": "Live MacRumors article (fetched 2026-08-15); https://www.macrumors.com/2026/08/14/apple-trained-own-ai-model-for-china/"
     }
   ]
 }
