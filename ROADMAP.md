@@ -135,22 +135,22 @@ type Annotation =
 - Hand-rolled IndexedDB storage layer (no ORM/state library).
 - Replaced the marketing-style studio screen with a working editor shell.
 
-### M1 — Web editor prototype (browser-only) `[IN PROGRESS — core built, needs verification]`
+### M1 — Web editor prototype (browser-only) `[DONE]`
 
 **In scope**
 - Intake: paste, drag-and-drop, file picker (no native capture yet).
 - Tools: select/move (V), rect (R), ellipse (O), arrow (A), line (L),
   text (T), counter (C), highlight (H), blur (B), pixelate (X), redact (K).
 - Properties: stroke color, width, fill; arrowhead size; font size/color;
-  effect strength. Persisted defaults in localStorage. *(not yet: local
-  persistence of tool defaults)*
+  effect strength. Tool defaults persist in localStorage and malformed stored
+  values fall back to safe defaults.
 - Interaction: click-drag to draw, Shift constrains aspect, Esc cancels,
   drag to move, resize handles, double-click text to edit, Delete removes.
 - Zoom/pan (`+`/`-`/`0`, wheel with Ctrl, middle/Alt-drag pan).
 - Undo/redo (Ctrl+Z / Ctrl+Shift+Z).
 - OCR: "Copy text (OCR)" in the Quick Access bar via tesseract.js with
-  bundled local assets. *(not yet: clickable word layer, fast-vs-best
-  benchmark harness)*
+  bundled local assets. Results include word bounding boxes for the next OCR
+  layer without requiring a native install.
 - Export: PNG save, copy image to clipboard (flattened at natural res),
   copy text.
 - Library: IndexedDB history with thumbnails, open → re-edit, autosave.
@@ -167,6 +167,14 @@ type Annotation =
 - OCR a code screenshot and copy the text out correctly.
 - Close and reopen a capture → re-editable with history intact.
 - Undo/redo works through at least 20 operations with no drift.
+
+**Verification (2026-08-16)**
+
+- `bun test`: 12 unit tests pass.
+- `bun run build`: TypeScript and Vite production build pass.
+- `node scripts/smoke-tldraw.mjs`: 32 browser checks pass, including intake,
+  annotations, styles, clipboard copy, PNG export, OCR, undo/redo, autosave,
+  reload persistence, and history re-editing.
 
 ### M2 — Tauri native shell (Rust) `[DECIDED]`
 

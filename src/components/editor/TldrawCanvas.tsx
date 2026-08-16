@@ -19,6 +19,7 @@ import { Tldraw, useEditor } from "tldraw";
 import { BlurShapeUtil, CounterShapeUtil, PixelateShapeUtil, RedactShapeUtil } from "./customShapes";
 import { BlurTool, CounterTool, PixelateTool, RedactTool } from "./customTools";
 import { ensureBackgroundImage, serializeTldraw, type Exporter } from "../../lib/tldrawDoc";
+import { applyEditorPreferences, persistEditorPreferences, readEditorPreferences } from "../../lib/preferences";
 import type { TldrawState } from "../../types";
 
 const CUSTOM_SHAPE_UTILS = [CounterShapeUtil, BlurShapeUtil, PixelateShapeUtil, RedactShapeUtil];
@@ -125,13 +126,6 @@ export default function TldrawCanvas({ imageUrl, imgW, imgH, title, initialDoc, 
 
   const onMount = useCallback(
     (ed: Editor) => {
-      ed.user.updateUserPreferences({ colorScheme: "dark", isSnapMode: false });
-      ed.updateInstanceState({ isGridMode: false });
-      ed.setStyleForNextShapes(DefaultColorStyle, "red");
-      ed.setStyleForNextShapes(DefaultSizeStyle, "m");
-      ed.setStyleForNextShapes(DefaultDashStyle, "solid");
-      ed.setStyleForNextShapes(DefaultFillStyle, "none");
-      ed.setStyleForNextShapes(DefaultFontStyle, "sans");
       setEditor(ed);
       void ensureBackgroundImage(ed, imageUrl, imgW, imgH).then(() => {
         ed.zoomToBounds(new Box(0, 0, imgW, imgH), { inset: 48, animation: { duration: 200 } });
@@ -143,6 +137,7 @@ export default function TldrawCanvas({ imageUrl, imgW, imgH, title, initialDoc, 
   useEffect(() => {
     if (!editor) return;
     restoreOnce(editor, initialRef.current);
+    applyEditorPreferences(editor, readEditorPreferences());
     editor.setCurrentTool("select");
     editor.zoomToBounds(new Box(0, 0, imgW, imgH), { inset: 48 });
     const unsub = editor.store.listen(() => scheduleSave());
@@ -308,6 +303,7 @@ function Toolbar() {
         editor.setStyleForNextShapes(GeoShapeGeoStyle, id as "rectangle" | "ellipse");
         editor.setCurrentTool("geo");
       });
+      persistEditorPreferences(editor);
       return;
     }
     editor.setCurrentTool(id);
@@ -353,6 +349,7 @@ function Toolbar() {
                       editor.setStyleForNextShapes(GeoShapeGeoStyle, g.id as never);
                       editor.setCurrentTool("geo");
                     });
+                    persistEditorPreferences(editor);
                     geoPopover.close();
                   }}
                 >
@@ -374,7 +371,10 @@ function Toolbar() {
               className={`swatch ${color === c ? "active" : ""}`}
               style={{ background: getColorValue(palette, c, "solid") }}
               title={c}
-              onClick={() => editor.setStyleForNextShapes(DefaultColorStyle, c)}
+              onClick={() => {
+                editor.setStyleForNextShapes(DefaultColorStyle, c);
+                persistEditorPreferences(editor);
+              }}
             />
           ))}
         </div>
@@ -389,7 +389,10 @@ function Toolbar() {
               key={s.id}
               className={`size-btn ${size === s.id ? "active" : ""}`}
               title={`Size ${s.label}`}
-              onClick={() => editor.setStyleForNextShapes(DefaultSizeStyle, s.id)}
+              onClick={() => {
+                editor.setStyleForNextShapes(DefaultSizeStyle, s.id);
+                persistEditorPreferences(editor);
+              }}
             >
               {s.label}
             </button>
@@ -406,7 +409,10 @@ function Toolbar() {
               key={f.id}
               className={`seg-btn ${fill === f.id ? "active" : ""}`}
               title={f.label}
-              onClick={() => editor.setStyleForNextShapes(DefaultFillStyle, f.id)}
+              onClick={() => {
+                editor.setStyleForNextShapes(DefaultFillStyle, f.id);
+                persistEditorPreferences(editor);
+              }}
             >
               <ToolIcon name={f.icon} />
             </button>
@@ -423,7 +429,10 @@ function Toolbar() {
               key={d.id}
               className={`seg-btn ${dash === d.id ? "active" : ""}`}
               title={d.label}
-              onClick={() => editor.setStyleForNextShapes(DefaultDashStyle, d.id)}
+              onClick={() => {
+                editor.setStyleForNextShapes(DefaultDashStyle, d.id);
+                persistEditorPreferences(editor);
+              }}
             >
               <span className={`dash-mark dash-${d.id}`} />
             </button>
@@ -438,7 +447,7 @@ function Toolbar() {
           <button className="tool-btn" title="More styles" onClick={stylePopover.toggle}>
             <ToolIcon name="more" />
           </button>
-          {stylePopover.open && <StylePopover editor={editor} onClose={stylePopover.close} />}
+          {stylePopover.open && <StylePopover editor={editor} onClose={stylePopover.close} onChange={() => persistEditorPreferences(editor)} />}
         </div>
       </div>
 
@@ -456,7 +465,7 @@ function Toolbar() {
   );
 }
 
-function StylePopover({ editor, onClose }: { editor: Editor; onClose: () => void }) {
+function StylePopover({ editor, onClose, onChange }: { editor: Editor; onClose: () => void; onChange: () => void }) {
   const { font, opacity, ahStart, ahEnd, ahKind, snap, grid, dark } = useValue(
     "cs-styles",
     () => ({
@@ -482,7 +491,10 @@ function StylePopover({ editor, onClose }: { editor: Editor; onClose: () => void
               key={f.id}
               className={`seg-btn ${font === f.id ? "active" : ""}`}
               title={f.label}
-              onClick={() => editor.setStyleForNextShapes(DefaultFontStyle, f.id)}
+              onClick={() => {
+                editor.setStyleForNextShapes(DefaultFontStyle, f.id);
+                onChange();
+              }}
             >
               <span className={`font-sample font-${f.id}`}>Aa</span>
             </button>
@@ -501,6 +513,7 @@ function StylePopover({ editor, onClose }: { editor: Editor; onClose: () => void
               onClick={() => {
                 editor.setOpacityForSelectedShapes(o);
                 editor.setOpacityForNextShapes(o);
+                onChange();
               }}
             >
               {Math.round(o * 100)}
@@ -512,21 +525,21 @@ function StylePopover({ editor, onClose }: { editor: Editor; onClose: () => void
       <div className="popover-section">
         <div className="popover-label">Arrowheads</div>
         <div className="popover-row">
-          <select value={ahStart} onChange={(e) => editor.setStyleForNextShapes(ArrowShapeArrowheadStartStyle, e.target.value as never)}>
+          <select value={ahStart} onChange={(e) => { editor.setStyleForNextShapes(ArrowShapeArrowheadStartStyle, e.target.value as never); onChange(); }}>
             {ARROWHEADS.map((a) => (
               <option key={a.id} value={a.id}>
                 Start · {a.label}
               </option>
             ))}
           </select>
-          <select value={ahEnd} onChange={(e) => editor.setStyleForNextShapes(ArrowShapeArrowheadEndStyle, e.target.value as never)}>
+          <select value={ahEnd} onChange={(e) => { editor.setStyleForNextShapes(ArrowShapeArrowheadEndStyle, e.target.value as never); onChange(); }}>
             {ARROWHEADS.map((a) => (
               <option key={a.id} value={a.id}>
                 End · {a.label}
               </option>
             ))}
           </select>
-          <select value={ahKind} onChange={(e) => editor.setStyleForNextShapes(ArrowShapeKindStyle, e.target.value as never)}>
+          <select value={ahKind} onChange={(e) => { editor.setStyleForNextShapes(ArrowShapeKindStyle, e.target.value as never); onChange(); }}>
             {ARROW_KINDS.map((k) => (
               <option key={k.id} value={k.id}>
                 {k.label}
@@ -539,18 +552,18 @@ function StylePopover({ editor, onClose }: { editor: Editor; onClose: () => void
       <div className="popover-section">
         <div className="popover-row">
           <label className="cs-toggle">
-            <input type="checkbox" checked={snap} onChange={(e) => editor.user.updateUserPreferences({ isSnapMode: e.target.checked })} />
+            <input type="checkbox" checked={snap} onChange={(e) => { editor.user.updateUserPreferences({ isSnapMode: e.target.checked }); onChange(); }} />
             Snap
           </label>
           <label className="cs-toggle">
-            <input type="checkbox" checked={grid} onChange={(e) => editor.updateInstanceState({ isGridMode: e.target.checked })} />
+            <input type="checkbox" checked={grid} onChange={(e) => { editor.updateInstanceState({ isGridMode: e.target.checked }); onChange(); }} />
             Grid
           </label>
           <label className="cs-toggle">
             <input
               type="checkbox"
               checked={dark}
-              onChange={(e) => editor.user.updateUserPreferences({ colorScheme: e.target.checked ? "dark" : "light" })}
+              onChange={(e) => { editor.user.updateUserPreferences({ colorScheme: e.target.checked ? "dark" : "light" }); onChange(); }}
             />
             Dark
           </label>

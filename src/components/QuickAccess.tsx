@@ -9,6 +9,7 @@ type Props = {
   ocrStatus: OcrStatus;
   ocrProgress?: number;
   copied: boolean;
+  notice?: string | null;
 };
 
 export default function QuickAccess({
@@ -20,6 +21,7 @@ export default function QuickAccess({
   ocrStatus,
   ocrProgress,
   copied,
+  notice,
 }: Props) {
   return (
     <div className="quick-access">
@@ -43,6 +45,7 @@ export default function QuickAccess({
       <button className="qa-btn danger" onClick={onClose} title="Close (autosave is on)">
         Close
       </button>
+      {notice && <span className="qa-notice" role="status">{notice}</span>}
     </div>
   );
 }

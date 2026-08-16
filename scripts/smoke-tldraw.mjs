@@ -1,7 +1,7 @@
 import { chromium } from "playwright";
 import { deflateSync } from "node:zlib";
 
-const BASE = "http://localhost:1420";
+const BASE = process.env.SMOKE_BASE ?? "http://localhost:1420";
 const W = 320;
 const H = 180;
 
@@ -101,7 +101,11 @@ async function expectTool(page, startsWith, name) {
 /* --------------------------------- run -------------------------------- */
 
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const context = await browser.newContext({
+  viewport: { width: 1280, height: 800 },
+  permissions: ["clipboard-read", "clipboard-write"],
+});
+const page = await context.newPage();
 page.on("pageerror", (e) => check("no page errors", false, `pageerror: ${e.message}`));
 page.on("console", (msg) => {
   if (msg.type() === "error") check("no console errors", false, `console: ${msg.text()}`);
@@ -252,6 +256,56 @@ try {
   await page.click(".style-popover .popover-close");
   await page.waitForSelector(".style-popover", { state: "detached", timeout: 5000 });
 
+  await page.click('button[title="Copy the flattened image"]');
+  await page.waitForFunction(
+    () => document.querySelector('button[title="Copy the flattened image"]')?.textContent?.includes("Copied"),
+    { timeout: 10000 },
+  );
+  check("flattened image copies to clipboard", true);
+
+  const downloadPromise = page.waitForEvent("download", { timeout: 10000 });
+  await page.click('button[title="Download as PNG"]');
+  const download = await downloadPromise;
+  check("PNG export downloads with a safe filename", download.suggestedFilename().endsWith(".png"), download.suggestedFilename());
+
+  await page.click('button[title="Close (autosave is on)"]');
+  await page.evaluate(async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 640;
+    canvas.height = 180;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas is unavailable");
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "black";
+    ctx.font = "bold 64px Arial";
+    ctx.fillText("OCR TEST", 24, 110);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("Could not create OCR fixture");
+    const input = document.querySelector('input[type="file"]');
+    if (!input) throw new Error("File input is unavailable");
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([blob], "ocr-test.png", { type: "image/png" }));
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await page.waitForSelector('button[title="Recognize text with tesseract.js"]', { timeout: 15000 });
+  await page.click('button[title="Recognize text with tesseract.js"]');
+  await page.waitForFunction(
+    () => document.querySelector(".ocr-panel")?.textContent?.includes("OCR TEST"),
+    { timeout: 120000 },
+  );
+  check("OCR recognizes text from a screenshot", true);
+  await page.click('button[title="Close (autosave is on)"]');
+  await page.evaluate(() => {
+    const item = [...document.querySelectorAll(".history-item")].find(
+      (el) => el.querySelector(".history-meta strong")?.textContent === "test",
+    );
+    if (!(item instanceof HTMLElement)) throw new Error("Original capture is missing from history");
+    item.click();
+  });
+  await page.waitForSelector(".cs-tldraw .tl-container", { timeout: 15000 });
+
   /* persistence across reload */
   await page.waitForTimeout(1400);
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -263,6 +317,36 @@ try {
     { timeout: 15000 },
   );
   check("doc persisted across reload (4 markups)", true);
+
+  await page.waitForFunction(
+    () => {
+      const green = document.querySelector('.cs-toolbar .swatch[title="green"]')?.classList.contains("active");
+      const dashed = document.querySelector('.cs-toolbar .seg-btn[title="Dashed"]')?.classList.contains("active");
+      const large = document.querySelector('.cs-toolbar .size-btn[title^="Size L"]')?.classList.contains("active");
+      return green && dashed && large;
+    },
+    { timeout: 5000 },
+  );
+  check("tool defaults persisted across reload", true);
+
+  await page.click('.cs-toolbar button[title="More styles"]');
+  await page.waitForSelector(".style-popover", { timeout: 5000 });
+  await page.waitForFunction(
+    () => {
+      const pop = document.querySelector(".style-popover");
+      if (!pop) return false;
+      const mono = pop.querySelector('.seg-btn[title="Mono"]')?.classList.contains("active");
+      const fifty = pop.querySelector('.seg-btn[title="50%"]')?.classList.contains("active");
+      const toggles = [...pop.querySelectorAll(".cs-toggle")];
+      const snap = toggles.find((t) => t.textContent.includes("Snap"))?.querySelector("input")?.checked;
+      const grid = toggles.find((t) => t.textContent.includes("Grid"))?.querySelector("input")?.checked;
+      const dark = toggles.find((t) => t.textContent.includes("Dark"))?.querySelector("input")?.checked;
+      return mono && fifty && snap && grid && dark === false;
+    },
+    { timeout: 5000 },
+  );
+  check("advanced tool defaults persisted across reload", true);
+  await page.click(".style-popover .popover-close");
 
   const historyText = await page.evaluate(() => document.querySelector(".history-meta span")?.textContent ?? "");
   check("history rail shows markup count", historyText.includes("4 marks"), historyText);

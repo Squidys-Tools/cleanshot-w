@@ -120,6 +120,7 @@ function App() {
     setImageUrl(null);
     setRec(null);
     setOcr({ status: "idle" });
+    setNotice(null);
   }, []);
 
   const deleteCapture = useCallback(
@@ -138,18 +139,28 @@ function App() {
 
   const copyImage = useCallback(async () => {
     if (!rec) return;
-    const exporter = exporterRef.current;
-    const { blob } = exporter ? await exporter() : await flattenToBlob(rec);
-    await host.copyImage(blob);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
+    setNotice(null);
+    try {
+      const exporter = exporterRef.current;
+      const { blob } = exporter ? await exporter() : await flattenToBlob(rec);
+      await host.copyImage(blob);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setNotice("Could not copy the image. Check clipboard permissions and try again.");
+    }
   }, [rec]);
 
   const savePng = useCallback(async () => {
     if (!rec) return;
-    const exporter = exporterRef.current;
-    const { blob } = exporter ? await exporter() : await flattenToBlob(rec);
-    downloadBlob(blob, `${sanitizeFileName(rec.title)}.png`);
+    setNotice(null);
+    try {
+      const exporter = exporterRef.current;
+      const { blob } = exporter ? await exporter() : await flattenToBlob(rec);
+      downloadBlob(blob, `${sanitizeFileName(rec.title)}.png`);
+    } catch {
+      setNotice("Could not export the PNG. Try again.");
+    }
   }, [rec]);
 
   const runOcr = useCallback(async () => {
@@ -158,13 +169,21 @@ function App() {
     try {
       const res = await host.recognize(rec.imageBlob, (p) => setOcr({ status: "running", progress: p.progress }));
       setOcr({ status: "done", text: res.text });
+      setNotice(null);
     } catch (e) {
       setOcr({ status: "error", message: String(e) });
+      setNotice("OCR could not read this image. Try again or use a clearer capture.");
     }
   }, [rec]);
 
   const copyOcrText = useCallback(async () => {
-    if (ocr.text) await host.copyText(ocr.text);
+    if (!ocr.text) return;
+    try {
+      await host.copyText(ocr.text);
+      setNotice(null);
+    } catch {
+      setNotice("Could not copy the recognized text. Check clipboard permissions and try again.");
+    }
   }, [ocr.text]);
 
   const readClipboard = useCallback(async () => {
@@ -266,6 +285,7 @@ function App() {
           ocrStatus={ocr.status}
           ocrProgress={ocr.progress}
           copied={copied}
+          notice={notice}
         />
       )}
 

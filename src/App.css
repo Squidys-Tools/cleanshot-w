@@ -603,6 +603,14 @@ kbd {
   margin: 0 4px;
 }
 
+.qa-notice {
+  max-width: 280px;
+  padding: 5px 8px;
+  color: #fbbf24;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
 /* OCR panel */
 .ocr-panel {
   position: fixed;

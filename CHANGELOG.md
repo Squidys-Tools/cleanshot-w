@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ended outside the viewport left a stuck interaction that made subsequent
   draws act like the image was being grabbed/moved. Verified with real-input
   Playwright drag tests.
+- M1 is complete. Tool defaults now persist in validated localStorage settings,
+  and clipboard, export, and OCR failures report an actionable message in the editor.
 
 ### Added
 
@@ -34,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Quick Access floating action bar (Copy image / OCR / Save PNG / New / Close)
   - `scripts/ocr-assets.mjs` (`bun run ocr:assets`) — local tessdata bundle
   - Geometry library + unit tests (`bun test`)
+  - Browser smoke harness (`node scripts/smoke-tldraw.mjs`) with 32 acceptance checks
 
 ### Planned
 
