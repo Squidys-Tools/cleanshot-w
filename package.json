@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "bun test",
+    "smoke": "node scripts/smoke-tldraw.mjs",
     "ocr:assets": "bun scripts/ocr-assets.mjs",
     "tauri": "tauri"
   },
