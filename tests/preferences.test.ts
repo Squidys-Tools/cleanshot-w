@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_EDITOR_PREFERENCES, parseEditorPreferences } from "../src/lib/preferences";
+import { DEFAULT_EDITOR_PREFERENCES, opacityForPreference, parseEditorPreferences } from "../src/lib/preferences";
 
 describe("editor preferences", () => {
   test("uses defaults for missing or malformed storage", () => {
@@ -21,5 +21,12 @@ describe("editor preferences", () => {
       dark: false,
       grid: true,
     });
+  });
+
+  test("preserves a saved opacity default when selection opacity is mixed", () => {
+    const saved = parseEditorPreferences(JSON.stringify({ opacity: 0.5 }));
+    const mixedSelection: { type: "mixed" } = { type: "mixed" };
+    expect(opacityForPreference(mixedSelection, saved.opacity)).toBe(0.5);
+    expect(opacityForPreference({ type: "shared", value: 0.75 }, saved.opacity)).toBe(0.75);
   });
 });

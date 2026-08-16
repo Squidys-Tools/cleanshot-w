@@ -9,6 +9,7 @@ import {
   DefaultSizeStyle,
   GeoShapeGeoStyle,
   type Editor,
+  type SharedStyle,
 } from "@tldraw/editor";
 import type {
   TLArrowShapeArrowheadStyle,
@@ -144,13 +145,16 @@ export function writeEditorPreferences(preferences: EditorPreferences, storage: 
 
 export function readEditorPreferencesFromEditor(editor: Editor): EditorPreferences {
   const opacity = editor.getSharedOpacity();
+  const saved = readEditorPreferences();
   return {
     color: editor.getStyleForNextShape(DefaultColorStyle),
     size: editor.getStyleForNextShape(DefaultSizeStyle),
     fill: editor.getStyleForNextShape(DefaultFillStyle),
     dash: editor.getStyleForNextShape(DefaultDashStyle),
     font: editor.getStyleForNextShape(DefaultFontStyle),
-    opacity: opacity.type === "mixed" ? DEFAULT_EDITOR_PREFERENCES.opacity : opacity.value,
+    // A mixed selection describes the selected shapes, not the next-shape
+    // default. Keep the saved default when the selection has mixed opacity.
+    opacity: opacityForPreference(opacity, saved.opacity),
     arrowStart: editor.getStyleForNextShape(ArrowShapeArrowheadStartStyle),
     arrowEnd: editor.getStyleForNextShape(ArrowShapeArrowheadEndStyle),
     arrowKind: editor.getStyleForNextShape(ArrowShapeKindStyle),
@@ -163,6 +167,10 @@ export function readEditorPreferencesFromEditor(editor: Editor): EditorPreferenc
 
 export function persistEditorPreferences(editor: Editor): void {
   writeEditorPreferences(readEditorPreferencesFromEditor(editor));
+}
+
+export function opacityForPreference(shared: SharedStyle<number>, savedOpacity: number): number {
+  return shared.type === "mixed" ? savedOpacity : shared.value;
 }
 
 export function applyEditorPreferences(editor: Editor, preferences: EditorPreferences): void {

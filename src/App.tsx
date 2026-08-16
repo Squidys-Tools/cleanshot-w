@@ -120,6 +120,7 @@ function App() {
     setImageUrl(null);
     setRec(null);
     setOcr({ status: "idle" });
+    setNotice(null);
   }, []);
 
   const deleteCapture = useCallback(
