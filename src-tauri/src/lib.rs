@@ -32,7 +32,7 @@ pub fn run() {
         )
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let _ = hotkeys::register_saved_hotkey(&app.handle());
+            let _ = hotkeys::register_saved_hotkey(app.handle());
             Ok(())
         })
         .manage(capture::CaptureState::default())

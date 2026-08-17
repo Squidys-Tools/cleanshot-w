@@ -184,7 +184,7 @@ pub fn library_save_capture(record: CaptureRecordWire) -> Result<(), String> {
 pub fn library_list_captures() -> Result<Vec<CaptureRecordWire>, String> {
     let root = library_root()?;
     let mut entries = read_index(&root)?;
-    entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    entries.sort_by_key(|entry| std::cmp::Reverse(entry.updated_at));
     entries
         .iter()
         .map(|entry| load_record(&root, entry))

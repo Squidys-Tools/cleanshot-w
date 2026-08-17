@@ -3,7 +3,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use std::borrow::Cow;
 use std::fs;
 use std::io::Cursor;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn decode_base64(value: &str) -> Result<Vec<u8>, String> {
     BASE64
@@ -145,7 +145,7 @@ pub fn copy_text_to_clipboard(text: String) -> Result<(), String> {
         .map_err(|error| format!("Could not copy text to clipboard: {error}"))
 }
 
-fn clipboard_temp_path(directory: &PathBuf) -> PathBuf {
+fn clipboard_temp_path(directory: &Path) -> PathBuf {
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_nanos())
