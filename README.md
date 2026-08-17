@@ -111,8 +111,6 @@ benchmarks/
 docs/
   product-behavior-spec.md  # Product behavior specification
   technical-decision-record.md  # Architecture and technology decisions
-DESIGN.md                  # Visual design direction
-PRODUCT.md                 # Product definition and principles
 ```
 
 ## Project documents
@@ -121,7 +119,6 @@ PRODUCT.md                 # Product definition and principles
 - [Technical decision record](docs/technical-decision-record.md)
 - [AI and extraction benchmark plan](benchmarks/README.md)
 - [Benchmark manifest](benchmarks/manifest.json)
-- [Visual design direction](DESIGN.md)
 
 ## Direction
 
