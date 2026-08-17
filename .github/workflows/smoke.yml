@@ -1,0 +1,59 @@
+name: Smoke QA
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Browser smoke test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
+      - name: Start Vite
+        shell: bash
+        run: |
+          bun run dev -- --host 127.0.0.1 > vite.log 2>&1 &
+          echo $! > vite.pid
+          for attempt in {1..30}; do
+            if curl --silent --fail http://127.0.0.1:1420 > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat vite.log
+          exit 1
+
+      - name: Run smoke test
+        run: bun run smoke
+
+      - name: Upload smoke diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-diagnostics
+          path: |
+            smoke-failure.png
+            vite.log
+          if-no-files-found: ignore
