@@ -1,7 +1,8 @@
 import { chromium } from "playwright";
 import { deflateSync } from "node:zlib";
 
-const BASE = process.env.SMOKE_BASE ?? "http://localhost:1420";
+const defaultPort = process.env.CI === "true" ? 1420 : 1422;
+const BASE = process.env.SMOKE_BASE ?? `http://127.0.0.1:${defaultPort}`;
 const W = 320;
 const H = 180;
 
