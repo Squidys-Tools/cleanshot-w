@@ -178,6 +178,25 @@ type Annotation =
 
 ### M2 — Tauri native shell (Rust) `[DECIDED]`
 
+**Implementation status (2026-08-17)**
+
+1. **Implemented:** native selection overlay with a pixel loupe and validated
+   natural-pixel crop coordinates.
+2. **Deferred:** mixed-DPI behavior will be covered in a later testing pass.
+3. **Implemented:** window enumeration and `PrintWindow` capture with a screen
+   capture fallback.
+4. **Implemented:** native image, text, and file clipboard output via `arboard`.
+5. **Implemented:** disk-backed capture library under `%LOCALAPPDATA%\CleanShotW`.
+6. **Implemented:** persisted global capture shortcut with conflict errors and
+   a settings control for remapping it.
+7. **Deferred:** tray work will happen later, after deciding whether to use a
+   package or design the tray behavior from scratch, including its visual form.
+8. **Implemented:** single-instance behavior brings the existing editor window
+   to the foreground.
+9. **Deferred:** autostart is pushed until the remaining work is complete.
+10. **Deferred:** cursor inclusion is pushed until the remaining work is
+    complete.
+
 - **Selection overlay is a transparent Tauri window**, not a separate tech:
   `transparent: true`, `decorations: false`, `alwaysOnTop`, one window per
   monitor (or spanning the virtual screen), HTML/CSS draws the dim, the

@@ -5,7 +5,7 @@
   "identifier": "com.cleanshotw.desktop",
   "build": {
     "beforeDevCommand": "bun run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:1422",
     "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"
   },

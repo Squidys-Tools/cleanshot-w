@@ -2,6 +2,7 @@ export type OcrStatus = "idle" | "running" | "done" | "error";
 
 type Props = {
   onCopyImage: () => void;
+  onCopyFile: () => void;
   onSavePng: () => void;
   onOcr: () => void;
   onNew: () => void;
@@ -14,6 +15,7 @@ type Props = {
 
 export default function QuickAccess({
   onCopyImage,
+  onCopyFile,
   onSavePng,
   onOcr,
   onNew,
@@ -27,6 +29,9 @@ export default function QuickAccess({
     <div className="quick-access">
       <button className="qa-btn" onClick={onCopyImage} title="Copy the flattened image">
         {copied ? "✓ Copied" : "Copy image"}
+      </button>
+      <button className="qa-btn" onClick={onCopyFile} title="Copy the PNG as a file">
+        Copy file
       </button>
       <button className="qa-btn" onClick={onOcr} title="Recognize text with tesseract.js">
         {ocrStatus === "running"
