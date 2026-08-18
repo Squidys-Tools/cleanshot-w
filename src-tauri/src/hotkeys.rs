@@ -199,7 +199,9 @@ fn set_autostart(enabled: bool) -> Result<(), String> {
         )
     };
     if status != ERROR_SUCCESS {
-        return Err(format!("Could not open the Windows startup registry key ({status})."));
+        return Err(format!(
+            "Could not open the Windows startup registry key ({status})."
+        ));
     }
 
     let result = if enabled {
@@ -232,7 +234,9 @@ fn set_autostart(enabled: bool) -> Result<(), String> {
     if result == ERROR_SUCCESS {
         Ok(())
     } else {
-        Err(format!("Could not update Windows startup registration ({result})."))
+        Err(format!(
+            "Could not update Windows startup registration ({result})."
+        ))
     }
 }
 
@@ -299,9 +303,7 @@ pub fn set_capture_hotkey(app: AppHandle, shortcut: String) -> Result<AppSetting
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        quote_autostart_command, validate_shortcut, AppSettings, DEFAULT_CAPTURE_HOTKEY,
-    };
+    use super::{quote_autostart_command, validate_shortcut, AppSettings, DEFAULT_CAPTURE_HOTKEY};
 
     #[test]
     fn settings_keep_new_defaults_when_loading_old_json() {

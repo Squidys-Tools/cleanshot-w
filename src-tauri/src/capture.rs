@@ -259,7 +259,9 @@ pub async fn start_area_capture(
         if let Err(error) = existing.close() {
             clear_active_capture(&state);
             restore_main(&app);
-            return Err(format!("Could not close the previous capture overlay: {error}"));
+            return Err(format!(
+                "Could not close the previous capture overlay: {error}"
+            ));
         }
     }
 
@@ -295,9 +297,9 @@ pub async fn start_area_capture(
         restore_main(&app);
         return Err(format!("Could not position the capture overlay: {error}"));
     }
-    if let Err(error) = overlay.set_size(tauri::Size::Physical(
-        tauri::PhysicalSize::new(width, height),
-    )) {
+    if let Err(error) = overlay.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+        width, height,
+    ))) {
         let _ = overlay.close();
         clear_active_capture(&state);
         restore_main(&app);
@@ -442,9 +444,9 @@ mod windows_capture {
     use windows_sys::Win32::Storage::Xps::PrintWindow;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         DrawIconEx, EnumWindows, GetCursorInfo, GetIconInfo, GetSystemMetrics, GetWindowRect,
-        GetWindowTextLengthW, GetWindowTextW, IsWindow, IsWindowVisible, CURSORINFO,
-        DI_NORMAL, ICONINFO, PW_RENDERFULLCONTENT, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
-        SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+        GetWindowTextLengthW, GetWindowTextW, IsWindow, IsWindowVisible, CURSORINFO, DI_NORMAL,
+        ICONINFO, PW_RENDERFULLCONTENT, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN,
     };
 
     pub(super) fn list_windows() -> Result<Vec<WindowInfo>, String> {
@@ -650,8 +652,8 @@ mod windows_capture {
             return;
         }
         let mut icon_info: ICONINFO = unsafe { std::mem::zeroed() };
-        let (hotspot_x, hotspot_y) =
-            if unsafe { GetIconInfo(cursor.hCursor, &mut icon_info) } != 0 {
+        let (hotspot_x, hotspot_y) = if unsafe { GetIconInfo(cursor.hCursor, &mut icon_info) } != 0
+        {
             let hotspot = (icon_info.xHotspot as i32, icon_info.yHotspot as i32);
             unsafe {
                 if !icon_info.hbmMask.is_null() {

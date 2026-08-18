@@ -45,20 +45,10 @@ pub fn run() {
             let _ = hotkeys::register_saved_hotkey(app.handle());
             let _ = hotkeys::sync_autostart();
 
-            let new_capture = MenuItem::with_id(
-                app,
-                "new-capture",
-                "New capture",
-                true,
-                None::<&str>,
-            )?;
-            let open_library = MenuItem::with_id(
-                app,
-                "open-library",
-                "Open CleanShot W",
-                true,
-                None::<&str>,
-            )?;
+            let new_capture =
+                MenuItem::with_id(app, "new-capture", "New capture", true, None::<&str>)?;
+            let open_library =
+                MenuItem::with_id(app, "open-library", "Open CleanShot W", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&new_capture, &open_library, &quit])?;
             let icon = app
