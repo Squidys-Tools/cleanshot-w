@@ -9,8 +9,8 @@ permissions:
 jobs:
   dependency-review:
     name: Review dependency changes
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
 
     steps:
       - name: Check dependency changes
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5

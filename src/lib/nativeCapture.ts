@@ -25,8 +25,39 @@ export type NativeWindowInfo = {
   height: number;
 };
 
+export type CaptureViewport = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+export function capturePointFromClient(
+  clientX: number,
+  clientY: number,
+  viewport: CaptureViewport,
+  frame: Pick<NativeCaptureFrame, "width" | "height">,
+): { x: number; y: number } {
+  const x = viewport.width > 0 ? ((clientX - viewport.left) / viewport.width) * frame.width : 0;
+  const y = viewport.height > 0 ? ((clientY - viewport.top) / viewport.height) * frame.height : 0;
+  return {
+    x: Math.min(Math.max(x, 0), frame.width),
+    y: Math.min(Math.max(y, 0), frame.height),
+  };
+}
+
 export type NativeSettings = {
   captureHotkey: string;
+  includeCursor: boolean;
+  launchAtStartup: boolean;
+};
+
+export type PinnedCapture = {
+  id: string;
+  title: string;
+  pngBase64: string;
+  width: number;
+  height: number;
 };
 
 export function isTauriRuntime(): boolean {
@@ -57,20 +88,59 @@ export function captureWindow(windowId: string): Promise<NativeCaptureFrame> {
   return invoke<NativeCaptureFrame>("capture_window", { windowId });
 }
 
+export function captureFullscreen(): Promise<NativeCaptureFrame> {
+  return invoke<NativeCaptureFrame>("capture_screen");
+}
+
 export function getSettings(): Promise<NativeSettings> {
   return invoke<NativeSettings>("get_settings");
 }
 
-export function ensureCaptureHotkey(): Promise<NativeSettings> {
-  return invoke<NativeSettings>("ensure_capture_hotkey");
+export function ensureCaptureHotkey(): Promise<void> {
+  return invoke<void>("ensure_capture_hotkey");
 }
 
-export function setCaptureHotkey(captureHotkey: string): Promise<NativeSettings> {
-  return invoke<NativeSettings>("set_capture_hotkey", { captureHotkey });
+export function setCaptureSettings(
+  captureHotkey: string,
+  includeCursor: boolean,
+  launchAtStartup: boolean,
+): Promise<NativeSettings> {
+  return invoke<NativeSettings>("set_capture_settings", {
+    captureHotkey,
+    includeCursor,
+    launchAtStartup,
+  });
+}
+
+export function showPinnedCapture(
+  pngBase64: string,
+  width: number,
+  height: number,
+  title: string,
+): Promise<string> {
+  return invoke<string>("show_pinned_capture", { pngBase64, width, height, title });
+}
+
+export function getPinnedCapture(id: string): Promise<PinnedCapture | null> {
+  return invoke<PinnedCapture | null>("get_pinned_capture", { id });
+}
+
+export function closePinnedCapture(id: string): Promise<void> {
+  return invoke<void>("close_pinned_capture", { id });
 }
 
 export function captureFrameUrl(frame: NativeCaptureFrame): string {
   return `data:image/png;base64,${frame.pngBase64}`;
+}
+
+export async function blobToBase64(blob: Blob): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
 }
 
 export async function captureFrameToBlob(frame: NativeCaptureFrame): Promise<Blob> {

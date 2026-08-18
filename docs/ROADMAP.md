@@ -3,7 +3,7 @@
 Locked-in plan for building a CleanShot-style screenshot tool on Windows,
 without admin rights or paid tooling.
 
-**Status:** Draft — decisions marked `[DECIDED]` / `[PROPOSED]` / `[OPEN]`.
+**Status:** M2 implementation complete; Windows hardware release validation is the remaining gate before shipping M3 polish.
 
 ## 1. Goal
 
@@ -176,26 +176,33 @@ type Annotation =
   annotations, styles, clipboard copy, PNG export, OCR, undo/redo, autosave,
   reload persistence, and history re-editing.
 
-### M2 — Tauri native shell (Rust) `[DECIDED]`
+### M2 — Tauri native shell (Rust) `[IMPLEMENTATION COMPLETE]`
 
-**Implementation status (2026-08-17)**
+**Implementation status (2026-08-18)**
 
-1. **Implemented:** native selection overlay with a pixel loupe and validated
-   natural-pixel crop coordinates.
-2. **Deferred:** mixed-DPI behavior will be covered in a later testing pass.
-3. **Implemented:** window enumeration and `PrintWindow` capture with a screen
-   capture fallback.
+M2 has no remaining deferred implementation work. The Windows-only runtime
+matrix is documented in §9 and must be run on representative hardware before a
+public release; the current workspace is not a Windows host.
+
+1. **Implemented and covered:** native selection overlay with a pixel loupe,
+   physical-pixel crop validation, and CSS-to-capture coordinate tests.
+2. **Implemented:** Per-Monitor V2 process awareness and physical virtual-screen
+   coordinates for mixed-DPI monitor layouts.
+3. **Implemented:** window enumeration and `PrintWindow` capture with a GDI
+   screen-capture fallback.
 4. **Implemented:** native image, text, and file clipboard output via `arboard`.
 5. **Implemented:** disk-backed capture library under `%LOCALAPPDATA%\CleanShotW`.
 6. **Implemented:** persisted global capture shortcut with conflict errors and
-   a settings control for remapping it.
-7. **Deferred:** tray work will happen later, after deciding whether to use a
-   package or design the tray behavior from scratch, including its visual form.
+   settings controls for remapping, cursor inclusion, and startup behavior.
+7. **Implemented:** system tray with new capture, open library, and quit actions;
+   tray capture requests are routed back to the main editor.
 8. **Implemented:** single-instance behavior brings the existing editor window
    to the foreground.
-9. **Deferred:** autostart is pushed until the remaining work is complete.
-10. **Deferred:** cursor inclusion is pushed until the remaining work is
-    complete.
+9. **Implemented:** optional per-user `HKCU\...\Run` autostart launches the
+   app minimized to the tray.
+10. **Implemented:** optional cursor compositing for screen and window captures.
+11. **Implemented:** always-on-top pin windows with a dedicated lightweight
+    renderer, close action, and lifecycle cleanup.
 
 - **Selection overlay is a transparent Tauri window**, not a separate tech:
   `transparent: true`, `decorations: false`, `alwaysOnTop`, one window per
@@ -203,8 +210,9 @@ type Annotation =
   selection rect, and a pixel-magnifier loupe. On release → open the editor
   window with the cropped region.
   - Caveat: transparent WebView2 windows on Windows have real limitations
-    (input routing, per-monitor DPI, layered-window composition). This is
-    spike #1 in §6. **Fallback** if it proves unusable: a thin Win32/GDI
+    (input routing, per-monitor DPI, layered-window composition). The selected
+    implementation is tested against the release matrix in §6.
+    **Fallback** if a Windows compositor issue is found: a thin Win32/GDI
     overlay written in Rust (`windows` crate — still Tauri, no C++), or a
     WPF overlay as a last resort.
 - **Editor is a normal (non-transparent) Tauri window.**
@@ -229,14 +237,22 @@ type Annotation =
   JSON index file for the library (fast startup; SQLite only if it grows).
 - Tray icon (tauri tray-icon): new capture, open library, quit.
 - Single instance (mutex/`tauri-plugin-single-instance`).
-- Optional: `HKCU\...\Run` autostart (no admin).
-- Cursor inclusion in capture, toggleable.
+- `HKCU\...\Run` autostart (no admin), toggleable from settings.
+- Cursor inclusion in capture, toggleable from settings.
 
 **Build:** verified with the GNU toolchain (Rust `x86_64-pc-windows-gnu` +
 MinGW GCC) — no MSVC required. First release build took ~15 min.
 
-**Out of scope for M2** (unless effort allows): scrolling capture, in-place
-annotation on the overlay, native OCR.
+**Automated validation added:**
+
+- `bun tsc -b --noEmit` validates the frontend without emitting build artifacts.
+- `bun test` covers 15 browser and native-coordinate unit tests.
+- Rust unit tests cover selection bounds, crop pixel/origin preservation, PNG
+  encoding, settings migration/validation, autostart quoting, and pin sizing;
+  the Windows CI job runs formatting, Clippy, tests, and `cargo check`.
+
+**Out of scope for M2:** scrolling capture, in-place annotation on the overlay,
+and native OCR. These remain M3 work.
 
 ### M3 — Polish and scale
 
@@ -273,11 +289,12 @@ annotation on the overlay, native OCR.
   asset protocol — verify early (spike #3).
 - Tauri user-data folder lands under `%LOCALAPPDATA%` automatically.
 
-### 5.4 Transparent overlay window (why it's spiked)
-Tauri transparent windows on Windows use layered-window composition. It works
-for simple cases but fights mixed-DPI and click-through. That's why the M2
-overlay is isolated as spike #1 with an explicit native-Rust fallback, and why
-the editor itself deliberately stays a normal opaque window.
+### 5.4 Transparent overlay window
+Tauri transparent windows on Windows use layered-window composition. The M2
+implementation keeps the editor opaque and confines transparency to the native
+capture overlay. The overlay maps its actual CSS viewport bounds back into the
+pre-captured physical-pixel frame, avoiding a second DPI conversion at crop
+time; the mixed-DPI hardware matrix in §9 remains the release acceptance test.
 
 ### 5.5 Clipboard gotchas
 - "Copy image": `arboard` `set_image` writes a DIB with premultiplied alpha —
@@ -299,16 +316,17 @@ the editor itself deliberately stays a normal opaque window.
 DWM cannot capture DRM-protected or the UAC secure desktop. Handle gracefully
 ("This content can't be captured") rather than shipping a black image.
 
-## 6. Risks and early spikes (do these before committing to M2)
+## 6. Risks and release validation
 
 | Risk | Spike | Pass criteria |
 |---|---|---|
 | Transparent Tauri overlay across mixed-DPI monitors | 2-monitor (100% + 150%) test: rect must match cursor under loupe | no drift, input routed correctly, no flicker |
-| `xcap`/GDI capture on mixed DPI | Capture both monitors, crop by monitor | per-monitor pixels correct |
-| Copy image with alpha into Word/Slack | Paste test after `arboard::set_image` | transparent bg survives |
-| Tesseract worker + wasm under Tauri asset protocol | Run OCR in a production build | no CORS/path errors |
-| `PrintWindow` window capture on occluded/windowed apps | Capture VS Code + browser | correct pixels, no black window |
-| tesseract.js speed/quality on screenshots | Run benchmark harness | decision recorded: fast vs best |
+| GDI capture on mixed DPI | Capture both monitors and crop near each monitor edge | per-monitor physical pixels correct |
+| Copy image with alpha into Word/Slack | Paste test after `arboard::set_image` | transparent background survives |
+| Tesseract worker + wasm under Tauri asset protocol | Run OCR in a packaged build | no CORS/path errors |
+| `PrintWindow` window capture on occluded/windowed apps | Capture VS Code and a browser | correct pixels, fallback has no black window |
+| Cursor compositing | Capture with the setting on and off | pointer appears only when enabled |
+| Tray/autostart/pin lifecycle | Start with `--minimized`, use tray, pin/close a capture | no duplicate process, orphaned window, or stuck tray state |
 | ~~Tauri build without MSVC~~ `[DONE]` | GNU toolchain attempt | `cleanshot-w.exe` built locally 2026-08-14 (15 min) |
 
 ## 7. Toolchain (no-admin setup) — locked
@@ -348,10 +366,15 @@ CleanShotW-0.1.0-win64.zip                  CleanShotW-0.1.0-win64-setup.exe
 - UI: Playwright against the Vite dev server for editor interactions
   (draw, select, undo/redo, zoom, export round-trip).
 - OCR: benchmark harness from §5.6 (fixtures committed to `tests/fixtures/`).
-- Native: manual matrix script for capture modes + DPI mixes; unit tests for
-  geometry/annotation math (plain TS, `bun test`).
-- Clipboard/WebView2 behaviors: covered by the spikes, then manual checks
-  recorded in the release notes.
+- Native: the Windows CI job runs Rust formatting, Clippy, unit tests, and
+  `cargo check`; browser-side native coordinate mapping is covered by `bun test`.
+- M2 Windows release gate: on Windows 10/11, test area, window, and fullscreen
+  capture; a 100% + 150% two-monitor layout; cursor on/off; transparent paste
+  into Word/Slack; `PrintWindow` fallback; packaged OCR assets; tray quit/new
+  capture; `--minimized` autostart; and pin/close lifecycle. Record the result
+  with the release notes before publishing an artifact.
+- Clipboard/WebView2 behaviors are manual acceptance checks, not browser-only
+  unit-test substitutes.
 
 ## 10. Decisions
 

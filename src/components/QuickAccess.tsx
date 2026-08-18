@@ -4,6 +4,7 @@ type Props = {
   onCopyImage: () => void;
   onCopyFile: () => void;
   onSavePng: () => void;
+  onPin?: () => void;
   onOcr: () => void;
   onNew: () => void;
   onClose: () => void;
@@ -17,6 +18,7 @@ export default function QuickAccess({
   onCopyImage,
   onCopyFile,
   onSavePng,
+  onPin,
   onOcr,
   onNew,
   onClose,
@@ -43,6 +45,11 @@ export default function QuickAccess({
       <button className="qa-btn" onClick={onSavePng} title="Download as PNG">
         Save PNG
       </button>
+      {onPin && (
+        <button className="qa-btn" onClick={onPin} title="Keep this capture visible above other windows">
+          Pin
+        </button>
+      )}
       <span className="qa-divider" />
       <button className="qa-btn" onClick={onNew} title="Start a new capture">
         New

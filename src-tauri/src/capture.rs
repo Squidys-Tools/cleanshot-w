@@ -1,7 +1,29 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+
+/// Make all native capture and overlay coordinates physical-pixel accurate.
+#[cfg(windows)]
+pub fn configure_dpi_awareness() {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SetProcessDpiAwarenessContext(context: isize) -> i32;
+        fn SetProcessDPIAware() -> i32;
+    }
+
+    // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 is represented by -4.
+    let configured = unsafe { SetProcessDpiAwarenessContext(-4) } != 0;
+    if !configured {
+        unsafe {
+            let _ = SetProcessDPIAware();
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn configure_dpi_awareness() {}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -167,8 +189,12 @@ fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 #[tauri::command]
-pub fn capture_screen() -> Result<CaptureFrame, String> {
-    capture_surface()?.frame()
+pub fn capture_screen(app: AppHandle) -> Result<CaptureFrame, String> {
+    hide_main_for_capture(&app)?;
+    std::thread::sleep(Duration::from_millis(80));
+    let result = capture_surface().and_then(|surface| surface.frame());
+    restore_main(&app);
+    result
 }
 
 #[tauri::command]
@@ -177,11 +203,15 @@ pub fn list_capture_windows() -> Result<Vec<WindowInfo>, String> {
 }
 
 #[tauri::command]
-pub fn capture_window(window_id: String) -> Result<CaptureFrame, String> {
+pub fn capture_window(app: AppHandle, window_id: String) -> Result<CaptureFrame, String> {
     let window_id = window_id
         .parse::<u64>()
         .map_err(|_| "The selected window id is invalid.".to_string())?;
-    platform_capture_window(window_id)?.frame()
+    hide_main_for_capture(&app)?;
+    std::thread::sleep(Duration::from_millis(80));
+    let result = platform_capture_window(window_id).and_then(|surface| surface.frame());
+    restore_main(&app);
+    result
 }
 
 #[tauri::command]
@@ -201,27 +231,41 @@ pub async fn start_area_capture(
     app: AppHandle,
     state: State<'_, CaptureState>,
 ) -> Result<(), String> {
-    let surface = capture_surface()?;
+    hide_main_for_capture(&app)?;
+    std::thread::sleep(Duration::from_millis(80));
+    let surface = match capture_surface() {
+        Ok(surface) => surface,
+        Err(error) => {
+            restore_main(&app);
+            return Err(error);
+        }
+    };
     let width = surface.width;
     let height = surface.height;
     let origin_x = surface.origin_x;
     let origin_y = surface.origin_y;
 
+    if let Err(error) = state
+        .active
+        .lock()
+        .map(|mut active| *active = Some(surface))
+        .map_err(|_| "The capture state is unavailable.".to_string())
     {
-        let mut active = state
-            .active
-            .lock()
-            .map_err(|_| "The capture state is unavailable.".to_string())?;
-        *active = Some(surface);
+        restore_main(&app);
+        return Err(error);
     }
 
     if let Some(existing) = app.get_webview_window("capture-overlay") {
-        existing
-            .close()
-            .map_err(|error| format!("Could not close the previous capture overlay: {error}"))?;
+        if let Err(error) = existing.close() {
+            clear_active_capture(&state);
+            restore_main(&app);
+            return Err(format!(
+                "Could not close the previous capture overlay: {error}"
+            ));
+        }
     }
 
-    let overlay = WebviewWindowBuilder::new(
+    let overlay = match WebviewWindowBuilder::new(
         &app,
         "capture-overlay",
         WebviewUrl::App("index.html?overlay=capture".into()),
@@ -236,25 +280,44 @@ pub async fn start_area_capture(
     .position(0.0, 0.0)
     .inner_size(width as f64, height as f64)
     .build()
-    .map_err(|error| format!("Could not open the capture overlay: {error}"))?;
+    {
+        Ok(overlay) => overlay,
+        Err(error) => {
+            clear_active_capture(&state);
+            restore_main(&app);
+            return Err(format!("Could not open the capture overlay: {error}"));
+        }
+    };
 
-    overlay
-        .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
-            origin_x, origin_y,
-        )))
-        .map_err(|error| format!("Could not position the capture overlay: {error}"))?;
-    overlay
-        .set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
-            width, height,
-        )))
-        .map_err(|error| format!("Could not size the capture overlay: {error}"))?;
+    if let Err(error) = overlay.set_position(tauri::Position::Physical(
+        tauri::PhysicalPosition::new(origin_x, origin_y),
+    )) {
+        let _ = overlay.close();
+        clear_active_capture(&state);
+        restore_main(&app);
+        return Err(format!("Could not position the capture overlay: {error}"));
+    }
+    if let Err(error) = overlay.set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+        width, height,
+    ))) {
+        let _ = overlay.close();
+        clear_active_capture(&state);
+        restore_main(&app);
+        return Err(format!("Could not size the capture overlay: {error}"));
+    }
 
-    overlay
-        .show()
-        .map_err(|error| format!("Could not show the capture overlay: {error}"))?;
-    overlay
-        .set_focus()
-        .map_err(|error| format!("Could not focus the capture overlay: {error}"))?;
+    if let Err(error) = overlay.show() {
+        let _ = overlay.close();
+        clear_active_capture(&state);
+        restore_main(&app);
+        return Err(format!("Could not show the capture overlay: {error}"));
+    }
+    if let Err(error) = overlay.set_focus() {
+        let _ = overlay.close();
+        clear_active_capture(&state);
+        restore_main(&app);
+        return Err(format!("Could not focus the capture overlay: {error}"));
+    }
     Ok(())
 }
 
@@ -288,13 +351,9 @@ pub fn complete_area_capture(
         .lock()
         .map_err(|_| "The capture state is unavailable.".to_string())?
         .take();
-
-    if let Some(overlay) = app.get_webview_window("capture-overlay") {
-        overlay
-            .close()
-            .map_err(|error| format!("Could not close the capture overlay: {error}"))?;
-    }
-    Ok(())
+    let close_result = close_capture_overlay(&app);
+    restore_main(&app);
+    close_result
 }
 
 #[tauri::command]
@@ -304,6 +363,17 @@ pub fn cancel_area_capture(app: AppHandle, state: State<'_, CaptureState>) -> Re
         .lock()
         .map_err(|_| "The capture state is unavailable.".to_string())?
         .take();
+    let close_result = close_capture_overlay(&app);
+    restore_main(&app);
+    close_result
+}
+
+pub fn overlay_destroyed(app: &AppHandle, state: State<'_, CaptureState>) {
+    clear_active_capture(&state);
+    restore_main(app);
+}
+
+fn close_capture_overlay(app: &AppHandle) -> Result<(), String> {
     if let Some(overlay) = app.get_webview_window("capture-overlay") {
         overlay
             .close()
@@ -312,9 +382,28 @@ pub fn cancel_area_capture(app: AppHandle, state: State<'_, CaptureState>) -> Re
     Ok(())
 }
 
+fn clear_active_capture(state: &State<'_, CaptureState>) {
+    let _ = state.active.lock().map(|mut active| active.take());
+}
+
+fn hide_main_for_capture(app: &AppHandle) -> Result<(), String> {
+    if let Some(main) = app.get_webview_window("main") {
+        main.hide()
+            .map_err(|error| format!("Could not hide the editor before capture: {error}"))?;
+    }
+    Ok(())
+}
+
+fn restore_main(app: &AppHandle) {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.show();
+        let _ = main.set_focus();
+    }
+}
+
 #[cfg(windows)]
 fn capture_surface() -> Result<CaptureSurface, String> {
-    windows_capture::capture_surface()
+    windows_capture::capture_surface(crate::hotkeys::current_settings().include_cursor)
 }
 
 #[cfg(windows)]
@@ -324,7 +413,7 @@ fn platform_list_windows() -> Result<Vec<WindowInfo>, String> {
 
 #[cfg(windows)]
 fn platform_capture_window(window_id: u64) -> Result<CaptureSurface, String> {
-    windows_capture::capture_window(window_id)
+    windows_capture::capture_window(window_id, crate::hotkeys::current_settings().include_cursor)
 }
 
 #[cfg(not(windows))]
@@ -354,9 +443,10 @@ mod windows_capture {
     };
     use windows_sys::Win32::Storage::Xps::PrintWindow;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetSystemMetrics, GetWindowRect, GetWindowTextLengthW, GetWindowTextW,
-        IsWindow, IsWindowVisible, PW_RENDERFULLCONTENT, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
-        SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+        DrawIconEx, EnumWindows, GetCursorInfo, GetIconInfo, GetSystemMetrics, GetWindowRect,
+        GetWindowTextLengthW, GetWindowTextW, IsWindow, IsWindowVisible, CURSORINFO, DI_NORMAL,
+        ICONINFO, PW_RENDERFULLCONTENT, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN,
     };
 
     pub(super) fn list_windows() -> Result<Vec<WindowInfo>, String> {
@@ -368,7 +458,10 @@ mod windows_capture {
         Ok(windows)
     }
 
-    pub(super) fn capture_window(window_id: u64) -> Result<CaptureSurface, String> {
+    pub(super) fn capture_window(
+        window_id: u64,
+        include_cursor: bool,
+    ) -> Result<CaptureSurface, String> {
         let hwnd = window_id as usize as HWND;
         if hwnd.is_null() || unsafe { IsWindow(hwnd) } == 0 {
             return Err("The selected window no longer exists.".to_string());
@@ -429,6 +522,9 @@ mod windows_capture {
             cleanup(screen_dc, memory_dc, bitmap, previous);
             return Err(last_error("Windows could not capture the selected window"));
         }
+        if include_cursor {
+            draw_cursor(memory_dc, rect.left, rect.top, width, height);
+        }
 
         let rgba = read_bitmap(memory_dc, bitmap, width, height);
         cleanup(screen_dc, memory_dc, bitmap, previous);
@@ -443,7 +539,7 @@ mod windows_capture {
         })
     }
 
-    pub fn capture_surface() -> Result<CaptureSurface, String> {
+    pub fn capture_surface(include_cursor: bool) -> Result<CaptureSurface, String> {
         let origin_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
         let origin_y = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
         let width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
@@ -494,6 +590,9 @@ mod windows_capture {
             cleanup(screen_dc, memory_dc, bitmap, previous);
             return Err(last_error("Windows could not copy the screen."));
         }
+        if include_cursor {
+            draw_cursor(memory_dc, origin_x, origin_y, width, height);
+        }
 
         let rgba = read_bitmap(memory_dc, bitmap, width, height);
         cleanup(screen_dc, memory_dc, bitmap, previous);
@@ -537,6 +636,55 @@ mod windows_capture {
             height: (rect.bottom - rect.top) as u32,
         });
         1
+    }
+
+    fn draw_cursor(memory_dc: HDC, origin_x: i32, origin_y: i32, width: u32, height: u32) {
+        let mut cursor = CURSORINFO {
+            cbSize: std::mem::size_of::<CURSORINFO>() as u32,
+            flags: 0,
+            hCursor: std::ptr::null_mut(),
+            ptScreenPos: windows_sys::Win32::Foundation::POINT { x: 0, y: 0 },
+        };
+        if unsafe { GetCursorInfo(&mut cursor) } == 0
+            || cursor.flags == 0
+            || cursor.hCursor.is_null()
+        {
+            return;
+        }
+        let mut icon_info: ICONINFO = unsafe { std::mem::zeroed() };
+        let (hotspot_x, hotspot_y) = if unsafe { GetIconInfo(cursor.hCursor, &mut icon_info) } != 0
+        {
+            let hotspot = (icon_info.xHotspot as i32, icon_info.yHotspot as i32);
+            unsafe {
+                if !icon_info.hbmMask.is_null() {
+                    let _ = DeleteObject(icon_info.hbmMask as HGDIOBJ);
+                }
+                if !icon_info.hbmColor.is_null() {
+                    let _ = DeleteObject(icon_info.hbmColor as HGDIOBJ);
+                }
+            }
+            hotspot
+        } else {
+            (0, 0)
+        };
+        let x = cursor.ptScreenPos.x - origin_x - hotspot_x;
+        let y = cursor.ptScreenPos.y - origin_y - hotspot_y;
+        if x >= width as i32 || y >= height as i32 || x + 32 <= 0 || y + 32 <= 0 {
+            return;
+        }
+        unsafe {
+            let _ = DrawIconEx(
+                memory_dc,
+                x,
+                y,
+                cursor.hCursor,
+                0,
+                0,
+                0,
+                std::ptr::null_mut(),
+                DI_NORMAL,
+            );
+        }
     }
 
     fn read_bitmap(
@@ -604,5 +752,85 @@ mod windows_capture {
     fn last_error(context: &str) -> String {
         let error = std::io::Error::last_os_error();
         format!("{context}: {error}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{encode_png, validate_selection, CaptureSurface, SelectionRect};
+
+    fn sample_surface() -> CaptureSurface {
+        CaptureSurface {
+            rgba: (0..24).collect(),
+            width: 3,
+            height: 2,
+            origin_x: -120,
+            origin_y: 48,
+            dpi_scale: 1.5,
+        }
+    }
+
+    #[test]
+    fn selection_accepts_edges_and_rejects_out_of_bounds_rectangles() {
+        assert!(validate_selection(
+            &SelectionRect {
+                x: 2,
+                y: 1,
+                width: 1,
+                height: 1,
+            },
+            3,
+            2,
+        )
+        .is_ok());
+        assert!(validate_selection(
+            &SelectionRect {
+                x: 3,
+                y: 0,
+                width: 1,
+                height: 1,
+            },
+            3,
+            2,
+        )
+        .is_err());
+        assert!(validate_selection(
+            &SelectionRect {
+                x: i32::MAX,
+                y: 0,
+                width: 2,
+                height: 1,
+            },
+            3,
+            2,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn crop_preserves_pixels_origin_and_dpi_metadata() {
+        let cropped = sample_surface()
+            .crop(&SelectionRect {
+                x: 1,
+                y: 0,
+                width: 2,
+                height: 2,
+            })
+            .unwrap();
+        assert_eq!(cropped.width, 2);
+        assert_eq!(cropped.height, 2);
+        assert_eq!(cropped.origin_x, -119);
+        assert_eq!(cropped.origin_y, 48);
+        assert_eq!(cropped.dpi_scale, 1.5);
+        assert_eq!(
+            cropped.rgba,
+            vec![4, 5, 6, 7, 8, 9, 10, 11, 16, 17, 18, 19, 20, 21, 22, 23]
+        );
+    }
+
+    #[test]
+    fn png_encoding_returns_a_rgba_png() {
+        let bytes = encode_png(1, 1, &[10, 20, 30, 40]).unwrap();
+        assert_eq!(&bytes[..8], &[137, 80, 78, 71, 13, 10, 26, 10]);
     }
 }
