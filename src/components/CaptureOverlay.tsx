@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Poin
 import {
   cancelAreaCapture,
   captureFrameUrl,
+  capturePointFromClient,
   completeAreaCapture,
   getActiveCapture,
   type NativeCaptureFrame,
@@ -18,10 +19,6 @@ type OverlayPhase =
   | { kind: "loading" }
   | { kind: "ready"; frame: NativeCaptureFrame }
   | { kind: "error"; message: string };
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
 
 function normalizeSelection(start: Point, end: Point): SelectionRect {
   const left = Math.min(start.x, end.x);
@@ -86,10 +83,7 @@ function CaptureOverlay() {
       if (!viewport || viewport.width <= 0 || viewport.height <= 0) {
         return { x: 0, y: 0 };
       }
-      return {
-        x: clamp(((event.clientX - viewport.left) / viewport.width) * frame.width, 0, frame.width),
-        y: clamp(((event.clientY - viewport.top) / viewport.height) * frame.height, 0, frame.height),
-      };
+      return capturePointFromClient(event.clientX, event.clientY, viewport, frame);
     },
     [],
   );

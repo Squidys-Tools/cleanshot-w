@@ -7,13 +7,16 @@ import { nativeHost, readNativeClipboardImage } from "./lib/nativeHost";
 import { loadImage, makeThumb } from "./lib/storage";
 import { downloadBlob, flattenToBlob, sanitizeFileName } from "./lib/export";
 import {
+  blobToBase64,
+  captureFullscreen,
   captureFrameToBlob,
   captureWindow as captureNativeWindow,
   ensureCaptureHotkey,
   getSettings,
   isTauriRuntime,
   listCaptureWindows,
-  setCaptureHotkey,
+  setCaptureSettings,
+  showPinnedCapture,
   startAreaCapture,
   type NativeSettings,
   type NativeCaptureFrame,
@@ -27,6 +30,7 @@ import HistoryRail from "./components/HistoryRail";
 import QuickAccess, { type OcrStatus } from "./components/QuickAccess";
 import SettingsPopover from "./components/SettingsPopover";
 import WindowPicker from "./components/WindowPicker";
+import PinnedCapture from "./components/PinnedCapture";
 import "./App.css";
 
 type OcrState = { status: OcrStatus; text?: string; progress?: number; message?: string };
@@ -154,7 +158,8 @@ function EditorApp() {
     if (!isTauriRuntime()) return;
 
     let disposed = false;
-    let unlisten: UnlistenFn | undefined;
+    let unlistenHotkey: UnlistenFn | undefined;
+    let unlistenTray: UnlistenFn | undefined;
     void getSettings()
       .then((value) => {
         if (!disposed) setSettings(value);
@@ -169,12 +174,19 @@ function EditorApp() {
       if (!disposed) startCapture();
     }).then((stop) => {
       if (disposed) stop();
-      else unlisten = stop;
+      else unlistenHotkey = stop;
+    });
+    void listen("tray-new-capture", () => {
+      if (!disposed) startCapture();
+    }).then((stop) => {
+      if (disposed) stop();
+      else unlistenTray = stop;
     });
 
     return () => {
       disposed = true;
-      unlisten?.();
+      unlistenHotkey?.();
+      unlistenTray?.();
     };
   }, [startCapture]);
 
@@ -204,14 +216,27 @@ function EditorApp() {
     }
   }, [newCapture]);
 
-  const saveSettings = useCallback(async (captureHotkey: string) => {
+  const captureFullScreen = useCallback(async () => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const frame = await captureFullscreen();
+      await newCapture(await captureFrameToBlob(frame));
+    } catch {
+      setNotice("Could not capture the full screen.");
+    } finally {
+      setBusy(false);
+    }
+  }, [newCapture]);
+
+  const saveSettings = useCallback(async (captureHotkey: string, includeCursor: boolean, launchAtStartup: boolean) => {
     setSettingsSaving(true);
     setSettingsError(null);
     try {
-      const value = await setCaptureHotkey(captureHotkey);
+      const value = await setCaptureSettings(captureHotkey, includeCursor, launchAtStartup);
       setSettings(value);
       setSettingsOpen(false);
-      setNotice(`Shortcut saved: ${value.captureHotkey}`);
+      setNotice("Capture settings saved.");
     } catch (error) {
       setSettingsError(String(error));
     } finally {
@@ -308,6 +333,19 @@ function EditorApp() {
     }
   }, [rec]);
 
+  const pinCapture = useCallback(async () => {
+    if (!rec || !isTauriRuntime()) return;
+    setNotice(null);
+    try {
+      const exporter = exporterRef.current;
+      const { blob, width, height } = exporter ? await exporter() : await flattenToBlob(rec);
+      await showPinnedCapture(await blobToBase64(blob), width, height, rec.title);
+      setNotice("Capture pinned above other windows.");
+    } catch {
+      setNotice("Could not pin this capture.");
+    }
+  }, [rec]);
+
   const runOcr = useCallback(async () => {
     if (!rec) return;
     setOcr({ status: "running", progress: 0 });
@@ -391,9 +429,14 @@ function EditorApp() {
             New capture
           </button>
           {isTauriRuntime() && (
-            <button className="btn" onClick={openWindowPicker}>
-              Window
-            </button>
+            <>
+              <button className="btn" onClick={openWindowPicker}>
+                Window
+              </button>
+              <button className="btn" onClick={() => void captureFullScreen()} disabled={busy}>
+                Full screen
+              </button>
+            </>
           )}
           <button className="btn" onClick={() => setShowHistory((s) => !s)}>
             History {history.length > 0 ? `(${history.length})` : ""}
@@ -441,6 +484,7 @@ function EditorApp() {
           onCopyImage={copyImage}
           onCopyFile={copyFile}
           onSavePng={savePng}
+          onPin={isTauriRuntime() ? () => void pinCapture() : undefined}
           onOcr={runOcr}
           onNew={() => {
             closeCapture();
@@ -472,6 +516,8 @@ function EditorApp() {
       {settingsOpen && settings && (
         <SettingsPopover
           hotkey={settings.captureHotkey}
+          includeCursor={settings.includeCursor}
+          launchAtStartup={settings.launchAtStartup}
           saving={settingsSaving}
           error={settingsError}
           onSave={saveSettings}
@@ -505,8 +551,14 @@ function EditorApp() {
 }
 
 function App() {
-  const isOverlay = new URLSearchParams(window.location.search).get("overlay") === "capture";
-  return isOverlay ? <CaptureOverlay /> : <EditorApp />;
+  const params = new URLSearchParams(window.location.search);
+  const overlay = params.get("overlay");
+  if (overlay === "capture") return <CaptureOverlay />;
+  if (overlay === "pin") {
+    const id = params.get("id");
+    return id ? <PinnedCapture id={id} /> : <div className="pin-state pin-error">Pinned capture id is missing.</div>;
+  }
+  return <EditorApp />;
 }
 
 export default App;

@@ -28,8 +28,8 @@ export default function Dropzone({ onFile, onPick, onReadClipboard, busy, notice
       <div className="dz-icon">▣</div>
       <h2>{busy ? "Loading…" : "New capture"}</h2>
       <p>
-        Paste a screenshot with <kbd>Ctrl</kbd>+<kbd>V</kbd>, drag an image in, or pick a file. Real screen capture
-        arrives with the native shell.
+        Paste a screenshot with <kbd>Ctrl</kbd>+<kbd>V</kbd>, drag an image in, or pick a file. In the Windows app,
+        use New capture, Window, or Full screen above.
       </p>
       <div className="dz-actions">
         <button className="btn primary" onClick={onPick} disabled={busy}>
