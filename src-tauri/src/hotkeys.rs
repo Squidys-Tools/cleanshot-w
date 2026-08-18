@@ -281,9 +281,8 @@ pub fn set_capture_settings(
             launch_at_startup,
         },
     )
-    .map_err(|error| {
+    .inspect_err(|_error| {
         let _ = write_settings(&previous);
-        error
     })
 }
 
