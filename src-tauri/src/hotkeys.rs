@@ -108,8 +108,8 @@ fn apply_settings(app: &AppHandle, next: AppSettings) -> Result<AppSettings, Str
             let _ = register_hotkey(app, &previous.capture_hotkey);
             return Err(error);
         }
-    } else if let Err(error) = register_hotkey(app, &next.capture_hotkey) {
-        return Err(error);
+    } else {
+        register_hotkey(app, &next.capture_hotkey)?;
     }
 
     if let Err(error) = set_autostart(next.launch_at_startup) {
@@ -281,9 +281,9 @@ pub fn set_capture_settings(
             launch_at_startup,
         },
     )
-    .or_else(|error| {
+    .map_err(|error| {
         let _ = write_settings(&previous);
-        Err(error)
+        error
     })
 }
 

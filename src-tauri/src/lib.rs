@@ -75,7 +75,7 @@ pub fn run() {
                         ..
                     } = event
                     {
-                        show_main(&tray.app_handle());
+                        show_main(tray.app_handle());
                     }
                 })
                 .build(app)?;
@@ -99,7 +99,7 @@ pub fn run() {
                 let label = window.label();
                 if label == "capture-overlay" {
                     let state = app.state::<capture::CaptureState>();
-                    capture::overlay_destroyed(&app, state);
+                    capture::overlay_destroyed(app, state);
                 } else if let Some(id) = label.strip_prefix("pin-") {
                     let state = app.state::<pin::PinState>();
                     let _ = pin::remove_pinned_capture(&state, id);
