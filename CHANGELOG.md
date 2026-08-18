@@ -21,18 +21,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Playwright drag tests.
 - M1 is complete. Tool defaults now persist in validated localStorage settings,
   and clipboard, export, and OCR failures report an actionable message in the editor.
-- M2 items 1, 3, 4, 5, 6, and 8 are now implemented in the native shell:
-  selection loupe, window capture, native clipboard output, a disk-backed
-  library, global capture hotkeys, and single-instance activation.
+- M2 native shell implementation is complete: selection loupe with physical
+  crop coordinates, area/window/fullscreen capture, native clipboard output,
+  disk-backed library, global hotkeys, tray actions, optional autostart and
+  cursor inclusion, single-instance activation, and always-on-top pin windows.
+- The frontend project check now supports `bun tsc -b --noEmit` directly, and
+  native coordinate conversion has dedicated browser unit coverage.
 
 ### Added
 
 - **M2 native capture spike:** Windows now captures the full virtual desktop with
   Win32 GDI, opens a transparent always-on-top selection overlay, and sends the
   validated crop back to the editor as a PNG.
-- **M2 follow-ups are intentionally staged:** mixed-DPI validation (item 2) is
-  deferred to testing; tray design/package selection (item 7), autostart (item
-  9), and cursor inclusion (item 10) are deferred until the rest of M2 is done.
+- **M2 validation coverage:** Rust tests cover selection bounds, crop pixel and
+  origin preservation, PNG encoding, settings migration, startup command
+  quoting, and pin sizing; browser tests cover CSS-to-physical-pixel mapping.
+  The remaining release gate is a Windows hardware matrix covering mixed DPI,
+  clipboard alpha, packaged OCR assets, and tray/autostart/pin lifecycle.
 - **M0/M1 web editor** (browser-only prototype):
   - Capture intake via paste, drag-drop, and file picker
   - Annotation tools: select/move, rect, ellipse, arrow, line, text, counter,
@@ -49,10 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- **M2** — Native Windows host (Tauri, Rust + WebView2):
-  - Global hotkeys, transparent selection overlay with magnifier
-  - Area / window / fullscreen capture; copy image (alpha-safe) and copy file
-  - Disk library under `%LOCALAPPDATA%\CleanShotW`, tray icon, pin windows
 - **M3** — Scrolling capture (beta), native OCR, library search, first public
   portable ZIP release with SHA-256 checksums.
 
