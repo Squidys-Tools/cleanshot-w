@@ -46,6 +46,139 @@ kbd {
   flex-direction: column;
 }
 
+.capture-overlay-screen {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+  cursor: crosshair;
+  background-color: #000;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  user-select: none;
+}
+
+.capture-overlay-tint {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+  pointer-events: none;
+}
+
+.capture-overlay-selection {
+  position: absolute;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 5px 22px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+
+.capture-overlay-selection span {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font: 12px/1 ui-monospace, Consolas, monospace;
+  white-space: nowrap;
+}
+
+.capture-overlay-loupe {
+  position: absolute;
+  z-index: 4;
+  width: 156px;
+  height: 156px;
+  transform: translate(16px, 16px);
+  border: 3px solid #fff;
+  border-radius: 50%;
+  overflow: hidden;
+  pointer-events: none;
+  background: #111;
+  box-shadow: 0 5px 22px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.65);
+}
+
+.capture-overlay-loupe-image {
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+  background-size: 300% 300%;
+}
+
+.capture-overlay-loupe-crosshair::before,
+.capture-overlay-loupe-crosshair::after {
+  content: "";
+  position: absolute;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.capture-overlay-loupe-crosshair::before {
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.capture-overlay-loupe-crosshair::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+}
+
+.capture-overlay-loupe-label {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font: 10px/1 ui-monospace, Consolas, monospace;
+  white-space: nowrap;
+}
+
+.capture-overlay-help,
+.capture-overlay-loading,
+.capture-overlay-error {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 9px;
+  background: rgba(15, 17, 21, 0.9);
+  color: #fff;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
+}
+
+.capture-overlay-help span {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 12px;
+}
+
+.capture-overlay-loading,
+.capture-overlay-error {
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+}
+
+.capture-overlay-error {
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 360px;
+}
+
+.capture-overlay-error span {
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.4;
+}
+
 /* Top bar */
 .topbar {
   height: 52px;
@@ -661,6 +794,180 @@ kbd {
   margin: 0;
   font-size: 12px;
   color: var(--muted);
+}
+
+.settings-popover {
+  position: fixed;
+  z-index: 80;
+  top: 62px;
+  right: 16px;
+  width: 330px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+
+.settings-head,
+.window-picker-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.settings-head h2,
+.window-picker-head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 18px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settings-field input {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: 13px ui-monospace, Consolas, monospace;
+}
+
+.settings-field input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.settings-field small,
+.window-picker-hint {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.settings-error,
+.window-picker-message.error {
+  color: #fbbf24;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.window-picker-backdrop {
+  position: fixed;
+  z-index: 70;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.window-picker {
+  width: min(560px, 100%);
+  max-height: min(680px, 100%);
+  overflow: auto;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+
+.window-picker-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.window-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.window-picker-item:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.window-picker-preview {
+  width: 42px;
+  height: 30px;
+  flex: 0 0 42px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: linear-gradient(135deg, #334155 0 24%, #1e293b 24% 100%);
+}
+
+.window-picker-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.window-picker-copy strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.window-picker-copy small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.window-picker-arrow {
+  color: var(--accent);
+  font-size: 18px;
+}
+
+.window-picker-message {
+  margin: 22px 0 8px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.window-picker-hint {
+  margin: 16px 0 0;
 }
 
 /* tldraw editor overlay */
