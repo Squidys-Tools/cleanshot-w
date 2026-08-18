@@ -15,7 +15,7 @@ concurrency:
 jobs:
   rust:
     name: Format, lint, and test Rust
-    runs-on: windows-latest
+    runs-on: blacksmith-4vcpu-windows-2025
 
     steps:
       - name: Check out repository
