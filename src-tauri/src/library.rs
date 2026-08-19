@@ -65,6 +65,22 @@ fn validate_size(size: &ImageSize) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_title(title: &str) -> Result<(), String> {
+    if title.trim().is_empty() {
+        return Err("The capture title cannot be empty.".to_string());
+    }
+    if title.len() > 500 {
+        return Err("The capture title is too long.".to_string());
+    }
+    Ok(())
+}
+
+fn validate_index_entry(entry: &IndexEntry) -> Result<(), String> {
+    validate_id(&entry.id)?;
+    validate_size(&entry.image)?;
+    validate_title(&entry.title)
+}
+
 fn decode_payload(name: &str, value: &str) -> Result<Vec<u8>, String> {
     let bytes = BASE64
         .decode(value)
@@ -77,12 +93,16 @@ fn decode_payload(name: &str, value: &str) -> Result<Vec<u8>, String> {
 
 fn read_index(root: &Path) -> Result<Vec<IndexEntry>, String> {
     let path = root.join(INDEX_FILE);
-    match fs::read(path) {
+    let entries = match fs::read(path) {
         Ok(bytes) => serde_json::from_slice(&bytes)
-            .map_err(|error| format!("Could not read the library index: {error}")),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(error) => Err(format!("Could not read the library index: {error}")),
+            .map_err(|error| format!("Could not read the library index: {error}"))?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(format!("Could not read the library index: {error}")),
+    };
+    for entry in &entries {
+        validate_index_entry(entry)?;
     }
+    Ok(entries)
 }
 
 fn write_json<T: Serialize + ?Sized>(path: &Path, value: &T) -> Result<(), String> {
@@ -150,9 +170,7 @@ fn load_record(root: &Path, entry: &IndexEntry) -> Result<CaptureRecordWire, Str
 pub fn library_save_capture(record: CaptureRecordWire) -> Result<(), String> {
     validate_id(&record.id)?;
     validate_size(&record.image)?;
-    if record.title.len() > 500 {
-        return Err("The capture title is too long.".to_string());
-    }
+    validate_title(&record.title)?;
     let image = decode_payload("capture image", &record.image_base64)?;
     let thumb = decode_payload("capture thumbnail", &record.thumb_base64)?;
     let root = library_root()?;
@@ -219,6 +237,21 @@ pub fn library_update_annotations(id: String, annotations: Option<Value>) -> Res
 }
 
 #[tauri::command]
+pub fn library_update_title(id: String, title: String) -> Result<bool, String> {
+    validate_id(&id)?;
+    validate_title(&title)?;
+    let root = library_root()?;
+    let mut entries = read_index(&root)?;
+    let Some(entry) = entries.iter_mut().find(|entry| entry.id == id) else {
+        return Ok(false);
+    };
+    entry.title = title.trim().to_string();
+    entry.updated_at = now_millis();
+    write_index(&root, &entries)?;
+    Ok(true)
+}
+
+#[tauri::command]
 pub fn library_delete_capture(id: String) -> Result<(), String> {
     validate_id(&id)?;
     let root = library_root()?;
@@ -241,4 +274,76 @@ pub fn now_millis() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        decode_payload, validate_id, validate_index_entry, validate_size, validate_title, ImageSize,
+        IndexEntry,
+    };
+
+    fn valid_entry() -> IndexEntry {
+        IndexEntry {
+            id: "capture-1".to_string(),
+            title: "A capture".to_string(),
+            created_at: 1,
+            updated_at: 2,
+            image: ImageSize {
+                width: 320,
+                height: 180,
+            },
+        }
+    }
+
+    #[test]
+    fn library_ids_are_safe_for_directory_names() {
+        assert!(validate_id("capture-1").is_ok());
+        assert!(validate_id("../capture").is_err());
+        assert!(validate_id("").is_err());
+    }
+
+    #[test]
+    fn library_sizes_accept_edges_and_reject_invalid_dimensions() {
+        assert!(validate_size(&ImageSize {
+            width: 100_000,
+            height: 100_000,
+        })
+        .is_ok());
+        assert!(validate_size(&ImageSize {
+            width: 0,
+            height: 100,
+        })
+        .is_err());
+        assert!(validate_size(&ImageSize {
+            width: 100_001,
+            height: 100,
+        })
+        .is_err());
+    }
+
+    #[test]
+    fn malformed_index_entries_are_rejected_before_disk_access() {
+        let mut entry = valid_entry();
+        entry.id = "../../outside".to_string();
+        assert!(validate_index_entry(&entry).is_err());
+
+        let mut oversized = valid_entry();
+        oversized.title = "x".repeat(501);
+        assert!(validate_index_entry(&oversized).is_err());
+    }
+
+    #[test]
+    fn base64_payloads_must_decode_to_non_empty_bytes() {
+        assert_eq!(decode_payload("image", "aGVsbG8=").unwrap(), b"hello");
+        assert!(decode_payload("image", "not base64").is_err());
+        assert!(decode_payload("image", "").is_err());
+    }
+
+    #[test]
+    fn titles_are_trimmed_by_the_command_and_cannot_be_blank() {
+        assert!(validate_title(" Capture ").is_ok());
+        assert!(validate_title("   ").is_err());
+        assert!(validate_title(&"x".repeat(501)).is_err());
+    }
 }

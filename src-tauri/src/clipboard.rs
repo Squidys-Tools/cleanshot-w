@@ -29,7 +29,10 @@ fn decode_png(bytes: &[u8]) -> Result<(usize, usize, Vec<u8>), String> {
     let pixel_count = width
         .checked_mul(height)
         .ok_or_else(|| "The image is too large.".to_string())?;
-    let mut rgba = Vec::with_capacity(pixel_count * 4);
+    let rgba_len = pixel_count
+        .checked_mul(4)
+        .ok_or_else(|| "The image is too large.".to_string())?;
+    let mut rgba = Vec::with_capacity(rgba_len);
 
     match info.color_type {
         png::ColorType::Rgba => rgba.extend_from_slice(source),
@@ -121,6 +124,7 @@ pub fn read_image_from_clipboard() -> Result<Option<String>, String> {
 #[tauri::command]
 pub fn copy_file_to_clipboard(png_base64: String) -> Result<(), String> {
     let bytes = decode_base64(&png_base64)?;
+    decode_png(&bytes)?;
     let directory = std::env::temp_dir().join("CleanShotW");
     fs::create_dir_all(&directory)
         .map_err(|error| format!("Could not create the clipboard temp folder: {error}"))?;
@@ -151,4 +155,25 @@ fn clipboard_temp_path(directory: &Path) -> PathBuf {
         .map(|duration| duration.as_nanos())
         .unwrap_or_default();
     directory.join(format!("capture-{}-{timestamp}.png", std::process::id()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{decode_base64, decode_png, encode_png};
+
+    #[test]
+    fn rgba_png_round_trip_preserves_transparent_pixels() {
+        let pixels = [10, 20, 30, 255, 200, 150, 100, 42];
+        let png = encode_png(2, 1, &pixels).unwrap();
+        let (width, height, decoded) = decode_png(&png).unwrap();
+        assert_eq!((width, height), (2, 1));
+        assert_eq!(decoded, pixels);
+    }
+
+    #[test]
+    fn clipboard_payload_validation_rejects_bad_or_incomplete_data() {
+        assert!(decode_base64("not base64").is_err());
+        assert!(encode_png(1, 1, &[0, 0, 0]).is_err());
+        assert!(decode_png(b"not a png").is_err());
+    }
 }

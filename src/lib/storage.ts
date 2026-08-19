@@ -1,4 +1,5 @@
 import type { CaptureRecord, TldrawState } from "../types";
+import { normalizeCaptureTitle } from "./history";
 
 const DB_NAME = "cleanshotw";
 const STORE = "captures";
@@ -69,6 +70,30 @@ export async function updateCaptureAnnotations(id: string, annotations: TldrawSt
         return;
       }
       const put = store.put({ ...rec, annotations, updatedAt: Date.now() });
+      put.onsuccess = () => resolve(true);
+      put.onerror = () => reject(put.error);
+    };
+    get.onerror = () => reject(get.error);
+  });
+}
+
+/** Update only the title while preserving the image, thumbnail, and annotations. */
+export async function updateCaptureTitle(id: string, title: string): Promise<boolean> {
+  const nextTitle = normalizeCaptureTitle(title);
+  if (!nextTitle || nextTitle.length > 500) return false;
+
+  const db = await open();
+  return new Promise<boolean>((resolve, reject) => {
+    const t = db.transaction(STORE, "readwrite");
+    const store = t.objectStore(STORE);
+    const get = store.get(id) as IDBRequest<CaptureRecord | undefined>;
+    get.onsuccess = () => {
+      const rec = get.result;
+      if (!rec) {
+        resolve(false);
+        return;
+      }
+      const put = store.put({ ...rec, title: nextTitle, updatedAt: Date.now() });
       put.onsuccess = () => resolve(true);
       put.onerror = () => reject(put.error);
     };
