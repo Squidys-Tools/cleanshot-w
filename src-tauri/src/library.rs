@@ -107,7 +107,7 @@ fn decode_payload(name: &str, value: &str) -> Result<Vec<u8>, String> {
 
 fn read_index(root: &Path) -> Result<Vec<IndexEntry>, String> {
     let path = root.join(INDEX_FILE);
-    let entries = match fs::read(path) {
+    let mut entries = match fs::read(path) {
         Ok(bytes) => serde_json::from_slice(&bytes)
             .map_err(|error| format!("Could not read the library index: {error}"))?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
