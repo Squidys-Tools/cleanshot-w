@@ -348,6 +348,68 @@ kbd {
   padding: 1px 8px;
 }
 
+.history-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 10px 10px 4px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--muted);
+}
+
+.history-search:focus-within {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+}
+
+.history-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: 12px "Segoe UI", system-ui, sans-serif;
+}
+
+.history-search input::placeholder {
+  color: var(--muted);
+}
+
+.history-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.history-search-clear {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.history-search-clear:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.history-error {
+  margin: 5px 12px 0;
+  color: #fbbf24;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .history-list {
   flex: 1;
   overflow-y: auto;
@@ -401,11 +463,55 @@ kbd {
   gap: 2px;
 }
 
-.history-meta strong {
+.history-meta strong,
+.history-title {
   font-size: 12px;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.history-title {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: text;
+  font-family: inherit;
+  text-align: left;
+}
+
+.history-title:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.history-rename {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.history-title-input {
+  width: 100%;
+  min-width: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  outline: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 600 12px "Segoe UI", system-ui, sans-serif;
+}
+
+.history-rename small {
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
 }
 
 .history-meta span {

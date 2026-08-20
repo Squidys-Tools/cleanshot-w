@@ -1,114 +1,149 @@
 # CleanShot W
 
-A screenshot tool for Windows. Capture your screen, annotate it, copy it to your clipboard. No cloud, no accounts, no telemetry. Everything stays on your machine.
+CleanShot W is a local-first Windows screenshot and annotation app. Capture an area, window, or full screen, mark it up, copy or export the result, and find it again later. No account, cloud sync, telemetry, or admin rights are required.
 
-Think of it as a Windows equivalent to macOS's CleanShot X.
+## Project status
 
-## Getting it
+The M2 native shell is implemented and repository hardening is complete. The remaining M2 gate is manual Windows validation on representative hardware, especially a mixed-DPI two-monitor setup. There is not a public release yet.
 
-Download the latest release and run the installer. No admin rights needed. Works on Windows 10 and 11.
+- [Roadmap](ROADMAP.md) — current milestones, decisions, and next work
+- [Changelog](CHANGELOG.md) — completed and release-visible changes
+- [Engineering notes](docs/ENGINEERING.md) — architecture, commands, and packaging
+- [Windows M2 checklist](docs/WINDOWS-M2-RELEASE-CHECKLIST.md) — manual release acceptance
 
-- **Installer** (`CleanShotW-0.1.0-win64-setup.exe`) installs per-user only. No UAC prompt.
-- **Portable ZIP** (`CleanShotW-0.1.0-win64.zip`) runs without installation.
+## Features
 
-## How to use it
+- Area, window, and full-screen capture in the Windows app
+- Paste, drag-and-drop, and file-based image intake in the browser editor
+- Annotation tools for drawing, shapes, arrows, text, counters, highlights, blur,
+  pixelation, and redaction
+- Zoom, pan, undo, redo, and editable annotations
+- Copy image, copy file, save PNG, and copy recognized text
+- Local OCR with bundled Tesseract assets
+- Capture history with thumbnails, markup counts, timestamps, editable titles,
+  title search, and persistence between sessions
+- Always-on-top pin windows, system-tray controls, configurable capture hotkey,
+  cursor inclusion, and optional launch at startup in the Windows app
 
-**Take a screenshot.** Press `Ctrl+Shift+4` (you can change this in settings). Your cursor turns into a crosshair. Click and drag to select an area. The screenshot opens in the editor immediately.
+## Getting started
 
-**Capture a window.** Instead of dragging, right-click and pick a window from the list. The tool grabs that window precisely, even on mixed-DPI setups.
+There is no public installer yet. To run the browser editor from source:
 
-**Capture your full screen.** Press the shortcut and pick "Full screen" instead of selecting an area.
+```sh
+bun install --frozen-lockfile
+bun run dev
+```
 
-**Paste anything.** If you already have an image on your clipboard, just paste it into the editor with `Ctrl+V`. Drag-and-drop and file picking work too.
+Open the URL printed by Vite. The browser editor accepts an image by pasting it
+with `Ctrl+V`, dropping it onto the editor, or choosing a file.
 
-## The annotation editor
+To run the native Windows shell, use a Windows development environment with the
+Rust GNU toolchain installed:
 
-Once you have a screenshot, the editor lets you mark it up before sharing. Here's what you can do:
+```sh
+bun run tauri dev
+```
 
-**Draw on it.** Freehand drawing, arrows, lines, rectangles, ellipses, and 19 other geometric shapes. Pick a color from the 8-color palette and a stroke width (S/M/L/XL).
+See the [engineering notes](docs/ENGINEERING.md) for the full toolchain and
+verification commands.
 
-**Add text.** Four font families: sans-serif, serif, monospace, and hand-drawn. Choose your size, color, and alignment.
+## Capturing
 
-**Blur or pixelate.** Draw over sensitive information. The blur tool smooths it out; pixelate turns it into blocks.
+- **Area:** choose **New capture** or press `Ctrl+Shift+4`, then drag over the
+  region you need.
+- **Window:** choose **Window**, select a visible titled window, and capture it.
+- **Full screen:** choose **Full screen** to capture the complete virtual desktop.
+- **Clipboard or file:** paste, drop, or open an image in the browser editor.
 
-**Redact.** Solid black box over whatever you want hidden. No recovery possible from the exported image.
+The native app hides the editor while capturing and restores it after the
+capture completes or is cancelled.
 
-**Number your steps.** The counter tool stamps sequential numbers onto the image. Useful for tutorials or bug reports.
+## Annotating
 
-**Add arrows and callouts.** Nine arrowhead styles including dots, diamonds, and triangles. Arrows can be straight or curved.
+Use the toolbar to select, draw, add shapes and arrows, place text or numbered
+steps, highlight content, blur or pixelate sensitive areas, and redact content
+with an opaque block. Hold `Space` to pan, use the mouse wheel to zoom, and use
+`0` to reset the zoom.
 
-**Highlight.** A semi-transparent brush that marks areas without covering the content underneath.
-
-**Undo everything.** `Ctrl+Z` goes back. `Ctrl+Shift+Z` goes forward. There's no limit.
-
-### Keyboard shortcuts
+Common keyboard shortcuts:
 
 | Key | Tool |
-|-----|------|
-| V | Select/move |
-| R | Rectangle |
-| O | Ellipse |
-| A | Arrow |
-| L | Line |
-| T | Text |
-| C | Counter |
-| M | Note |
-| G | Highlight |
-| D | Draw (freehand) |
-| Q | Blur |
-| K | Pixelate |
-| E | Eraser |
-| F | Frame |
-| H | Laser |
+|---|---|
+| `V` | Select/move |
+| `R` | Rectangle |
+| `O` | Ellipse |
+| `A` | Arrow |
+| `L` | Line |
+| `T` | Text |
+| `C` | Counter |
+| `M` | Note |
+| `G` | Highlight |
+| `D` | Freehand draw |
+| `Q` | Blur |
+| `K` | Pixelate |
+| `E` | Eraser |
+| `F` | Frame |
+| `H` | Laser |
 
-Hold `Space` to pan. Scroll wheel zooms. `0` resets zoom.
+`Ctrl+Z` undoes an edit and `Ctrl+Shift+Z` redoes it.
 
-## Export and share
+## Export and OCR
 
-When you're done annotating:
+The Quick Access bar can flatten the annotated image and:
 
-- **Copy to clipboard.** The flattened image goes straight to your clipboard, ready to paste into any app. Uses alpha-safe formatting so transparency works correctly.
-- **Copy as file.** Copies a `.png` file you can paste into File Explorer or drag into an email.
-- **Save as PNG.** Downloads the image to your downloads folder.
+- Copy it as an image with transparency preserved
+- Copy it as a PNG file in the native app
+- Save it as a PNG from the browser editor
+- Run local OCR and copy the recognized text
 
-## Pin to screen
-
-The pin button floats the screenshot as an always-on-top window. Useful when you need to reference something while working in another app. Drag it around, close it when you're done.
+OCR uses bundled local assets and does not require network access. It works best
+with clear, printed English text.
 
 ## Capture history
 
-Every screenshot you take shows up in a sidebar on the right. Thumbnails, markup counts, and timestamps. Click any capture to reopen it in the editor. Delete ones you don't need. The history persists between sessions.
+History appears in the right sidebar. Select a capture to reopen it. Click its
+title to rename it; press Enter or leave the field to save, or press Escape to
+cancel. Search filters titles case-insensitively. History, annotations, images,
+and titles persist locally in IndexedDB in the browser and under
+`%LOCALAPPDATA%\CleanShotW` in the native app.
 
-## OCR (text recognition)
+## Windows features
 
-Click the OCR button and the tool reads any text visible in the screenshot. Words come back with bounding boxes so you know exactly what was recognized. Copy the extracted text to your clipboard.
+The native shell adds a global capture shortcut, tray actions, single-instance
+activation, optional per-user startup, cursor inclusion, window capture, and
+always-on-top pins. The app is designed to run as a standard user. WebView2 is
+provided by Windows 10 and 11.
 
-Works best with clear, printed text in English. Handwriting and unusual fonts may not work well.
+These behaviors need real Windows validation before release. Use the [M2
+checklist](docs/WINDOWS-M2-RELEASE-CHECKLIST.md) rather than treating browser
+checks as a substitute for DPI, clipboard, tray, or packaged-app testing.
 
-## Settings
+## Development checks
 
-Open settings from the system tray icon or the editor:
+The project uses Bun, React, Vite, TypeScript, tldraw, Tesseract.js, and Tauri.
+Common checks are:
 
-- **Capture hotkey.** Change from the default `Ctrl+Shift+4` to whatever you prefer.
-- **Include cursor.** Toggle whether the mouse cursor appears in captures.
-- **Launch at startup.** Start CleanShot W when you log in. Runs minimized to tray.
-- **Close to tray.** Closing the window hides it to the system tray instead of quitting.
+```sh
+bun test
+bun tsc -b --noEmit
+bun run build
+```
 
-Settings are stored in `%LOCALAPPDATA%\CleanShotW\settings.json`.
+The browser smoke test requires a running Vite server and Playwright Chromium:
 
-## System tray
+```sh
+bun run dev -- --host 127.0.0.1
+bun run smoke
+```
 
-The tray icon gives you quick access:
+Native verification is run on the Windows CI job:
 
-- **New capture.** Same as pressing the hotkey.
-- **Open library.** Brings the editor to the foreground.
-- **Quit.** Exits the app.
-
-The app runs as a single instance. If you try to open a second copy, it brings the existing window forward instead.
-
-## How it runs
-
-CleanShot W does not require admin rights for anything. Installation, autostart (via `HKCU` registry), hotkeys, and all capture features work under a standard user account. It uses WebView2, which ships built into Windows 10 and 11.
+```sh
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml
+cargo check --manifest-path src-tauri/Cargo.toml
+```
 
 ## Development
 

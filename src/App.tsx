@@ -5,6 +5,7 @@ import { uid } from "./types";
 import { host, setHost } from "./lib/bridge";
 import { nativeHost, readNativeClipboardImage } from "./lib/nativeHost";
 import { loadImage, makeThumb } from "./lib/storage";
+import { normalizeCaptureTitle } from "./lib/history";
 import { downloadBlob, flattenToBlob, sanitizeFileName } from "./lib/export";
 import {
   blobToBase64,
@@ -15,6 +16,7 @@ import {
   getSettings,
   isTauriRuntime,
   listCaptureWindows,
+  nativeErrorMessage,
   setCaptureSettings,
   showPinnedCapture,
   startAreaCapture,
@@ -78,7 +80,7 @@ function EditorApp() {
   }, []);
 
   useEffect(() => {
-    refreshHistory().catch(() => setNotice("Could not open the local library."));
+    refreshHistory().catch((error: unknown) => setNotice(nativeErrorMessage(error, "Could not open the local library.")));
   }, [refreshHistory]);
 
   const openCapture = useCallback((r: CaptureRecord) => {
@@ -112,8 +114,8 @@ function EditorApp() {
         await host.saveCapture(r);
         openCapture(r);
         await refreshHistory();
-      } catch (e) {
-        setNotice(`Could not load that image: ${String(e)}`);
+      } catch (e: unknown) {
+        setNotice(`Could not load that image: ${nativeErrorMessage(e, "The image could not be loaded.")}`);
       } finally {
         setBusy(false);
       }
@@ -130,7 +132,7 @@ function EditorApp() {
       if (disposed) return;
       void captureFrameToBlob(event.payload)
         .then((blob) => newCapture(blob))
-        .catch(() => setNotice("Could not open the captured area in the editor."));
+        .catch((error: unknown) => setNotice(nativeErrorMessage(error, "Could not open the captured area in the editor.")));
     }).then((stop) => {
       if (disposed) {
         stop();
@@ -151,7 +153,7 @@ function EditorApp() {
       return;
     }
     setNotice(null);
-    void startAreaCapture().catch(() => setNotice("Could not start screen capture."));
+    void startAreaCapture().catch((error: unknown) => setNotice(nativeErrorMessage(error, "Could not start screen capture.")));
   }, []);
 
   useEffect(() => {
@@ -164,11 +166,11 @@ function EditorApp() {
       .then((value) => {
         if (!disposed) setSettings(value);
       })
-      .catch(() => {
-        if (!disposed) setNotice("Could not load capture settings.");
+      .catch((error: unknown) => {
+        if (!disposed) setNotice(nativeErrorMessage(error, "Could not load capture settings."));
       });
-    void ensureCaptureHotkey().catch(() => {
-      if (!disposed) setNotice("Could not register the global capture shortcut.");
+    void ensureCaptureHotkey().catch((error: unknown) => {
+      if (!disposed) setNotice(nativeErrorMessage(error, "Could not register the global capture shortcut."));
     });
     void listen<string>("global-hotkey-pressed", () => {
       if (!disposed) startCapture();
@@ -197,7 +199,7 @@ function EditorApp() {
     setWindowError(null);
     void listCaptureWindows()
       .then((items) => setCaptureWindows(items))
-      .catch(() => setWindowError("Could not list the open windows."))
+      .catch((error: unknown) => setWindowError(nativeErrorMessage(error, "Could not list the open windows.")))
       .finally(() => setWindowBusy(false));
   }, []);
 
@@ -209,8 +211,8 @@ function EditorApp() {
       const blob = await captureFrameToBlob(frame);
       await newCapture(blob);
       setWindowPickerOpen(false);
-    } catch {
-      setWindowError("Could not capture that window. It may have closed or become unavailable.");
+    } catch (error: unknown) {
+      setWindowError(nativeErrorMessage(error, "Could not capture that window. It may have closed or become unavailable."));
     } finally {
       setWindowBusy(false);
     }
@@ -222,8 +224,8 @@ function EditorApp() {
     try {
       const frame = await captureFullscreen();
       await newCapture(await captureFrameToBlob(frame));
-    } catch {
-      setNotice("Could not capture the full screen.");
+    } catch (error: unknown) {
+      setNotice(nativeErrorMessage(error, "Could not capture the full screen."));
     } finally {
       setBusy(false);
     }
@@ -237,8 +239,8 @@ function EditorApp() {
       setSettings(value);
       setSettingsOpen(false);
       setNotice("Capture settings saved.");
-    } catch (error) {
-      setSettingsError(String(error));
+    } catch (error: unknown) {
+      setSettingsError(nativeErrorMessage(error, "Could not save capture settings."));
     } finally {
       setSettingsSaving(false);
     }
@@ -264,7 +266,9 @@ function EditorApp() {
       if (prev) window.clearTimeout(prev.timer);
       const version = (prev?.version ?? 0) + 1;
       const timer = window.setTimeout(() => {
-        void persistAnnotations(recordId, annotations, version);
+        void persistAnnotations(recordId, annotations, version).catch((error: unknown) => {
+          setNotice(nativeErrorMessage(error, "Could not save the capture annotations."));
+        });
       }, 400);
       saveTimers.current.set(recordId, { version, timer });
     },
@@ -287,11 +291,40 @@ function EditorApp() {
         window.clearTimeout(s.timer);
         saveTimers.current.delete(id);
       }
-      await host.deleteCapture(id);
-      await refreshHistory();
-      if (recRef.current?.id === id) closeCapture();
+      try {
+        await host.deleteCapture(id);
+        await refreshHistory();
+        if (recRef.current?.id === id) closeCapture();
+      } catch (error: unknown) {
+        setNotice(nativeErrorMessage(error, "Could not delete that capture."));
+      }
     },
     [refreshHistory, closeCapture],
+  );
+
+  const renameCapture = useCallback(
+    async (id: string, title: string): Promise<boolean> => {
+      const nextTitle = normalizeCaptureTitle(title);
+      if (!nextTitle) {
+        setNotice("Capture titles cannot be empty.");
+        return false;
+      }
+      try {
+        const updated = await host.updateCaptureTitle(id, nextTitle);
+        if (!updated) {
+          setNotice("That capture is no longer in the local library.");
+          return false;
+        }
+        setRec((current) => (current && current.id === id ? { ...current, title: nextTitle, updatedAt: Date.now() } : current));
+        await refreshHistory();
+        setNotice(null);
+        return true;
+      } catch (error: unknown) {
+        setNotice(nativeErrorMessage(error, "Could not rename that capture."));
+        return false;
+      }
+    },
+    [refreshHistory],
   );
 
   const copyImage = useCallback(async () => {
@@ -341,8 +374,8 @@ function EditorApp() {
       const { blob, width, height } = exporter ? await exporter() : await flattenToBlob(rec);
       await showPinnedCapture(await blobToBase64(blob), width, height, rec.title);
       setNotice("Capture pinned above other windows.");
-    } catch {
-      setNotice("Could not pin this capture.");
+    } catch (error: unknown) {
+      setNotice(nativeErrorMessage(error, "Could not pin this capture."));
     }
   }, [rec]);
 
@@ -353,8 +386,8 @@ function EditorApp() {
       const res = await host.recognize(rec.imageBlob, (p) => setOcr({ status: "running", progress: p.progress }));
       setOcr({ status: "done", text: res.text });
       setNotice(null);
-    } catch (e) {
-      setOcr({ status: "error", message: String(e) });
+    } catch (e: unknown) {
+      setOcr({ status: "error", message: nativeErrorMessage(e, "OCR could not read this image.") });
       setNotice("OCR could not read this image. Try again or use a clearer capture.");
     }
   }, [rec]);
@@ -475,7 +508,13 @@ function EditorApp() {
           )}
         </main>
         {showHistory && (
-          <HistoryRail records={history} currentId={rec?.id ?? null} onOpen={openCapture} onDelete={deleteCapture} />
+          <HistoryRail
+            records={history}
+            currentId={rec?.id ?? null}
+            onOpen={openCapture}
+            onRename={renameCapture}
+            onDelete={deleteCapture}
+          />
         )}
       </div>
 

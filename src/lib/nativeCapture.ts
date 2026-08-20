@@ -64,6 +64,22 @@ export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+/**
+ * Tauri can reject an invoke with a string, an Error, or a serialized object.
+ * Normalize those shapes so native failures remain useful to the user instead
+ * of degrading to "[object Object]" in the UI.
+ */
+export function nativeErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error === "string" && error.trim()) return error;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === "object" && error !== null) {
+    const value = error as { message?: unknown; error?: unknown };
+    if (typeof value.message === "string" && value.message.trim()) return value.message;
+    if (typeof value.error === "string" && value.error.trim()) return value.error;
+  }
+  return fallback;
+}
+
 export function startAreaCapture(): Promise<void> {
   return invoke<void>("start_area_capture");
 }
