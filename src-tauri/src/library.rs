@@ -69,7 +69,7 @@ fn validate_title(title: &str) -> Result<(), String> {
     if title.trim().is_empty() {
         return Err("The capture title cannot be empty.".to_string());
     }
-    if title.len() > 500 {
+    if title.chars().count() > 500 {
         return Err("The capture title is too long.".to_string());
     }
     Ok(())
@@ -79,6 +79,20 @@ fn validate_index_entry(entry: &IndexEntry) -> Result<(), String> {
     validate_id(&entry.id)?;
     validate_size(&entry.image)?;
     validate_title(&entry.title)
+}
+
+/// Normalize records written by older versions before strict validation.
+///
+/// Older builds allowed whitespace-only titles. Keep those captures usable by
+/// assigning a stable fallback title instead of rejecting the whole index.
+fn normalize_index_entry(entry: &mut IndexEntry) -> Result<(), String> {
+    let title = entry.title.trim();
+    entry.title = if title.is_empty() {
+        format!("Capture {}", entry.id)
+    } else {
+        title.to_string()
+    };
+    validate_index_entry(entry)
 }
 
 fn decode_payload(name: &str, value: &str) -> Result<Vec<u8>, String> {
@@ -99,8 +113,8 @@ fn read_index(root: &Path) -> Result<Vec<IndexEntry>, String> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(error) => return Err(format!("Could not read the library index: {error}")),
     };
-    for entry in &entries {
-        validate_index_entry(entry)?;
+    for entry in &mut entries {
+        normalize_index_entry(entry)?;
     }
     Ok(entries)
 }
@@ -279,8 +293,8 @@ pub fn now_millis() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_payload, validate_id, validate_index_entry, validate_size, validate_title, ImageSize,
-        IndexEntry,
+        decode_payload, normalize_index_entry, validate_id, validate_index_entry, validate_size,
+        validate_title, ImageSize, IndexEntry,
     };
 
     fn valid_entry() -> IndexEntry {
@@ -344,6 +358,15 @@ mod tests {
     fn titles_are_trimmed_by_the_command_and_cannot_be_blank() {
         assert!(validate_title(" Capture ").is_ok());
         assert!(validate_title("   ").is_err());
-        assert!(validate_title(&"x".repeat(501)).is_err());
+        assert!(validate_title(&"界".repeat(500)).is_ok());
+        assert!(validate_title(&"界".repeat(501)).is_err());
+    }
+
+    #[test]
+    fn legacy_blank_titles_are_recovered_before_index_validation() {
+        let mut entry = valid_entry();
+        entry.title = " \t ".to_string();
+        normalize_index_entry(&mut entry).unwrap();
+        assert_eq!(entry.title, "Capture capture-1");
     }
 }
