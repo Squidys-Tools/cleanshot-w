@@ -176,13 +176,9 @@ function CaptureOverlay() {
           <span className="capture-overlay-loupe-label">{Math.round(pointer.x)} × {Math.round(pointer.y)}</span>
         </div>
       )}
-      <div className="capture-overlay-help" onPointerDown={(event) => event.stopPropagation()}>
-        <strong>Drag to capture</strong>
-        <span>Esc to cancel</span>
-        <button className="btn" onClick={cancel}>
-          Cancel
-        </button>
-      </div>
+      <button className="capture-overlay-cancel" onPointerDown={(event) => event.stopPropagation()} onClick={cancel}>
+        Cancel
+      </button>
     </div>
   );
 }

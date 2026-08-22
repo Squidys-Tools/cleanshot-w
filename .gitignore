@@ -13,6 +13,11 @@ dist-ssr
 *.local
 *.tsbuildinfo
 
+# Impeccable session artifacts
+.impeccable/questions/
+.impeccable/mocks/
+.impeccable/shape-payload*.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

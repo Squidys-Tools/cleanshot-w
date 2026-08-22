@@ -24,12 +24,12 @@ import {
   type NativeCaptureFrame,
   type NativeWindowInfo,
 } from "./lib/nativeCapture";
-import type { Exporter } from "./lib/tldrawDoc";
+import type { EditorController } from "./lib/tldrawDoc";
 import CaptureOverlay from "./components/CaptureOverlay";
 import Editor from "./components/Editor";
 import Dropzone from "./components/Dropzone";
 import HistoryRail from "./components/HistoryRail";
-import QuickAccess, { type OcrStatus } from "./components/QuickAccess";
+import type { OcrStatus } from "./components/QuickAccess";
 import SettingsPopover from "./components/SettingsPopover";
 import WindowPicker from "./components/WindowPicker";
 import PinnedCapture from "./components/PinnedCapture";
@@ -47,7 +47,8 @@ function EditorApp() {
   const [rec, setRec] = useState<CaptureRecord | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [history, setHistory] = useState<CaptureRecord[]>([]);
-  const [showHistory, setShowHistory] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
   const [ocr, setOcr] = useState<OcrState>({ status: "idle" });
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -63,7 +64,7 @@ function EditorApp() {
 
   const urlRef = useRef<string | null>(null);
   const recRef = useRef<CaptureRecord | null>(null);
-  const exporterRef = useRef<Exporter | null>(null);
+  const controllerRef = useRef<EditorController | null>(null);
   const saveTimers = useRef(new Map<string, { version: number; timer: number }>());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -282,6 +283,12 @@ function EditorApp() {
     setRec(null);
     setOcr({ status: "idle" });
     setNotice(null);
+    setShowHistory(false);
+    setHistoryState({ canUndo: false, canRedo: false });
+  }, []);
+
+  const onHistoryState = useCallback((next: { canUndo: boolean; canRedo: boolean }) => {
+    setHistoryState((current) => (current.canUndo === next.canUndo && current.canRedo === next.canRedo ? current : next));
   }, []);
 
   const deleteCapture = useCallback(
@@ -331,7 +338,7 @@ function EditorApp() {
     if (!rec) return;
     setNotice(null);
     try {
-      const exporter = exporterRef.current;
+      const exporter = controllerRef.current?.exportImage;
       const { blob } = exporter ? await exporter() : await flattenToBlob(rec);
       await host.copyImage(blob);
       setCopied(true);
@@ -345,7 +352,7 @@ function EditorApp() {
     if (!rec) return;
     setNotice(null);
     try {
-      const exporter = exporterRef.current;
+      const exporter = controllerRef.current?.exportImage;
       const { blob } = exporter ? await exporter() : await flattenToBlob(rec);
       await host.copyFile(blob, `${sanitizeFileName(rec.title)}.png`);
       setNotice("PNG copied to the clipboard as a file.");
@@ -358,7 +365,7 @@ function EditorApp() {
     if (!rec) return;
     setNotice(null);
     try {
-      const exporter = exporterRef.current;
+      const exporter = controllerRef.current?.exportImage;
       const { blob } = exporter ? await exporter() : await flattenToBlob(rec);
       downloadBlob(blob, `${sanitizeFileName(rec.title)}.png`);
     } catch {
@@ -370,7 +377,7 @@ function EditorApp() {
     if (!rec || !isTauriRuntime()) return;
     setNotice(null);
     try {
-      const exporter = exporterRef.current;
+      const exporter = controllerRef.current?.exportImage;
       const { blob, width, height } = exporter ? await exporter() : await flattenToBlob(rec);
       await showPinnedCapture(await blobToBase64(blob), width, height, rec.title);
       setNotice("Capture pinned above other windows.");
@@ -452,33 +459,75 @@ function EditorApp() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark">⌁</span>
+          <span className="brand-mark" aria-hidden="true"><span /></span>
           <span>
             CleanShot <em>W</em>
           </span>
         </div>
-        <div className="top-actions">
-          <button className="btn primary" onClick={startCapture}>
+        <div className="command-actions" aria-label="Edit commands">
+          <button
+            className="command-icon"
+            onClick={() => controllerRef.current?.undo()}
+            disabled={!rec || !historyState.canUndo}
+            title="Undo (Ctrl+Z)"
+            aria-label="Undo"
+          >
+            <CommandIcon name="undo" />
+          </button>
+          <button
+            className="command-icon"
+            onClick={() => controllerRef.current?.redo()}
+            disabled={!rec || !historyState.canRedo}
+            title="Redo (Ctrl+Y)"
+            aria-label="Redo"
+          >
+            <CommandIcon name="redo" />
+          </button>
+        </div>
+        <div className="command-separator" />
+        <nav className="top-actions" aria-label="Capture and export commands">
+          <button className="command-btn primary" onClick={startCapture} disabled={busy}>
             New capture
           </button>
           {isTauriRuntime() && (
             <>
-              <button className="btn" onClick={openWindowPicker}>
+              <button className="command-btn" onClick={openWindowPicker}>
                 Window
               </button>
-              <button className="btn" onClick={() => void captureFullScreen()} disabled={busy}>
+              <button className="command-btn" onClick={() => void captureFullScreen()} disabled={busy}>
                 Full screen
               </button>
             </>
           )}
-          <button className="btn" onClick={() => setShowHistory((s) => !s)}>
+          <button className="command-btn" onClick={copyImage} disabled={!rec}>
+            {copied ? "Copied" : "Copy image"}
+          </button>
+          <button className="command-btn" onClick={copyFile} disabled={!rec}>
+            Copy file
+          </button>
+          <button className="command-btn" onClick={savePng} disabled={!rec}>
+            Save PNG
+          </button>
+          <button className="command-btn" onClick={runOcr} disabled={!rec || ocr.status === "running"}>
+            {ocr.status === "running" ? `OCR ${Math.round((ocr.progress ?? 0) * 100)}%` : "Copy text (OCR)"}
+          </button>
+          {isTauriRuntime() && rec && (
+            <button className="command-btn" onClick={() => void pinCapture()}>
+              Pin
+            </button>
+          )}
+        </nav>
+        <div className="topbar-spacer" />
+        <div className="top-actions top-actions-secondary">
+          <button className="command-btn" onClick={() => setShowHistory((s) => !s)}>
             History {history.length > 0 ? `(${history.length})` : ""}
           </button>
           {isTauriRuntime() && (
-            <button className="btn" onClick={() => { setSettingsError(null); setSettingsOpen((open) => !open); }}>
+            <button className="command-btn" onClick={() => { setSettingsError(null); setSettingsOpen((open) => !open); }}>
               Settings
             </button>
           )}
+          {rec && <button className="command-btn quiet" onClick={closeCapture}>Close</button>}
         </div>
         <input
           ref={fileInputRef}
@@ -496,7 +545,14 @@ function EditorApp() {
       <div className="workspace">
         <main className="stage">
           {rec && imageUrl ? (
-            <Editor key={rec.id} doc={rec} imageUrl={imageUrl} onChange={onAnnotationsChange} exportRef={exporterRef} />
+            <Editor
+              key={rec.id}
+              doc={rec}
+              imageUrl={imageUrl}
+              onChange={onAnnotationsChange}
+              controllerRef={controllerRef}
+              onHistoryState={onHistoryState}
+            />
           ) : (
             <Dropzone
               onFile={(blob, name) => newCapture(blob, name)}
@@ -507,35 +563,21 @@ function EditorApp() {
             />
           )}
         </main>
-        {showHistory && (
+      </div>
+
+      {showHistory && (
+        <div className="history-flyout">
           <HistoryRail
             records={history}
             currentId={rec?.id ?? null}
-            onOpen={openCapture}
+            onOpen={(capture) => { openCapture(capture); setShowHistory(false); }}
             onRename={renameCapture}
             onDelete={deleteCapture}
           />
-        )}
-      </div>
-
-      {rec && (
-        <QuickAccess
-          onCopyImage={copyImage}
-          onCopyFile={copyFile}
-          onSavePng={savePng}
-          onPin={isTauriRuntime() ? () => void pinCapture() : undefined}
-          onOcr={runOcr}
-          onNew={() => {
-            closeCapture();
-            setShowHistory(true);
-          }}
-          onClose={closeCapture}
-          ocrStatus={ocr.status}
-          ocrProgress={ocr.progress}
-          copied={copied}
-          notice={notice}
-        />
+        </div>
       )}
+
+      {notice && <div className="topbar-notice" role="status">{notice}</div>}
 
       {ocr.status === "done" && ocr.text && (
         <div className="ocr-panel">
@@ -586,6 +628,18 @@ function EditorApp() {
         </div>
       )}
     </div>
+  );
+}
+
+function CommandIcon({ name }: { name: "undo" | "redo" }) {
+  return (
+    <svg className="command-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+      {name === "undo" ? (
+        <path d="M9 7H5l3-3M5 7c5.7-3.1 12.5-.2 12.5 5.9 0 3.4-2.5 6.1-5.9 6.1-2.8 0-5.1-1.4-6.1-3.6" />
+      ) : (
+        <path d="M15 7h4l-3-3M19 7c-5.7-3.1-12.5-.2-12.5 5.9 0 3.4 2.5 6.1 5.9 6.1 2.8 0 5.1-1.4 6.1-3.6" />
+      )}
+    </svg>
   );
 }
 

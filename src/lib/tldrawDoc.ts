@@ -30,6 +30,14 @@ export const SHAPE_TYPES = {
 export type ExportResult = { blob: Blob; width: number; height: number };
 export type Exporter = () => Promise<ExportResult>;
 
+export type EditorController = {
+  exportImage: Exporter;
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+};
+
 export function serializeTldraw(editor: Editor): TldrawState {
   return { snapshot: editor.getSnapshot().document };
 }

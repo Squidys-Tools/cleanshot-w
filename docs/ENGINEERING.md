@@ -1,13 +1,14 @@
-# Engineering notes
+# Engineering
 
-This document is the stable implementation reference for contributors. It is
-not a task list: planned work belongs in the [roadmap](../ROADMAP.md), completed
-changes belong in the [changelog](../CHANGELOG.md), and Windows release evidence
-belongs in the [M2 checklist](WINDOWS-M2-RELEASE-CHECKLIST.md).
+This is the stable implementation reference for contributors. Planned work
+belongs in [the roadmap](ROADMAP.md), completed changes belong in [the
+changelog](CHANGELOG.md), product decisions belong in [the product brief](PRODUCT.md),
+visual rules belong in [the design system](DESIGN.md), and current release
+evidence belongs in [the roadmap and status](ROADMAP.md).
 
 ## Stack and boundaries
 
-- **Frontend:** React 19, Vite, TypeScript 7, tldraw, and plain CSS.
+- **Frontend:** React 19, Vite 8, TypeScript 7, tldraw, and plain CSS.
 - **OCR:** tesseract.js with local assets under `public/tessdata`.
 - **Native shell:** Tauri 2, Rust 2021, WebView2, `arboard`, and Windows APIs
   through `windows-sys`.
@@ -16,86 +17,122 @@ belongs in the [M2 checklist](WINDOWS-M2-RELEASE-CHECKLIST.md).
 - **Native persistence:** JSON and PNG files under
   `%LOCALAPPDATA%\CleanShotW\library`.
 
-The editor talks to a typed `HostBridge` in `src/lib/bridge.ts`. The browser host
-uses IndexedDB and browser APIs; the native host translates the same operations
-to Tauri commands. Keep UI code independent of the storage or capture backend.
+The editor talks to a typed `HostBridge` in `src/lib/bridge.ts`. The browser
+host uses IndexedDB and browser APIs. The native host translates the same
+operations to Tauri commands. Keep UI code independent of storage and capture
+backends.
+
+TypeScript 7 uses `moduleResolution: "bundler"` with
+`resolvePackageJsonExports: false` in `tsconfig.json`. tldraw 5.3.1 ships its
+declaration files beside its `main` entry but does not publish a `types`
+condition in its package export map. The setting keeps the compiler on
+TypeScript 7 while allowing it to resolve those declarations.
 
 ## Runtime architecture
 
-The normal application is a React editor in the main Tauri window. Native capture
-uses short-lived Tauri windows and events:
-
-1. The global shortcut, tray action, or toolbar starts capture.
-2. Rust hides the editor and captures a physical-pixel virtual-screen snapshot.
-3. The transparent overlay lets the user select a crop over that frozen frame.
-4. Rust validates the crop, encodes a PNG, and emits `capture:completed`.
-5. The editor stores the image, creates a thumbnail, and opens the capture.
-
-The browser path remains useful for development: it accepts pasted, dropped, or
-selected image files without requiring native capture.
-
-### Capture data
-
-`CaptureRecord` in `src/types.ts` is the shared model:
-
-- `id`, `title`, `createdAt`, and `updatedAt`
-- natural image dimensions
-- full image and thumbnail `Blob`s
-- serialized tldraw annotation state
-
-Browser history stores the record directly in IndexedDB. The native library
-stores one directory per capture and an index for ordering:
+CleanShot W uses one React editor in two host environments:
 
 ```text
-%LOCALAPPDATA%\CleanShotW\
-  settings.json
-  library\\
-    index.json
-    <capture-id>\\
-      image.png
-      thumbnail.png
-      annotations.json
+React editor
+  ├─ browser host: IndexedDB, browser clipboard, paste/drop/file intake
+  └─ native host: Tauri commands, Windows capture, disk library, clipboard
 ```
 
-Native IDs and index entries are validated before they are used as paths. Writes
-are atomic where the platform permits it. Title updates preserve the image,
-thumbnail, and annotations while updating the library timestamp.
+The main window and capture overlay are separate surfaces. The main window owns
+annotation, export, OCR, history, and settings. The overlay owns screen
+selection and returns a captured crop. A capture never stays in the overlay for
+annotation.
 
-### Native command groups
+The browser host remains useful for development. It accepts pasted, dropped, or
+selected image files without requiring native capture.
 
-The exact command registration is in `src-tauri/src/lib.rs`; the groups are:
+## Capture lifecycle
+
+1. A toolbar action, tray action, or global shortcut starts capture.
+2. Rust hides the editor and records a physical-pixel snapshot of the virtual
+   desktop.
+3. A transparent overlay displays that frozen frame and accepts a selection.
+4. Rust validates the crop, encodes a PNG, and emits `capture:completed`.
+5. The editor stores the image, creates a thumbnail, and opens the capture.
+6. Escape or Cancel restores the editor if the capture is abandoned.
+
+Window capture enumerates titled windows and uses `PrintWindow` with a GDI
+fallback. Full-screen capture uses the virtual desktop. The overlay appears
+after the source frame is captured so it cannot appear in the result.
+
+## Editor document and export
+
+The shared capture record lives in `src/types.ts` and contains:
+
+- capture id, title, creation time, and update time;
+- natural image dimensions;
+- the full image and thumbnail as `Blob`s;
+- serialized tldraw document state.
+
+The editor adds the screenshot as a locked image shape at the document origin.
+Markup is stored as tldraw shapes, including the custom counter, blur, pixelate,
+and redact shapes. The screenshot remains the visual base while the annotation
+dock and selection actions operate above it.
+
+Export asks tldraw to render the current page at the image's natural dimensions.
+The flattened PNG path feeds Save PNG, Copy image, Copy file, and pin windows.
+
+## Persistence
+
+The browser host stores capture records in IndexedDB. The native host stores the
+library under `%LOCALAPPDATA%\CleanShotW`:
+
+```text
+settings.json
+library\
+  index.json
+  <capture-id>\
+    image.png
+    thumbnail.png
+    annotations.json
+```
+
+Native ids and index entries are validated before they become paths. Annotation
+autosaves are debounced, and native writes use temporary files before replacing
+the destination where the platform permits it.
+
+## Native command groups
+
+The exact command registration is in `src-tauri/src/lib.rs`:
 
 | Capability | Native implementation |
 |---|---|
-| Area capture | `start_area_capture`, `complete_area_capture`, and `cancel_area_capture` |
-| Full-screen/window capture | GDI capture in `capture.rs` |
+| Area capture | `start_area_capture`, `complete_area_capture`, `cancel_area_capture` |
+| Window/full-screen capture | GDI capture in `capture.rs` |
 | Clipboard | PNG/image, file, text, and image-read commands in `clipboard.rs` |
-| Library | Save, list, get, annotation update, title update, and delete in `library.rs` |
+| Library | Save, list, open, annotation update, title update, and delete in `library.rs` |
 | Settings | Hotkey, cursor, and startup settings in `hotkeys.rs` |
 | Pins | Dedicated always-on-top windows in `pin.rs` |
 
-## Native correctness notes
+## Windows constraints
 
-- The process requests Per-Monitor V2 DPI awareness and keeps native crop
-  coordinates in physical pixels.
-- Virtual-screen origins can be negative when a monitor is left of or above the
-  primary display; do not assume `(0, 0)` is the top-left of the desktop.
+- The process uses Per-Monitor V2 DPI awareness.
+- Native crop coordinates stay in physical pixels. Convert CSS coordinates only
+  at the bridge boundary.
+- Virtual-screen origins may be negative when a monitor sits left of or above
+  the primary display.
 - Capture the desktop before showing the overlay so the overlay cannot appear in
   the captured image.
-- Window capture uses `PrintWindow` and falls back to a GDI screen copy when the
-  target does not render through `PrintWindow`.
-- Cursor compositing is controlled by the persisted setting and is performed in
-  native capture space.
+- GDI and `PrintWindow` behavior varies by application and must be checked on
+  representative Windows hardware.
+- The UAC secure desktop and DRM-protected content cannot be captured. Return a
+  clear error instead of treating a black image as a valid result.
+- Clipboard image output must preserve RGBA data when pasted into common
+  Windows applications.
 - Native failures are returned as strings and normalized by
-  `nativeErrorMessage` before reaching the UI. A failed capture must restore the
-  editor instead of leaving the overlay or main window hidden.
-- Clipboard image and file commands validate PNG data and preserve RGBA pixels.
+  `nativeErrorMessage` before reaching the UI. A failed capture must restore
+  the editor instead of leaving the overlay or main window hidden.
 
 These behaviors need a real Windows run. The browser cannot validate DPI,
 WebView2 asset loading, GDI output, tray lifecycle, clipboard interoperability,
 or protected-content behavior.
 
-## OCR assets
+## OCR and packaged assets
 
 The browser OCR worker, core files, and `eng.traineddata` are bundled under
 `public/tessdata`. Use the asset script when refreshing them:
@@ -104,9 +141,9 @@ The browser OCR worker, core files, and `eng.traineddata` are bundled under
 bun run ocr:assets
 ```
 
-OCR is on demand rather than running for every capture. Packaged builds must be
-tested with network access disabled so the app cannot accidentally depend on a
-remote worker or language file. Native OCR remains an M3 evaluation item.
+OCR runs on demand rather than for every capture. Packaged builds must be tested
+with network access disabled so the app cannot accidentally depend on a remote
+worker or language file. Native OCR remains an M3 evaluation item.
 
 ## Local development and verification
 
@@ -124,6 +161,9 @@ bun test
 bun tsc -b --noEmit
 bun run build
 ```
+
+If the local Bun install does not expose the package binary, run the checker
+directly with `bunx --package typescript@7.0.2 tsc --noEmit`.
 
 The browser smoke harness uses Playwright Chromium. Start Vite in one terminal,
 then run the smoke suite in another:
@@ -146,19 +186,19 @@ cargo check --manifest-path src-tauri/Cargo.toml
 
 The GitHub Actions jobs mirror these checks:
 
-- `.github/workflows/ci.yml` — Bun tests and frontend build
-- `.github/workflows/smoke.yml` — Playwright browser smoke test
-- `.github/workflows/rust.yml` — Windows formatting, Clippy, tests, and check
-- `.github/workflows/release.yml` — draft Windows release on `v*` tags
+- `.github/workflows/ci.yml` - Bun tests and frontend build
+- `.github/workflows/smoke.yml` - Playwright browser smoke test
+- `.github/workflows/rust.yml` - Windows formatting, Clippy, tests, and check
+- `.github/workflows/release.yml` - draft Windows release on `v*` tags
 
 ## Packaging and release
 
 Tauri currently targets an NSIS installer configured for `currentUser`, so the
 installer does not require elevation. The release workflow runs on Windows and
 creates a draft GitHub release when a `v*` tag is pushed. A portable ZIP and
-SHA-256 sidecars remain release-planning work; do not document them as available
+SHA-256 sidecars remain release-planning work. Do not document them as available
 downloads until the workflow produces them.
 
-Before publishing, complete the [Windows M2 checklist](WINDOWS-M2-RELEASE-CHECKLIST.md)
-against the packaged artifact. Record the tested build/version, Windows and
+The remaining Windows acceptance work is recorded in [the roadmap and status](ROADMAP.md).
+Run it against the packaged artifact and record the tested build, Windows and
 WebView2 versions, artifact, failures, limitations, and release decision there.

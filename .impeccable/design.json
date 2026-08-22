@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-22T19:20:00.000Z",
+  "title": "Design System: CleanShot W",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Action blue",
+        "canonical": "#2f6fed",
+        "tonalRamp": ["#10244d", "#15366f", "#1d4d9d", "#245fd8", "#2f6fed", "#6f9bf4", "#b9cdf9", "#e9f0ff"]
+      },
+      "neutral-bg": {
+        "role": "neutral",
+        "displayName": "Cool workspace",
+        "canonical": "#f2f3f5",
+        "tonalRamp": ["#202124", "#3d4148", "#687386", "#9aa3b1", "#c7cdd6", "#dfe3e9", "#eef0f3", "#f2f3f5"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Paper surface",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#202124", "#3d4148", "#687386", "#9aa3b1", "#c7cdd6", "#e4e7eb", "#f4f5f7", "#ffffff"]
+      },
+      "surface-soft": {
+        "role": "neutral",
+        "displayName": "Soft control surface",
+        "canonical": "#eef2f8",
+        "tonalRamp": ["#202124", "#3d4148", "#687386", "#9aa3b1", "#c7cdd6", "#dfe6f0", "#e7edf6", "#eef2f8"]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#202124",
+        "tonalRamp": ["#202124", "#3d4148", "#687386", "#9aa3b1", "#c7cdd6", "#dfe3e9", "#eef0f3", "#ffffff"]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Quiet ink",
+        "canonical": "#687386",
+        "tonalRamp": ["#202124", "#3d4148", "#687386", "#9aa3b1", "#c7cdd6", "#dfe3e9", "#eef0f3", "#ffffff"]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Hairline border",
+        "canonical": "#d5dce7",
+        "tonalRamp": ["#202124", "#3d4148", "#687386", "#9aa3b1", "#c7cdd6", "#d5dce7", "#e8ebf0", "#ffffff"]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Error red",
+        "canonical": "#c94a3c",
+        "tonalRamp": ["#4d1713", "#76241e", "#9d3329", "#c94a3c", "#df6f64", "#eba19a", "#f4cbc7", "#f9e5e2"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Windows display", "purpose": "Short empty-state and surface titles." },
+      "body": { "displayName": "Windows body", "purpose": "Readable utility copy and supporting metadata." },
+      "label": { "displayName": "Windows label", "purpose": "Commands, dock labels, and compact controls." }
+    },
+    "shadows": [
+      { "name": "dock-lift", "value": "0 16px 38px rgba(32, 33, 36, 0.16)", "purpose": "Separates the detached annotation dock from the canvas." },
+      { "name": "surface-lift", "value": "0 20px 54px rgba(32, 33, 36, 0.18)", "purpose": "Separates history, settings, and picker surfaces." },
+      { "name": "control-lift", "value": "0 10px 24px rgba(32, 33, 36, 0.08)", "purpose": "Gives compact zoom and status controls modest separation." }
+    ],
+    "motion": [
+      { "name": "state-standard", "value": "120ms ease", "purpose": "Small hover and focus state changes." },
+      { "name": "capture-fit", "value": "200ms ease", "purpose": "Fits a newly opened screenshot into the editor." }
+    ],
+    "breakpoints": [
+      { "name": "compact", "value": "980px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Command",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Starts a capture or the primary empty-state action.",
+      "html": "<button class=\"ds-command-primary\">New capture</button>",
+      "css": ".ds-command-primary { height: 34px; padding: 0 10px; border: 1px solid #2f6fed; border-radius: 8px; background: #2f6fed; color: #fff; font: 600 12px/1 Segoe UI Variable, Segoe UI, sans-serif; cursor: pointer; transition: background 120ms ease, border-color 120ms ease; } .ds-command-primary:hover { background: #245fd8; border-color: #245fd8; } .ds-command-primary:focus-visible { outline: 3px solid rgba(47,111,237,.32); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Command",
+      "kind": "button",
+      "refersTo": "button-command",
+      "description": "Keeps capture, export, and secondary commands readable.",
+      "html": "<button class=\"ds-command\">Save PNG</button>",
+      "css": ".ds-command { height: 34px; padding: 0 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #202124; font: 600 12px/1 Segoe UI Variable, Segoe UI, sans-serif; cursor: pointer; transition: background 120ms ease, border-color 120ms ease; } .ds-command:hover { border-color: #d5dce7; background: #eef2f8; } .ds-command:focus-visible { outline: 3px solid rgba(47,111,237,.32); outline-offset: 2px; }"
+    },
+    {
+      "name": "Undo / Redo Control",
+      "kind": "button",
+      "refersTo": "button-command",
+      "description": "The only icon-only controls in the top command bar.",
+      "html": "<button class=\"ds-history-command\" aria-label=\"Undo\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M9 7H5l3-3M5 7c5.7-3.1 12.5-.2 12.5 5.9 0 3.4-2.5 6.1-5.9 6.1-2.8 0-5.1-1.4-6.1-3.6\"/></svg></button>",
+      "css": ".ds-history-command { width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #202124; cursor: pointer; } .ds-history-command:hover { border-color: #d5dce7; background: #eef2f8; } .ds-history-command:focus-visible { outline: 3px solid rgba(47,111,237,.32); outline-offset: 2px; } .ds-history-command svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }"
+    },
+    {
+      "name": "Annotation Dock",
+      "kind": "custom",
+      "refersTo": "annotation-dock",
+      "description": "Detached whiteboard-style toolbar for markup and tool properties.",
+      "html": "<div class=\"ds-dock\"><button class=\"ds-tool ds-tool-active\"><span class=\"ds-tool-icon\">✦</span><span>Highlight</span><kbd>K</kbd></button><button class=\"ds-tool\"><span class=\"ds-tool-icon\">↗</span><span>Arrow</span><kbd>A</kbd></button></div>",
+      "css": ".ds-dock { display: flex; gap: 7px; padding: 8px 10px; border: 1px solid #d5dce7; border-radius: 18px; background: #fff; box-shadow: 0 16px 38px rgba(32,33,36,.16); } .ds-tool { width: 58px; height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 5px 3px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: #687386; font: 600 10px/1 Segoe UI Variable, Segoe UI, sans-serif; } .ds-tool-active { border-color: #c9d9ff; background: #e9f0ff; color: #2f6fed; } .ds-tool-icon { font-size: 18px; } .ds-tool kbd { padding: 0; border: 0; background: transparent; color: #687386; font: 9px/1 Segoe UI Variable, Segoe UI, sans-serif; }"
+    },
+    {
+      "name": "Neutral Surface",
+      "kind": "card",
+      "refersTo": "surface",
+      "description": "A quiet container for history, settings, and empty-state actions.",
+      "html": "<section class=\"ds-surface\"><strong>History</strong><p>Your local captures</p></section>",
+      "css": ".ds-surface { padding: 16px; border: 1px solid #d5dce7; border-radius: 12px; background: #fff; color: #202124; box-shadow: 0 20px 54px rgba(32,33,36,.18); } .ds-surface p { margin: 6px 0 0; color: #687386; font: 400 14px/1.5 Segoe UI Variable, Segoe UI, sans-serif; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Clear Markup Desk",
+    "overview": "CleanShot W is a quiet Windows utility that keeps the captured screenshot as the visual authority. The editor gives the image generous neutral space, then brings annotation tools together in a detached whiteboard-style dock at the bottom. Export and sharing stay close to the top command bar, where they are readable at a glance rather than hidden behind ambiguous icons.\n\nThe system is native-feeling, compact, and functional. The capture overlay is a separate surface with a darkened screen, a high-contrast selection frame, dimensions, and a direct Cancel action. It does not carry instructional copy or a decorative workspace texture.",
+    "keyCharacteristics": ["Screenshot-first neutral canvas with generous breathing room.", "Text-led command bar; Undo and Redo are the only icon-only top controls.", "Detached, labeled annotation dock with intuitive single-key shortcuts.", "Light Windows-native surfaces with restrained borders and ambient depth."],
+    "rules": [
+      { "name": "The Clear Canvas Rule", "body": "The screenshot and its markup own the visual focus; neutral space supports them and never becomes a decorative scene.", "section": "overview" },
+      { "name": "The One-Voice Label Rule", "body": "Tool labels and command labels should be short, literal, and paired with a visible shortcut or state when that improves recall.", "section": "typography" },
+      { "name": "The Flat-by-Default Rule", "body": "Resting surfaces are white or cool neutral; depth appears only where a surface floats above the screenshot workspace.", "section": "elevation" }
+    ],
+    "dos": ["Do keep sharing and export commands visible and text-labeled in the top bar.", "Do center the screenshot with neutral breathing room around it.", "Do use flyouts, dialogs, or popovers for history and settings instead of persistent sidebars."],
+    "donts": ["Don't add a warm desk, blueprint grid, or other decorative workspace surface behind the screenshot.", "Don't add icon-only export, sharing, save, or settings controls to the top bar.", "Don't put instructional help strips in the capture overlay."]
+  }
+}

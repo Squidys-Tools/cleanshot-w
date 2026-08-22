@@ -1,173 +1,82 @@
 # CleanShot W
 
-CleanShot W is a local-first Windows screenshot and annotation app. Capture an area, window, or full screen, mark it up, copy or export the result, and find it again later. No account, cloud sync, telemetry, or admin rights are required.
+CleanShot W is a local-first Windows screenshot tool for capturing, annotating,
+and sharing screenshots without getting in the way.
 
-## Project status
+Capture something. Mark it up. Copy it where it needs to go. Find it again later.
 
-The M2 native shell is implemented and repository hardening is complete. The remaining M2 gate is manual Windows validation on representative hardware, especially a mixed-DPI two-monitor setup. There is not a public release yet.
+> CleanShot W is in active development. The native Windows app is implemented,
+> but a public release still needs final testing on real Windows hardware.
 
-- [Roadmap](ROADMAP.md) — current milestones, decisions, and next work
-- [Changelog](CHANGELOG.md) — completed and release-visible changes
-- [Engineering notes](docs/ENGINEERING.md) — architecture, commands, and packaging
-- [Windows M2 checklist](docs/WINDOWS-M2-RELEASE-CHECKLIST.md) — manual release acceptance
+## The workflow
 
-## Features
+### 1. Capture
 
-- Area, window, and full-screen capture in the Windows app
-- Paste, drag-and-drop, and file-based image intake in the browser editor
-- Annotation tools for drawing, shapes, arrows, text, counters, highlights, blur,
-  pixelation, and redaction
-- Zoom, pan, undo, redo, and editable annotations
-- Copy image, copy file, save PNG, and copy recognized text
-- Local OCR with bundled Tesseract assets
-- Capture history with thumbnails, markup counts, timestamps, editable titles,
-  title search, and persistence between sessions
-- Always-on-top pin windows, system-tray controls, configurable capture hotkey,
-  cursor inclusion, and optional launch at startup in the Windows app
+Capture an area, a window, or the full virtual desktop. The capture overlay keeps
+selection quick and focused, then returns you to the editor with the result.
 
-## Getting started
+### 2. Mark it up
 
-There is no public installer yet. To run the browser editor from source:
+The editor keeps the screenshot at the center of the experience. Annotation tools
+live in a detached bottom dock, while export, sharing, history, and other main
+actions stay visible in the top command bar.
 
-```sh
-bun install --frozen-lockfile
-bun run dev
-```
+Use drawing, shapes, arrows, text, numbered steps, highlights, blur, pixelation,
+and redaction to make the image clear.
 
-Open the URL printed by Vite. The browser editor accepts an image by pasting it
-with `Ctrl+V`, dropping it onto the editor, or choosing a file.
+### 3. Share the result
 
-To run the native Windows shell, use a Windows development environment with the
-Rust GNU toolchain installed:
+Copy the annotated image, copy it as a file, save a PNG, or run local OCR and
+copy the recognized text. Sharing uses the Windows clipboard and files. There
+are no hosted share links or accounts.
 
-```sh
-bun run tauri dev
-```
+### 4. Find it later
 
-See the [engineering notes](docs/ENGINEERING.md) for the full toolchain and
-verification commands.
+CleanShot W keeps a local capture history with thumbnails, titles, and title
+search. You can reopen captures, continue editing them, or pin them above other
+windows for reference.
 
-## Capturing
+## What it includes
 
-- **Area:** choose **New capture** or press `Ctrl+Shift+4`, then drag over the
-  region you need.
-- **Window:** choose **Window**, select a visible titled window, and capture it.
-- **Full screen:** choose **Full screen** to capture the complete virtual desktop.
-- **Clipboard or file:** paste, drop, or open an image in the browser editor.
-
-The native app hides the editor while capturing and restores it after the
-capture completes or is cancelled.
-
-## Annotating
-
-Use the toolbar to select, draw, add shapes and arrows, place text or numbered
-steps, highlight content, blur or pixelate sensitive areas, and redact content
-with an opaque block. Hold `Space` to pan, use the mouse wheel to zoom, and use
-`0` to reset the zoom.
-
-Common keyboard shortcuts:
-
-| Key | Tool |
+| Area | Current capabilities |
 |---|---|
-| `V` | Select/move |
-| `R` | Rectangle |
-| `O` | Ellipse |
-| `A` | Arrow |
-| `L` | Line |
-| `T` | Text |
-| `C` | Counter |
-| `M` | Note |
-| `G` | Highlight |
-| `D` | Freehand draw |
-| `Q` | Blur |
-| `K` | Pixelate |
-| `E` | Eraser |
-| `F` | Frame |
-| `H` | Laser |
+| Capture | Area, window, and full-screen capture; cursor inclusion; loupe and physical-pixel sizing |
+| Annotation | Drawing, shapes, arrows, text, counters, highlights, blur, pixelation, and redaction |
+| Output | Copy image, copy file, save PNG, and local OCR text extraction |
+| History | Thumbnails, title editing, title search, reopen, delete, and annotation persistence |
+| Windows | Global capture shortcut, tray controls, single-instance behavior, startup option, and always-on-top pins |
 
-`Ctrl+Z` undoes an edit and `Ctrl+Shift+Z` redoes it.
+## Private by default
 
-## Export and OCR
+- Windows 10 and 11 are the supported platforms.
+- Captures, annotations, settings, and history stay on your machine.
+- No account, cloud sync, telemetry, or hosted library is required.
+- OCR uses bundled local assets and does not need a network connection.
+- The app is designed for standard-user operation. Administrator access is not
+  required for normal use.
 
-The Quick Access bar can flatten the annotated image and:
+## Current status
 
-- Copy it as an image with transparency preserved
-- Copy it as a PNG file in the native app
-- Save it as a PNG from the browser editor
-- Run local OCR and copy the recognized text
+The browser editor and native Windows shell are implemented. The remaining
+pre-release work is manual Windows acceptance testing, including mixed-DPI
+monitors, window capture, clipboard behavior, packaged assets, tray and startup
+behavior, and pin windows.
 
-OCR uses bundled local assets and does not require network access. It works best
-with clear, printed English text.
+There is no public installer yet. Scrolling capture, richer composition tools,
+broader library search, native OCR, and a user-facing project-file format are
+planned for later work. Video recording, cloud sharing, accounts, macOS, and
+Linux are outside the current v1 direction.
 
-## Capture history
+## Project documentation
 
-History appears in the right sidebar. Select a capture to reopen it. Click its
-title to rename it; press Enter or leave the field to save, or press Escape to
-cancel. Search filters titles case-insensitively. History, annotations, images,
-and titles persist locally in IndexedDB in the browser and under
-`%LOCALAPPDATA%\CleanShotW` in the native app.
+The [documentation index](docs/README.md) collects the project references:
 
-## Windows features
-
-The native shell adds a global capture shortcut, tray actions, single-instance
-activation, optional per-user startup, cursor inclusion, window capture, and
-always-on-top pins. The app is designed to run as a standard user. WebView2 is
-provided by Windows 10 and 11.
-
-These behaviors need real Windows validation before release. Use the [M2
-checklist](docs/WINDOWS-M2-RELEASE-CHECKLIST.md) rather than treating browser
-checks as a substitute for DPI, clipboard, tray, or packaged-app testing.
-
-## Development checks
-
-The project uses Bun, React, Vite, TypeScript, tldraw, Tesseract.js, and Tauri.
-Common checks are:
-
-```sh
-bun test
-bun tsc -b --noEmit
-bun run build
-```
-
-The browser smoke test requires a running Vite server and Playwright Chromium:
-
-```sh
-bun run dev -- --host 127.0.0.1
-bun run smoke
-```
-
-Native verification is run on the Windows CI job:
-
-```sh
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml
-cargo check --manifest-path src-tauri/Cargo.toml
-```
-
-## Development
-
-Built with Tauri 2 (Rust + WebView2), React 19, TypeScript 7, and tldraw.
-
-```bash
-bun install
-bun run dev        # browser-only editor
-bun run tauri dev  # full Tauri shell
-```
-
-## Documentation
-
-All docs live in [`docs/`](./docs/):
-
-| Doc | Description |
-|---|---|
-| [Status](docs/STATUS.md) | **Start here** — current milestone, what's done, what's next |
-| [Roadmap](docs/ROADMAP.md) | Full plan and milestones |
-| [Architecture](docs/ARCHITECTURE.md) | hostBridge, data model, rendering, capture pipeline |
-| [Changelog](docs/CHANGELOG.md) | Every notable change |
-| [Building](docs/BUILDING.md) | Dev, build, and test commands |
-| [Distribution](docs/DISTRIBUTION.md) | Packaging and release process |
+- [Product and scope](docs/PRODUCT.md)
+- [Design system](docs/DESIGN.md)
+- [Roadmap and status](docs/ROADMAP.md)
+- [Changelog](docs/CHANGELOG.md)
+- [Engineering notes](docs/ENGINEERING.md)
 
 ## License
 
-MIT. Free to use, modify, and distribute.
+CleanShot W is released under the MIT License.
