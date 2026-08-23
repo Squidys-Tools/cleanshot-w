@@ -1,7 +1,7 @@
 import type { CaptureRecord, TldrawState } from "../types";
 import { copyImageToClipboard, copyText, downloadBlob } from "./export";
 import { recognizeText, type OcrResult } from "./ocr";
-import { deleteCapture, getCapture, listCaptures, saveCapture, updateCaptureAnnotations } from "./storage";
+import { deleteCapture, getCapture, listCaptures, saveCapture, updateCaptureAnnotations, updateCaptureTitle } from "./storage";
 
 export type OcrProgress = { status: string; progress: number };
 
@@ -11,6 +11,7 @@ export interface HostBridge {
   listCaptures(): Promise<CaptureRecord[]>;
   getCapture(id: string): Promise<CaptureRecord | undefined>;
   updateCaptureAnnotations(id: string, annotations: TldrawState): Promise<boolean>;
+  updateCaptureTitle(id: string, title: string): Promise<boolean>;
   deleteCapture(id: string): Promise<void>;
   copyImage(blob: Blob): Promise<void>;
   copyFile(blob: Blob, fileName?: string): Promise<void>;
@@ -24,6 +25,7 @@ export const browserHost: HostBridge = {
   listCaptures,
   getCapture,
   updateCaptureAnnotations,
+  updateCaptureTitle,
   deleteCapture,
   copyImage: copyImageToClipboard,
   copyFile: async (blob, fileName = "capture.png") => downloadBlob(blob, fileName),

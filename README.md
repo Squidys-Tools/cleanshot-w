@@ -1,138 +1,82 @@
 # CleanShot W
 
-A screenshot tool for Windows. Capture your screen, annotate it, copy it to your clipboard. No cloud, no accounts, no telemetry. Everything stays on your machine.
+CleanShot W is a local-first Windows screenshot tool for capturing, annotating,
+and sharing screenshots without getting in the way.
 
-Think of it as a Windows equivalent to macOS's CleanShot X.
+Capture something. Mark it up. Copy it where it needs to go. Find it again later.
 
-## Getting it
+> CleanShot W is in active development. The native Windows app is implemented,
+> but a public release still needs final testing on real Windows hardware.
 
-Download the latest release and run the installer. No admin rights needed. Works on Windows 10 and 11.
+## The workflow
 
-- **Installer** (`CleanShotW-0.1.0-win64-setup.exe`) installs per-user only. No UAC prompt.
-- **Portable ZIP** (`CleanShotW-0.1.0-win64.zip`) runs without installation.
+### 1. Capture
 
-## How to use it
+Capture an area, a window, or the full virtual desktop. The capture overlay keeps
+selection quick and focused, then returns you to the editor with the result.
 
-**Take a screenshot.** Press `Ctrl+Shift+4` (you can change this in settings). Your cursor turns into a crosshair. Click and drag to select an area. The screenshot opens in the editor immediately.
+### 2. Mark it up
 
-**Capture a window.** Instead of dragging, right-click and pick a window from the list. The tool grabs that window precisely, even on mixed-DPI setups.
+The editor keeps the screenshot at the center of the experience. Annotation tools
+live in a detached bottom dock, while export, sharing, history, and other main
+actions stay visible in the top command bar.
 
-**Capture your full screen.** Press the shortcut and pick "Full screen" instead of selecting an area.
+Use drawing, shapes, arrows, text, numbered steps, highlights, blur, pixelation,
+and redaction to make the image clear.
 
-**Paste anything.** If you already have an image on your clipboard, just paste it into the editor with `Ctrl+V`. Drag-and-drop and file picking work too.
+### 3. Share the result
 
-## The annotation editor
+Copy the annotated image, copy it as a file, save a PNG, or run local OCR and
+copy the recognized text. Sharing uses the Windows clipboard and files. There
+are no hosted share links or accounts.
 
-Once you have a screenshot, the editor lets you mark it up before sharing. Here's what you can do:
+### 4. Find it later
 
-**Draw on it.** Freehand drawing, arrows, lines, rectangles, ellipses, and 19 other geometric shapes. Pick a color from the 8-color palette and a stroke width (S/M/L/XL).
+CleanShot W keeps a local capture history with thumbnails, titles, and title
+search. You can reopen captures, continue editing them, or pin them above other
+windows for reference.
 
-**Add text.** Four font families: sans-serif, serif, monospace, and hand-drawn. Choose your size, color, and alignment.
+## What it includes
 
-**Blur or pixelate.** Draw over sensitive information. The blur tool smooths it out; pixelate turns it into blocks.
-
-**Redact.** Solid black box over whatever you want hidden. No recovery possible from the exported image.
-
-**Number your steps.** The counter tool stamps sequential numbers onto the image. Useful for tutorials or bug reports.
-
-**Add arrows and callouts.** Nine arrowhead styles including dots, diamonds, and triangles. Arrows can be straight or curved.
-
-**Highlight.** A semi-transparent brush that marks areas without covering the content underneath.
-
-**Undo everything.** `Ctrl+Z` goes back. `Ctrl+Shift+Z` goes forward. There's no limit.
-
-### Keyboard shortcuts
-
-| Key | Tool |
-|-----|------|
-| V | Select/move |
-| R | Rectangle |
-| O | Ellipse |
-| A | Arrow |
-| L | Line |
-| T | Text |
-| C | Counter |
-| M | Note |
-| G | Highlight |
-| D | Draw (freehand) |
-| Q | Blur |
-| K | Pixelate |
-| E | Eraser |
-| F | Frame |
-| H | Laser |
-
-Hold `Space` to pan. Scroll wheel zooms. `0` resets zoom.
-
-## Export and share
-
-When you're done annotating:
-
-- **Copy to clipboard.** The flattened image goes straight to your clipboard, ready to paste into any app. Uses alpha-safe formatting so transparency works correctly.
-- **Copy as file.** Copies a `.png` file you can paste into File Explorer or drag into an email.
-- **Save as PNG.** Downloads the image to your downloads folder.
-
-## Pin to screen
-
-The pin button floats the screenshot as an always-on-top window. Useful when you need to reference something while working in another app. Drag it around, close it when you're done.
-
-## Capture history
-
-Every screenshot you take shows up in a sidebar on the right. Thumbnails, markup counts, and timestamps. Click any capture to reopen it in the editor. Delete ones you don't need. The history persists between sessions.
-
-## OCR (text recognition)
-
-Click the OCR button and the tool reads any text visible in the screenshot. Words come back with bounding boxes so you know exactly what was recognized. Copy the extracted text to your clipboard.
-
-Works best with clear, printed text in English. Handwriting and unusual fonts may not work well.
-
-## Settings
-
-Open settings from the system tray icon or the editor:
-
-- **Capture hotkey.** Change from the default `Ctrl+Shift+4` to whatever you prefer.
-- **Include cursor.** Toggle whether the mouse cursor appears in captures.
-- **Launch at startup.** Start CleanShot W when you log in. Runs minimized to tray.
-- **Close to tray.** Closing the window hides it to the system tray instead of quitting.
-
-Settings are stored in `%LOCALAPPDATA%\CleanShotW\settings.json`.
-
-## System tray
-
-The tray icon gives you quick access:
-
-- **New capture.** Same as pressing the hotkey.
-- **Open library.** Brings the editor to the foreground.
-- **Quit.** Exits the app.
-
-The app runs as a single instance. If you try to open a second copy, it brings the existing window forward instead.
-
-## How it runs
-
-CleanShot W does not require admin rights for anything. Installation, autostart (via `HKCU` registry), hotkeys, and all capture features work under a standard user account. It uses WebView2, which ships built into Windows 10 and 11.
-
-## Development
-
-Built with Tauri 2 (Rust + WebView2), React 19, TypeScript 7, and tldraw.
-
-```bash
-bun install
-bun run dev        # browser-only editor
-bun run tauri dev  # full Tauri shell
-```
-
-## Documentation
-
-All docs live in [`docs/`](./docs/):
-
-| Doc | Description |
+| Area | Current capabilities |
 |---|---|
-| [Status](docs/STATUS.md) | **Start here** — current milestone, what's done, what's next |
-| [Roadmap](docs/ROADMAP.md) | Full plan and milestones |
-| [Architecture](docs/ARCHITECTURE.md) | hostBridge, data model, rendering, capture pipeline |
-| [Changelog](docs/CHANGELOG.md) | Every notable change |
-| [Building](docs/BUILDING.md) | Dev, build, and test commands |
-| [Distribution](docs/DISTRIBUTION.md) | Packaging and release process |
+| Capture | Area, window, and full-screen capture; cursor inclusion; loupe and physical-pixel sizing |
+| Annotation | Drawing, shapes, arrows, text, counters, highlights, blur, pixelation, and redaction |
+| Output | Copy image, copy file, save PNG, and local OCR text extraction |
+| History | Thumbnails, title editing, title search, reopen, delete, and annotation persistence |
+| Windows | Global capture shortcut, tray controls, single-instance behavior, startup option, and always-on-top pins |
+
+## Private by default
+
+- Windows 10 and 11 are the supported platforms.
+- Captures, annotations, settings, and history stay on your machine.
+- No account, cloud sync, telemetry, or hosted library is required.
+- OCR uses bundled local assets and does not need a network connection.
+- The app is designed for standard-user operation. Administrator access is not
+  required for normal use.
+
+## Current status
+
+The browser editor and native Windows shell are implemented. The remaining
+pre-release work is manual Windows acceptance testing, including mixed-DPI
+monitors, window capture, clipboard behavior, packaged assets, tray and startup
+behavior, and pin windows.
+
+There is no public installer yet. Scrolling capture, richer composition tools,
+broader library search, native OCR, and a user-facing project-file format are
+planned for later work. Video recording, cloud sharing, accounts, macOS, and
+Linux are outside the current v1 direction.
+
+## Project documentation
+
+The [documentation index](docs/README.md) collects the project references:
+
+- [Product and scope](docs/PRODUCT.md)
+- [Design system](docs/DESIGN.md)
+- [Roadmap and status](docs/ROADMAP.md)
+- [Changelog](docs/CHANGELOG.md)
+- [Engineering notes](docs/ENGINEERING.md)
 
 ## License
 
-MIT. Free to use, modify, and distribute.
+CleanShot W is released under the MIT License.

@@ -18,7 +18,7 @@ import {
 import { Tldraw, useEditor } from "tldraw";
 import { BlurShapeUtil, CounterShapeUtil, PixelateShapeUtil, RedactShapeUtil } from "./customShapes";
 import { BlurTool, CounterTool, PixelateTool, RedactTool } from "./customTools";
-import { ensureBackgroundImage, serializeTldraw, type Exporter } from "../../lib/tldrawDoc";
+import { ensureBackgroundImage, serializeTldraw, type EditorController, type Exporter } from "../../lib/tldrawDoc";
 import { applyEditorPreferences, persistEditorPreferences, readEditorPreferences } from "../../lib/preferences";
 import type { TldrawState } from "../../types";
 
@@ -102,14 +102,17 @@ type TldrawCanvasProps = {
   title: string;
   initialDoc: TldrawState;
   onChange: (doc: TldrawState) => void;
-  exportRef: { current: Exporter | null };
+  controllerRef: { current: EditorController | null };
+  onHistoryState: (state: { canUndo: boolean; canRedo: boolean }) => void;
 };
 
-export default function TldrawCanvas({ imageUrl, imgW, imgH, title, initialDoc, onChange, exportRef }: TldrawCanvasProps) {
+export default function TldrawCanvas({ imageUrl, imgW, imgH, title, initialDoc, onChange, controllerRef, onHistoryState }: TldrawCanvasProps) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const initialRef = useRef(initialDoc);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onHistoryStateRef = useRef(onHistoryState);
+  onHistoryStateRef.current = onHistoryState;
   const saveTimer = useRef<number | null>(null);
   const pendingRef = useRef<TldrawState>(null);
 
@@ -140,7 +143,14 @@ export default function TldrawCanvas({ imageUrl, imgW, imgH, title, initialDoc, 
     applyEditorPreferences(editor, readEditorPreferences());
     editor.setCurrentTool("select");
     editor.zoomToBounds(new Box(0, 0, imgW, imgH), { inset: 48 });
-    const unsub = editor.store.listen(() => scheduleSave());
+    const notifyHistoryState = () => {
+      onHistoryStateRef.current({ canUndo: editor.canUndo(), canRedo: editor.canRedo() });
+    };
+    notifyHistoryState();
+    const unsub = editor.store.listen(() => {
+      scheduleSave();
+      notifyHistoryState();
+    });
     return () => {
       unsub();
       if (saveTimer.current) {
@@ -166,11 +176,17 @@ export default function TldrawCanvas({ imageUrl, imgW, imgH, title, initialDoc, 
       });
       return { blob: res.blob, width: res.width, height: res.height };
     };
-    exportRef.current = exporter;
-    return () => {
-      exportRef.current = null;
+    controllerRef.current = {
+      exportImage: exporter,
+      undo: () => editor.undo(),
+      redo: () => editor.redo(),
+      canUndo: () => editor.canUndo(),
+      canRedo: () => editor.canRedo(),
     };
-  }, [editor, imgW, imgH, exportRef]);
+    return () => {
+      controllerRef.current = null;
+    };
+  }, [editor, imgW, imgH, controllerRef]);
 
   useEffect(() => {
     if (!editor) return;
@@ -183,10 +199,20 @@ export default function TldrawCanvas({ imageUrl, imgW, imgH, title, initialDoc, 
       if (mod || e.altKey) return;
 
       const TOOL_KEYS: Record<string, string> = {
+        v: "select",
+        d: "draw",
+        e: "eraser",
+        h: "hand",
+        l: "line",
+        a: "arrow",
+        t: "text",
+        n: "note",
+        f: "frame",
+        k: "highlight",
         c: "cs-counter",
-        m: "cs-blur",
-        g: "cs-pixelate",
-        q: "cs-redact",
+        b: "cs-blur",
+        p: "cs-pixelate",
+        x: "cs-redact",
         r: "rectangle",
         o: "ellipse",
       };
@@ -269,15 +295,15 @@ const TOOLS: { id: string; label: string; icon: string; kbd?: string }[] = [
   { id: "note", label: "Note", icon: "note", kbd: "N" },
   { id: "frame", label: "Frame", icon: "frame", kbd: "F" },
   { id: "cs-counter", label: "Step", icon: "counter", kbd: "C" },
-  { id: "cs-blur", label: "Blur", icon: "blur", kbd: "M" },
-  { id: "cs-pixelate", label: "Mosaic", icon: "pixelate", kbd: "G" },
-  { id: "cs-redact", label: "Redact", icon: "redact", kbd: "Q" },
+  { id: "cs-blur", label: "Blur", icon: "blur", kbd: "B" },
+  { id: "cs-pixelate", label: "Mosaic", icon: "pixelate", kbd: "P" },
+  { id: "cs-redact", label: "Redact", icon: "redact", kbd: "X" },
   { id: "laser", label: "Laser", icon: "laser" },
 ];
 
 function Toolbar() {
   const editor = useEditor();
-  const { toolId, geo, color, size, fill, dash, canUndo, canRedo } = useValue(
+  const { toolId, geo, color, size, fill, dash } = useValue(
     "cs-toolbar",
     () => ({
       toolId: editor.getCurrentToolId(),
@@ -286,8 +312,6 @@ function Toolbar() {
       size: editor.getStyleForNextShape(DefaultSizeStyle),
       fill: editor.getStyleForNextShape(DefaultFillStyle),
       dash: editor.getStyleForNextShape(DefaultDashStyle),
-      canUndo: editor.canUndo(),
-      canRedo: editor.canRedo(),
     }),
     [editor],
   );
@@ -322,6 +346,8 @@ function Toolbar() {
             onClick={() => setTool(t.id)}
           >
             <ToolIcon name={t.icon} />
+            <span className="tool-label">{t.label}</span>
+            {t.kbd && <kbd className="tool-kbd">{t.kbd}</kbd>}
           </button>
         ))}
       </div>
@@ -451,16 +477,6 @@ function Toolbar() {
         </div>
       </div>
 
-      <div className="divider" />
-
-      <div className="prop-group">
-        <button className="icon-btn" title="Undo (Ctrl+Z)" disabled={!canUndo} onClick={() => editor.undo()}>
-          ↩
-        </button>
-        <button className="icon-btn" title="Redo (Ctrl+Y)" disabled={!canRedo} onClick={() => editor.redo()}>
-          ↪
-        </button>
-      </div>
     </div>
   );
 }

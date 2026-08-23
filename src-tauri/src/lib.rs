@@ -125,6 +125,7 @@ pub fn run() {
             library::library_list_captures,
             library::library_get_capture,
             library::library_update_annotations,
+            library::library_update_title,
             library::library_delete_capture,
             hotkeys::get_settings,
             hotkeys::ensure_capture_hotkey,

@@ -5,6 +5,7 @@ import { uid } from "./types";
 import { host, setHost } from "./lib/bridge";
 import { nativeHost, readNativeClipboardImage } from "./lib/nativeHost";
 import { loadImage, makeThumb } from "./lib/storage";
+import { normalizeCaptureTitle } from "./lib/history";
 import { downloadBlob, flattenToBlob, sanitizeFileName } from "./lib/export";
 import {
   blobToBase64,
@@ -15,6 +16,7 @@ import {
   getSettings,
   isTauriRuntime,
   listCaptureWindows,
+  nativeErrorMessage,
   setCaptureSettings,
   showPinnedCapture,
   startAreaCapture,
@@ -22,12 +24,12 @@ import {
   type NativeCaptureFrame,
   type NativeWindowInfo,
 } from "./lib/nativeCapture";
-import type { Exporter } from "./lib/tldrawDoc";
+import type { EditorController } from "./lib/tldrawDoc";
 import CaptureOverlay from "./components/CaptureOverlay";
 import Editor from "./components/Editor";
 import Dropzone from "./components/Dropzone";
 import HistoryRail from "./components/HistoryRail";
-import QuickAccess, { type OcrStatus } from "./components/QuickAccess";
+import type { OcrStatus } from "./components/QuickAccess";
 import SettingsPopover from "./components/SettingsPopover";
 import WindowPicker from "./components/WindowPicker";
 import PinnedCapture from "./components/PinnedCapture";
@@ -45,7 +47,8 @@ function EditorApp() {
   const [rec, setRec] = useState<CaptureRecord | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [history, setHistory] = useState<CaptureRecord[]>([]);
-  const [showHistory, setShowHistory] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
   const [ocr, setOcr] = useState<OcrState>({ status: "idle" });
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -61,7 +64,7 @@ function EditorApp() {
 
   const urlRef = useRef<string | null>(null);
   const recRef = useRef<CaptureRecord | null>(null);
-  const exporterRef = useRef<Exporter | null>(null);
+  const controllerRef = useRef<EditorController | null>(null);
   const saveTimers = useRef(new Map<string, { version: number; timer: number }>());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -78,7 +81,7 @@ function EditorApp() {
   }, []);
 
   useEffect(() => {
-    refreshHistory().catch(() => setNotice("Could not open the local library."));
+    refreshHistory().catch((error: unknown) => setNotice(nativeErrorMessage(error, "Could not open the local library.")));
   }, [refreshHistory]);
 
   const openCapture = useCallback((r: CaptureRecord) => {
@@ -112,8 +115,8 @@ function EditorApp() {
         await host.saveCapture(r);
         openCapture(r);
         await refreshHistory();
-      } catch (e) {
-        setNotice(`Could not load that image: ${String(e)}`);
+      } catch (e: unknown) {
+        setNotice(`Could not load that image: ${nativeErrorMessage(e, "The image could not be loaded.")}`);
       } finally {
         setBusy(false);
       }
@@ -130,7 +133,7 @@ function EditorApp() {
       if (disposed) return;
       void captureFrameToBlob(event.payload)
         .then((blob) => newCapture(blob))
-        .catch(() => setNotice("Could not open the captured area in the editor."));
+        .catch((error: unknown) => setNotice(nativeErrorMessage(error, "Could not open the captured area in the editor.")));
     }).then((stop) => {
       if (disposed) {
         stop();
@@ -151,7 +154,7 @@ function EditorApp() {
       return;
     }
     setNotice(null);
-    void startAreaCapture().catch(() => setNotice("Could not start screen capture."));
+    void startAreaCapture().catch((error: unknown) => setNotice(nativeErrorMessage(error, "Could not start screen capture.")));
   }, []);
 
   useEffect(() => {
@@ -164,11 +167,11 @@ function EditorApp() {
       .then((value) => {
         if (!disposed) setSettings(value);
       })
-      .catch(() => {
-        if (!disposed) setNotice("Could not load capture settings.");
+      .catch((error: unknown) => {
+        if (!disposed) setNotice(nativeErrorMessage(error, "Could not load capture settings."));
       });
-    void ensureCaptureHotkey().catch(() => {
-      if (!disposed) setNotice("Could not register the global capture shortcut.");
+    void ensureCaptureHotkey().catch((error: unknown) => {
+      if (!disposed) setNotice(nativeErrorMessage(error, "Could not register the global capture shortcut."));
     });
     void listen<string>("global-hotkey-pressed", () => {
       if (!disposed) startCapture();
@@ -197,7 +200,7 @@ function EditorApp() {
     setWindowError(null);
     void listCaptureWindows()
       .then((items) => setCaptureWindows(items))
-      .catch(() => setWindowError("Could not list the open windows."))
+      .catch((error: unknown) => setWindowError(nativeErrorMessage(error, "Could not list the open windows.")))
       .finally(() => setWindowBusy(false));
   }, []);
 
@@ -209,8 +212,8 @@ function EditorApp() {
       const blob = await captureFrameToBlob(frame);
       await newCapture(blob);
       setWindowPickerOpen(false);
-    } catch {
-      setWindowError("Could not capture that window. It may have closed or become unavailable.");
+    } catch (error: unknown) {
+      setWindowError(nativeErrorMessage(error, "Could not capture that window. It may have closed or become unavailable."));
     } finally {
       setWindowBusy(false);
     }
@@ -222,8 +225,8 @@ function EditorApp() {
     try {
       const frame = await captureFullscreen();
       await newCapture(await captureFrameToBlob(frame));
-    } catch {
-      setNotice("Could not capture the full screen.");
+    } catch (error: unknown) {
+      setNotice(nativeErrorMessage(error, "Could not capture the full screen."));
     } finally {
       setBusy(false);
     }
@@ -237,8 +240,8 @@ function EditorApp() {
       setSettings(value);
       setSettingsOpen(false);
       setNotice("Capture settings saved.");
-    } catch (error) {
-      setSettingsError(String(error));
+    } catch (error: unknown) {
+      setSettingsError(nativeErrorMessage(error, "Could not save capture settings."));
     } finally {
       setSettingsSaving(false);
     }
@@ -264,7 +267,9 @@ function EditorApp() {
       if (prev) window.clearTimeout(prev.timer);
       const version = (prev?.version ?? 0) + 1;
       const timer = window.setTimeout(() => {
-        void persistAnnotations(recordId, annotations, version);
+        void persistAnnotations(recordId, annotations, version).catch((error: unknown) => {
+          setNotice(nativeErrorMessage(error, "Could not save the capture annotations."));
+        });
       }, 400);
       saveTimers.current.set(recordId, { version, timer });
     },
@@ -278,6 +283,12 @@ function EditorApp() {
     setRec(null);
     setOcr({ status: "idle" });
     setNotice(null);
+    setShowHistory(false);
+    setHistoryState({ canUndo: false, canRedo: false });
+  }, []);
+
+  const onHistoryState = useCallback((next: { canUndo: boolean; canRedo: boolean }) => {
+    setHistoryState((current) => (current.canUndo === next.canUndo && current.canRedo === next.canRedo ? current : next));
   }, []);
 
   const deleteCapture = useCallback(
@@ -287,18 +298,47 @@ function EditorApp() {
         window.clearTimeout(s.timer);
         saveTimers.current.delete(id);
       }
-      await host.deleteCapture(id);
-      await refreshHistory();
-      if (recRef.current?.id === id) closeCapture();
+      try {
+        await host.deleteCapture(id);
+        await refreshHistory();
+        if (recRef.current?.id === id) closeCapture();
+      } catch (error: unknown) {
+        setNotice(nativeErrorMessage(error, "Could not delete that capture."));
+      }
     },
     [refreshHistory, closeCapture],
+  );
+
+  const renameCapture = useCallback(
+    async (id: string, title: string): Promise<boolean> => {
+      const nextTitle = normalizeCaptureTitle(title);
+      if (!nextTitle) {
+        setNotice("Capture titles cannot be empty.");
+        return false;
+      }
+      try {
+        const updated = await host.updateCaptureTitle(id, nextTitle);
+        if (!updated) {
+          setNotice("That capture is no longer in the local library.");
+          return false;
+        }
+        setRec((current) => (current && current.id === id ? { ...current, title: nextTitle, updatedAt: Date.now() } : current));
+        await refreshHistory();
+        setNotice(null);
+        return true;
+      } catch (error: unknown) {
+        setNotice(nativeErrorMessage(error, "Could not rename that capture."));
+        return false;
+      }
+    },
+    [refreshHistory],
   );
 
   const copyImage = useCallback(async () => {
     if (!rec) return;
     setNotice(null);
     try {
-      const exporter = exporterRef.current;
+      const exporter = controllerRef.current?.exportImage;
       const { blob } = exporter ? await exporter() : await flattenToBlob(rec);
       await host.copyImage(blob);
       setCopied(true);
@@ -312,7 +352,7 @@ function EditorApp() {
     if (!rec) return;
     setNotice(null);
     try {
-      const exporter = exporterRef.current;
+      const exporter = controllerRef.current?.exportImage;
       const { blob } = exporter ? await exporter() : await flattenToBlob(rec);
       await host.copyFile(blob, `${sanitizeFileName(rec.title)}.png`);
       setNotice("PNG copied to the clipboard as a file.");
@@ -325,7 +365,7 @@ function EditorApp() {
     if (!rec) return;
     setNotice(null);
     try {
-      const exporter = exporterRef.current;
+      const exporter = controllerRef.current?.exportImage;
       const { blob } = exporter ? await exporter() : await flattenToBlob(rec);
       downloadBlob(blob, `${sanitizeFileName(rec.title)}.png`);
     } catch {
@@ -337,12 +377,12 @@ function EditorApp() {
     if (!rec || !isTauriRuntime()) return;
     setNotice(null);
     try {
-      const exporter = exporterRef.current;
+      const exporter = controllerRef.current?.exportImage;
       const { blob, width, height } = exporter ? await exporter() : await flattenToBlob(rec);
       await showPinnedCapture(await blobToBase64(blob), width, height, rec.title);
       setNotice("Capture pinned above other windows.");
-    } catch {
-      setNotice("Could not pin this capture.");
+    } catch (error: unknown) {
+      setNotice(nativeErrorMessage(error, "Could not pin this capture."));
     }
   }, [rec]);
 
@@ -353,8 +393,8 @@ function EditorApp() {
       const res = await host.recognize(rec.imageBlob, (p) => setOcr({ status: "running", progress: p.progress }));
       setOcr({ status: "done", text: res.text });
       setNotice(null);
-    } catch (e) {
-      setOcr({ status: "error", message: String(e) });
+    } catch (e: unknown) {
+      setOcr({ status: "error", message: nativeErrorMessage(e, "OCR could not read this image.") });
       setNotice("OCR could not read this image. Try again or use a clearer capture.");
     }
   }, [rec]);
@@ -419,33 +459,75 @@ function EditorApp() {
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark">⌁</span>
+          <span className="brand-mark" aria-hidden="true"><span /></span>
           <span>
             CleanShot <em>W</em>
           </span>
         </div>
-        <div className="top-actions">
-          <button className="btn primary" onClick={startCapture}>
+        <div className="command-actions" aria-label="Edit commands">
+          <button
+            className="command-icon"
+            onClick={() => controllerRef.current?.undo()}
+            disabled={!rec || !historyState.canUndo}
+            title="Undo (Ctrl+Z)"
+            aria-label="Undo"
+          >
+            <CommandIcon name="undo" />
+          </button>
+          <button
+            className="command-icon"
+            onClick={() => controllerRef.current?.redo()}
+            disabled={!rec || !historyState.canRedo}
+            title="Redo (Ctrl+Y)"
+            aria-label="Redo"
+          >
+            <CommandIcon name="redo" />
+          </button>
+        </div>
+        <div className="command-separator" />
+        <nav className="top-actions" aria-label="Capture and export commands">
+          <button className="command-btn primary" onClick={startCapture} disabled={busy}>
             New capture
           </button>
           {isTauriRuntime() && (
             <>
-              <button className="btn" onClick={openWindowPicker}>
+              <button className="command-btn" onClick={openWindowPicker}>
                 Window
               </button>
-              <button className="btn" onClick={() => void captureFullScreen()} disabled={busy}>
+              <button className="command-btn" onClick={() => void captureFullScreen()} disabled={busy}>
                 Full screen
               </button>
             </>
           )}
-          <button className="btn" onClick={() => setShowHistory((s) => !s)}>
+          <button className="command-btn" onClick={copyImage} disabled={!rec}>
+            {copied ? "Copied" : "Copy image"}
+          </button>
+          <button className="command-btn" onClick={copyFile} disabled={!rec}>
+            Copy file
+          </button>
+          <button className="command-btn" onClick={savePng} disabled={!rec}>
+            Save PNG
+          </button>
+          <button className="command-btn" onClick={runOcr} disabled={!rec || ocr.status === "running"}>
+            {ocr.status === "running" ? `OCR ${Math.round((ocr.progress ?? 0) * 100)}%` : "Copy text (OCR)"}
+          </button>
+          {isTauriRuntime() && rec && (
+            <button className="command-btn" onClick={() => void pinCapture()}>
+              Pin
+            </button>
+          )}
+        </nav>
+        <div className="topbar-spacer" />
+        <div className="top-actions top-actions-secondary">
+          <button className="command-btn" onClick={() => setShowHistory((s) => !s)}>
             History {history.length > 0 ? `(${history.length})` : ""}
           </button>
           {isTauriRuntime() && (
-            <button className="btn" onClick={() => { setSettingsError(null); setSettingsOpen((open) => !open); }}>
+            <button className="command-btn" onClick={() => { setSettingsError(null); setSettingsOpen((open) => !open); }}>
               Settings
             </button>
           )}
+          {rec && <button className="command-btn quiet" onClick={closeCapture}>Close</button>}
         </div>
         <input
           ref={fileInputRef}
@@ -463,7 +545,14 @@ function EditorApp() {
       <div className="workspace">
         <main className="stage">
           {rec && imageUrl ? (
-            <Editor key={rec.id} doc={rec} imageUrl={imageUrl} onChange={onAnnotationsChange} exportRef={exporterRef} />
+            <Editor
+              key={rec.id}
+              doc={rec}
+              imageUrl={imageUrl}
+              onChange={onAnnotationsChange}
+              controllerRef={controllerRef}
+              onHistoryState={onHistoryState}
+            />
           ) : (
             <Dropzone
               onFile={(blob, name) => newCapture(blob, name)}
@@ -474,29 +563,21 @@ function EditorApp() {
             />
           )}
         </main>
-        {showHistory && (
-          <HistoryRail records={history} currentId={rec?.id ?? null} onOpen={openCapture} onDelete={deleteCapture} />
-        )}
       </div>
 
-      {rec && (
-        <QuickAccess
-          onCopyImage={copyImage}
-          onCopyFile={copyFile}
-          onSavePng={savePng}
-          onPin={isTauriRuntime() ? () => void pinCapture() : undefined}
-          onOcr={runOcr}
-          onNew={() => {
-            closeCapture();
-            setShowHistory(true);
-          }}
-          onClose={closeCapture}
-          ocrStatus={ocr.status}
-          ocrProgress={ocr.progress}
-          copied={copied}
-          notice={notice}
-        />
+      {showHistory && (
+        <div className="history-flyout">
+          <HistoryRail
+            records={history}
+            currentId={rec?.id ?? null}
+            onOpen={(capture) => { openCapture(capture); setShowHistory(false); }}
+            onRename={renameCapture}
+            onDelete={deleteCapture}
+          />
+        </div>
       )}
+
+      {notice && <div className="topbar-notice" role="status">{notice}</div>}
 
       {ocr.status === "done" && ocr.text && (
         <div className="ocr-panel">
@@ -547,6 +628,18 @@ function EditorApp() {
         </div>
       )}
     </div>
+  );
+}
+
+function CommandIcon({ name }: { name: "undo" | "redo" }) {
+  return (
+    <svg className="command-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+      {name === "undo" ? (
+        <path d="M9 7H5l3-3M5 7c5.7-3.1 12.5-.2 12.5 5.9 0 3.4-2.5 6.1-5.9 6.1-2.8 0-5.1-1.4-6.1-3.6" />
+      ) : (
+        <path d="M15 7h4l-3-3M19 7c-5.7-3.1-12.5-.2-12.5 5.9 0 3.4 2.5 6.1 5.9 6.1 2.8 0 5.1-1.4 6.1-3.6" />
+      )}
+    </svg>
   );
 }
 

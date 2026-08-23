@@ -39,13 +39,18 @@ fn window_label(id: &str) -> String {
 }
 
 fn window_size(width: u32, height: u32) -> (f64, f64) {
-    let scale = (720.0 / f64::from(width))
-        .min(540.0 / f64::from(height))
-        .min(1.0);
-    (
-        (f64::from(width) * scale).max(220.0),
-        (f64::from(height) * scale).max(120.0),
-    )
+    let width = f64::from(width);
+    let height = f64::from(height);
+    let fit_scale = (720.0 / width).min(540.0 / height).min(1.0);
+    let min_scale = (220.0 / width).max(120.0 / height);
+    // Keep the image's aspect ratio. Enlarge small captures only when the
+    // minimum size still fits inside the normal maximum window bounds.
+    let scale = if min_scale <= (720.0 / width).min(540.0 / height) {
+        fit_scale.max(min_scale)
+    } else {
+        fit_scale
+    };
+    (width * scale, height * scale)
 }
 
 #[tauri::command]
@@ -157,7 +162,7 @@ pub fn remove_pinned_capture(state: &State<'_, PinState>, id: &str) -> Result<()
 
 #[cfg(test)]
 mod tests {
-    use super::window_size;
+    use super::{validate_id, window_size};
 
     #[test]
     fn pin_window_size_preserves_aspect_ratio_and_caps_large_images() {
@@ -165,5 +170,20 @@ mod tests {
         assert!(width <= 720.0);
         assert!(height <= 540.0);
         assert!((width / height - 1920.0 / 1080.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn small_pin_windows_are_enlarged_without_distorting_the_image() {
+        let (width, height) = window_size(100, 50);
+        assert!(width >= 220.0);
+        assert!(height >= 120.0);
+        assert!((width / height - 2.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn pin_ids_reject_path_like_values() {
+        assert!(validate_id("1700000000000-1").is_ok());
+        assert!(validate_id("../capture").is_err());
+        assert!(validate_id("pin capture").is_err());
     }
 }

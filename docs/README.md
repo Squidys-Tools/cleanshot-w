@@ -1,68 +1,37 @@
-# CleanShot W
+# CleanShot W documentation
 
-A native Windows screenshot tool — capture, annotate, OCR, export. Local-first,
-no account, no telemetry, no cloud.
+CleanShot W is a local-first Windows screenshot and annotation app. This
+directory contains the project reference docs. The repository root keeps only
+the user-facing README and project files.
 
-## What it does
+## Start here
 
-- **Capture:** area, window, or full screen (via global hotkeys)
-- **Annotate:** rect, ellipse, arrow, line, text, numbered steps, highlight,
-  blur, pixelate, redact
-- **OCR:** select and copy text out of screenshots (tesseract.js, bundled locally)
-- **Export:** copy image to clipboard (alpha-safe), save PNG, or copy text
-- **Library:** disk-backed capture history with thumbnails and re-editing
+1. [Roadmap and status](ROADMAP.md) for the current milestone, next work, and
+   Windows gate.
+2. [Product and scope](PRODUCT.md) for users, constraints, capabilities, and
+   explicit gaps.
+3. [Design system](DESIGN.md) for the editor layout, colors, typography,
+   controls, and capture overlay rules.
+4. [Roadmap](ROADMAP.md) for milestones, decisions, and next work.
 
-## Tech stack
+## Reference docs
 
-| Layer | Technology |
+| Document | Use it for |
 |---|---|
-| App shell | Tauri 2 (Rust + WebView2) |
-| Editor | React 19 + TypeScript 7 + Vite 8 |
-| Canvas | tldraw |
-| OCR | tesseract.js (bundled wasm + traineddata) |
-| Clipboard | arboard (Rust) |
-| Capture | Win32 GDI + DXGI |
+| [Engineering](ENGINEERING.md) | Architecture, runtime boundaries, native constraints, commands, and packaging |
+| [Product and scope](PRODUCT.md) | Product brief, feature coverage, gaps, and future work |
+| [Design system](DESIGN.md) | Visual rules and component guidance |
+| [Roadmap](ROADMAP.md) | Milestones and product decisions |
+| [Changelog](CHANGELOG.md) | Completed and release-visible changes |
 
-## Quick start
+## Where decisions belong
 
-```bash
-# Browser-only editor (no native deps)
-bun install
-bun run dev
+- Current milestone and next work belong in `ROADMAP.md`.
+- Completed changes belong in `CHANGELOG.md`.
+- Stable technical facts belong in `ENGINEERING.md`.
+- Product promises and gaps belong in `PRODUCT.md`.
+- Visual rules belong in `DESIGN.md`.
+- Windows test evidence belongs in `ROADMAP.md`.
 
-# Full Tauri build
-bun install
-bun run tauri build
-```
-
-See [BUILDING.md](./BUILDING.md) for full dev setup and toolchain details.
-
-## Docs
-
-| Document | What's in it |
-|---|---|
-| [STATUS.md](./STATUS.md) | Current milestone, per-item checklist, what's done and next up |
-| [ROADMAP.md](./ROADMAP.md) | Full plan, milestones, constraints, engineering notes |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | hostBridge contract, data model, rendering, DPI, capture pipeline |
-| [CHANGELOG.md](./CHANGELOG.md) | Every notable change, Keep a Changelog format |
-| [BUILDING.md](./BUILDING.md) | Dev/build/test commands, toolchain, risk spikes |
-| [DISTRIBUTION.md](./DISTRIBUTION.md) | Packaging, release checklist, target directory layout |
-
-## Project structure
-
-```
-├── src/                    React + TypeScript editor
-│   ├── components/         UI components (Editor, QuickAccess, etc.)
-│   │   └── editor/         tldraw canvas, custom shapes/tools
-│   └── lib/                Bridge, export, geometry, OCR, storage
-├── src-tauri/              Rust/Tauri shell
-│   ├── src/                capture, clipboard, hotkeys, library
-│   └── capabilities/       Tauri permissions
-├── tests/                  Unit tests (geometry, preferences)
-├── scripts/                OCR asset bundler, smoke tests
-└── docs/                   Project documentation
-```
-
-## License
-
-MIT
+There is one canonical document for each topic. Do not create copies at the
+repository root or under `docs/`.

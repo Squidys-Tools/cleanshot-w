@@ -80,6 +80,8 @@ export const nativeHost: HostBridge = {
   },
   updateCaptureAnnotations: async (id, annotations) =>
     invoke<boolean>("library_update_annotations", { id, annotations }),
+  updateCaptureTitle: async (id, title) =>
+    invoke<boolean>("library_update_title", { id, title }),
   deleteCapture: async (id) => {
     await invoke<void>("library_delete_capture", { id });
   },

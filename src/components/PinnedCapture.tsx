@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { closePinnedCapture, getPinnedCapture, type PinnedCapture as PinnedCaptureData } from "../lib/nativeCapture";
+import { closePinnedCapture, getPinnedCapture, nativeErrorMessage, type PinnedCapture as PinnedCaptureData } from "../lib/nativeCapture";
 
 type Props = {
   id: string;
@@ -21,7 +21,7 @@ export default function PinnedCapture({ id }: Props) {
         setState(capture ? { kind: "ready", capture } : { kind: "error", message: "This pinned capture is no longer available." });
       })
       .catch((error: unknown) => {
-        if (active) setState({ kind: "error", message: String(error) });
+        if (active) setState({ kind: "error", message: nativeErrorMessage(error, "Could not load the pinned capture.") });
       });
     return () => {
       active = false;
@@ -29,7 +29,9 @@ export default function PinnedCapture({ id }: Props) {
   }, [id]);
 
   const close = () => {
-    void closePinnedCapture(id).catch(() => undefined);
+    void closePinnedCapture(id).catch((error: unknown) => {
+      setState({ kind: "error", message: nativeErrorMessage(error, "Could not close the pinned capture.") });
+    });
   };
 
   if (state.kind === "loading") return <div className="pin-state">Loading pinned capture…</div>;

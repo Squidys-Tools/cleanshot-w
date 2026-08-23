@@ -19,6 +19,9 @@ export default defineConfig(async () => ({
     port,
     strictPort: true,
     host: host || false,
+    allowedHosts: env.VITE_ALLOWED_HOSTS
+      ? env.VITE_ALLOWED_HOSTS.split(",").map((value) => value.trim()).filter(Boolean)
+      : undefined,
     hmr: host
       ? {
           protocol: "ws",

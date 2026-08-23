@@ -805,6 +805,28 @@ mod tests {
             2,
         )
         .is_err());
+        assert!(validate_selection(
+            &SelectionRect {
+                x: -1,
+                y: 0,
+                width: 1,
+                height: 1,
+            },
+            3,
+            2,
+        )
+        .is_err());
+        assert!(validate_selection(
+            &SelectionRect {
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 1,
+            },
+            3,
+            2,
+        )
+        .is_err());
     }
 
     #[test]
@@ -832,5 +854,6 @@ mod tests {
     fn png_encoding_returns_a_rgba_png() {
         let bytes = encode_png(1, 1, &[10, 20, 30, 40]).unwrap();
         assert_eq!(&bytes[..8], &[137, 80, 78, 71, 13, 10, 26, 10]);
+        assert!(encode_png(1, 1, &[10, 20, 30]).is_err());
     }
 }

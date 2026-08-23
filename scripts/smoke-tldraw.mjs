@@ -300,7 +300,7 @@ try {
   await page.click('button[title="Close (autosave is on)"]');
   await page.evaluate(() => {
     const item = [...document.querySelectorAll(".history-item")].find(
-      (el) => el.querySelector(".history-meta strong")?.textContent === "test",
+      (el) => el.querySelector(".history-title")?.textContent === "test",
     );
     if (!(item instanceof HTMLElement)) throw new Error("Original capture is missing from history");
     item.click();
