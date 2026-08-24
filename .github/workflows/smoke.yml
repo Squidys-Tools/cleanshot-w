@@ -2,6 +2,14 @@ name: Smoke QA
 
 on:
   pull_request:
+    paths:
+      - "src/**"
+      - "index.html"
+      - "vite.config.ts"
+      - "package.json"
+      - "bun.lock"
+      - "scripts/smoke-tldraw.mjs"
+      - ".github/workflows/smoke.yml"
   workflow_dispatch:
 
 permissions:
@@ -15,6 +23,7 @@ jobs:
   smoke:
     name: Browser smoke test
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
 
     steps:
       - name: Check out repository

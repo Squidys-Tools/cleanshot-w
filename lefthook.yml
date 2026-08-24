@@ -6,6 +6,11 @@ pre-commit:
       run: bun run rust:format
 
 pre-push:
+  parallel: true
   commands:
+    typecheck:
+      run: bun run typecheck
+    test:
+      run: bun run test
     rust-check:
       run: bun run rust:check
