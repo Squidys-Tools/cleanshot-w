@@ -87,15 +87,17 @@ async function activeToolTitle(page) {
 }
 
 async function expectTool(page, startsWith, name) {
-  await page.waitForFunction(
-    (prefix) =>
-      document
-        .querySelector(".cs-toolbar .tool-btn.active:not(:disabled)")
-        ?.getAttribute("title")
-        ?.startsWith(prefix),
-    startsWith,
-    { timeout: 5000 },
-  );
+  const primary = page.locator('.cs-toolbar .tool-btn.active:not(:disabled)');
+  const primaryTitle = await primary.getAttribute("title");
+  if (!primaryTitle?.startsWith(startsWith)) {
+    await page.click('.cs-toolbar button[title="More tools"]');
+    await page.waitForFunction(
+      (prefix) => document.querySelector(".tools-popover .more-tool-btn.active")?.getAttribute("title")?.startsWith(prefix),
+      startsWith,
+      { timeout: 5000 },
+    );
+    await page.click('.cs-toolbar button[title="More tools"]');
+  }
   check(`${name} tool activates`, true);
 }
 
@@ -109,7 +111,7 @@ const context = await browser.newContext({
 const page = await context.newPage();
 page.on("pageerror", (e) => check("no page errors", false, `pageerror: ${e.message}`));
 page.on("console", (msg) => {
-  if (msg.type() === "error") check("no console errors", false, `console: ${msg.text()}`);
+  if (msg.type() === "error") check("no console errors", false, `console: ${msg.text()} @ ${msg.location().url}`);
 });
 
 try {
@@ -152,15 +154,15 @@ try {
   await waitForSaved(page, 2);
   check("redact box created + autosaved", true);
 
-  /* custom-tool keyboard shortcuts (capture override for g/q) */
-  await page.keyboard.press("m");
-  await expectTool(page, "Blur", "blur key m");
+  /* custom-tool keyboard shortcuts */
+  await page.keyboard.press("b");
+  await expectTool(page, "Blur", "blur key b");
   await page.keyboard.press("c");
   await expectTool(page, "Step", "counter key c");
-  await page.keyboard.press("g");
-  await expectTool(page, "Mosaic", "pixelate key g");
-  await page.keyboard.press("q");
-  await expectTool(page, "Redact", "redact key q");
+  await page.keyboard.press("p");
+  await expectTool(page, "Mosaic", "pixelate key p");
+  await page.keyboard.press("x");
+  await expectTool(page, "Redact", "redact key x");
   await page.keyboard.press("r");
   await expectTool(page, "Shape:", "geo key r");
 
@@ -190,10 +192,10 @@ try {
   check("ungroup selected shapes (Ctrl+Shift+G)", true);
 
   /* undo / redo via selection toolbar buttons */
-  await page.click('.cs-toolbar button[title^="Undo"]');
+  await page.click('button.command-icon[title^="Undo"]');
   await waitForSaved(page, 1);
   check("undo works", true);
-  await page.click('.cs-toolbar button[title^="Redo"]');
+  await page.click('button.command-icon[title^="Redo"]');
   await waitForSaved(page, 4);
   check("redo works", true);
 
@@ -257,19 +259,19 @@ try {
   await page.click(".style-popover .popover-close");
   await page.waitForSelector(".style-popover", { state: "detached", timeout: 5000 });
 
-  await page.click('button[title="Copy the flattened image"]');
+  await page.click('nav.top-actions > button.copy-command');
   await page.waitForFunction(
-    () => document.querySelector('button[title="Copy the flattened image"]')?.textContent?.includes("Copied"),
+    () => document.querySelector('nav.top-actions > button.copy-command')?.textContent?.includes("Copied"),
     { timeout: 10000 },
   );
   check("flattened image copies to clipboard", true);
 
   const downloadPromise = page.waitForEvent("download", { timeout: 10000 });
-  await page.click('button[title="Download as PNG"]');
+  await page.click('nav.top-actions > button.save-command');
   const download = await downloadPromise;
   check("PNG export downloads with a safe filename", download.suggestedFilename().endsWith(".png"), download.suggestedFilename());
 
-  await page.click('button[title="Close (autosave is on)"]');
+  await page.click('.top-actions-secondary button.command-btn:has-text("Close")');
   await page.evaluate(async () => {
     const canvas = document.createElement("canvas");
     canvas.width = 640;
@@ -290,14 +292,16 @@ try {
     input.files = transfer.files;
     input.dispatchEvent(new Event("change", { bubbles: true }));
   });
-  await page.waitForSelector('button[title="Recognize text with tesseract.js"]', { timeout: 15000 });
-  await page.click('button[title="Recognize text with tesseract.js"]');
+  await page.click('nav.top-actions .topbar-menu-wrap > button.command-btn');
+  await page.click('.topbar-menu button[role="menuitem"]:has-text("OCR entire image")');
   await page.waitForFunction(
     () => document.querySelector(".ocr-panel")?.textContent?.includes("OCR TEST"),
     { timeout: 120000 },
   );
   check("OCR recognizes text from a screenshot", true);
-  await page.click('button[title="Close (autosave is on)"]');
+  await page.click('.top-actions-secondary button.command-btn:has-text("Close")');
+  await page.click('.top-actions-secondary button.command-btn:has-text("History")');
+  await page.waitForSelector(".history-item", { timeout: 5000 });
   await page.evaluate(() => {
     const item = [...document.querySelectorAll(".history-item")].find(
       (el) => el.querySelector(".history-title")?.textContent === "test",
@@ -310,6 +314,7 @@ try {
   /* persistence across reload */
   await page.waitForTimeout(1400);
   await page.reload({ waitUntil: "domcontentloaded" });
+  await page.click('.top-actions-secondary button.command-btn:has-text("History")');
   await page.waitForSelector(".history-item", { timeout: 15000 });
   await page.click(".history-item");
   await page.waitForSelector(".cs-tldraw .tl-container", { timeout: 15000 });
@@ -349,7 +354,11 @@ try {
   check("advanced tool defaults persisted across reload", true);
   await page.click(".style-popover .popover-close");
 
-  const historyText = await page.evaluate(() => document.querySelector(".history-meta span")?.textContent ?? "");
+  await page.click('.top-actions-secondary button.command-btn:has-text("History")');
+  const historyText = await page.evaluate(() => {
+    const item = [...document.querySelectorAll(".history-item")].find((el) => el.querySelector(".history-title")?.textContent === "test");
+    return item?.querySelector(".history-meta span")?.textContent ?? "";
+  });
   check("history rail shows markup count", historyText.includes("4 marks"), historyText);
 
   const failed = results.filter((r) => !r.ok);

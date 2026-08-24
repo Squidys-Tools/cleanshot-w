@@ -2288,3 +2288,404 @@ button:disabled {
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Focused editor pass: fewer visible tools, clearer hierarchy, and region work. */
+.command-separator {
+  flex: 0 0 1px;
+}
+
+.action-strong {
+  border-color: #c9d9ff;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.action-strong:hover:not(:disabled) {
+  border-color: #b9cdf9;
+  background: #dfeaff;
+}
+
+.topbar-menu-wrap {
+  position: relative;
+}
+
+.topbar-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 80;
+  width: 220px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 16px 34px rgba(32, 33, 36, 0.16);
+}
+
+.topbar-menu-label {
+  padding: 6px 8px 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.topbar-menu button {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: 600 12px/1.2 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  text-align: left;
+}
+
+.topbar-menu button:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--panel-2);
+}
+
+.topbar-menu button:disabled {
+  color: #aab2bf;
+}
+
+.topbar-menu-divider {
+  height: 1px;
+  margin: 6px 0;
+  background: var(--border);
+}
+
+.shortcut-panel {
+  position: fixed;
+  z-index: 75;
+  top: 72px;
+  right: 18px;
+  width: min(320px, calc(100vw - 36px));
+  max-height: calc(100vh - 90px);
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 20px 54px rgba(32, 33, 36, 0.18);
+}
+
+.shortcut-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.shortcut-panel-head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.shortcut-panel-head strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.shortcut-panel-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.shortcut-group {
+  display: grid;
+  gap: 3px;
+  padding-top: 12px;
+}
+
+.shortcut-group-label {
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.shortcut-row {
+  display: grid;
+  grid-template-columns: 86px 1fr;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.shortcut-row kbd {
+  justify-self: start;
+  min-width: 28px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font: 700 10px/1 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  text-align: center;
+}
+
+.cs-toolbar {
+  top: auto;
+  overflow: visible;
+}
+
+.cs-toolbar > .toolbar-primary-tools {
+  gap: 4px;
+}
+
+.cs-toolbar > .toolbar-primary-tools > .popover-wrap > .popover,
+.cs-toolbar > .prop-group > .popover-wrap > .popover {
+  top: auto;
+  bottom: calc(100% + 10px);
+}
+
+.tools-popover {
+  right: 0;
+  left: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 188px;
+  max-height: min(420px, calc(100vh - 180px));
+  overflow-y: auto;
+  transform: none;
+}
+
+.more-tool-btn {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: 600 12px/1.2 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  text-align: left;
+}
+
+.more-tool-btn:hover,
+.more-tool-btn.active {
+  border-color: var(--border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.more-tool-btn .tool-icon {
+  width: 17px;
+  height: 17px;
+}
+
+.more-tool-btn kbd {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.cs-toolbar .toolbar-primary-tools .tool-btn .tool-label {
+  max-width: 62px;
+}
+
+.cs-title-slot {
+  min-width: 0;
+  max-width: 220px;
+}
+
+.cs-title {
+  display: block;
+  max-width: 220px;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: text;
+  font: 600 12px/1.2 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cs-title:hover {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.cs-title-input {
+  width: min(220px, 24vw);
+  min-width: 100px;
+  padding: 3px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font: 600 12px/1.2 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+}
+
+.cs-metadata {
+  white-space: nowrap;
+}
+
+.cs-save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.cs-save-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3aa76d;
+}
+
+.cs-save-state.saving {
+  color: var(--accent);
+}
+
+.cs-save-state.saving .cs-save-dot {
+  background: var(--accent);
+}
+
+.cs-save-state.error {
+  color: var(--danger);
+}
+
+.cs-save-state.error .cs-save-dot {
+  background: var(--danger);
+}
+
+.cs-save-retry {
+  padding: 2px 5px;
+  border: 1px solid #e1b7b1;
+  border-radius: 5px;
+  background: #fff8f7;
+  color: var(--danger);
+  cursor: pointer;
+  font: 700 10px/1 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+}
+
+.cs-save-retry:hover {
+  background: #fff0ed;
+}
+
+.selection-label {
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.region-overlay {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  outline: none;
+  cursor: crosshair;
+  pointer-events: auto;
+}
+
+.region-overlay-wash {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.52);
+}
+
+.region-overlay-selection {
+  position: absolute;
+  border: 2px solid #fff;
+  background: transparent;
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.52), 0 0 0 1px rgba(15, 23, 42, 0.7), 0 12px 30px rgba(15, 23, 42, 0.22);
+  cursor: crosshair;
+}
+
+.region-overlay-selection span {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 5px 7px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  font: 700 11px/1 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.region-overlay-guide {
+  position: absolute;
+  top: 78px;
+  left: 50%;
+  display: grid;
+  gap: 3px;
+  transform: translateX(-50%);
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 1px 4px rgba(15, 23, 42, 0.5);
+  pointer-events: none;
+}
+
+.region-overlay-guide strong {
+  font-size: 14px;
+}
+
+.region-overlay-guide span {
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 12px;
+}
+
+.region-overlay-actions {
+  position: absolute;
+  bottom: 112px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.78);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.24);
+  transform: translateX(-50%);
+  cursor: default;
+}
+
+.region-overlay-actions .command-btn.quiet {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+@media (max-width: 980px) {
+  .cs-toolbar {
+    overflow-x: auto;
+    overflow-y: visible;
+  }
+
+  .cs-statusbar {
+    max-width: calc(100% - 24px);
+    overflow-x: auto;
+  }
+
+  .cs-title-slot {
+    max-width: 160px;
+  }
+
+  .cs-title {
+    max-width: 160px;
+  }
+}

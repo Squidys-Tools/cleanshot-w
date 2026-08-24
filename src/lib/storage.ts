@@ -142,6 +142,35 @@ export async function makeThumb(blob: Blob, maxWidth = 320): Promise<Blob> {
   return new Promise((resolve) => canvas.toBlob((b) => resolve(b ?? blob), "image/png"));
 }
 
+/** Create a PNG containing the requested pixel-space region of an image. */
+export async function cropImage(blob: Blob, requested: { x: number; y: number; width: number; height: number }): Promise<Blob> {
+  const dims = await loadImage(blob);
+  const x = Math.max(0, Math.min(dims.width - 1, Math.round(requested.x)));
+  const y = Math.max(0, Math.min(dims.height - 1, Math.round(requested.y)));
+  const width = Math.max(1, Math.min(dims.width - x, Math.round(requested.width)));
+  const height = Math.max(1, Math.min(dims.height - y, Math.round(requested.height)));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Could not create an image crop.");
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("Could not read image for cropping."));
+      img.src = url;
+    });
+    ctx.drawImage(img, x, y, width, height, 0, 0, width, height);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((result) => (result ? resolve(result) : reject(new Error("Could not create the cropped image."))), "image/png");
+  });
+}
+
 export async function fileToBlob(file: File): Promise<Blob> {
   return new Blob([await file.arrayBuffer()], { type: file.type || "image/png" });
 }

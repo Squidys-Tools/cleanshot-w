@@ -30,7 +30,9 @@ export default function HistoryRail({ records, currentId, onOpen, onRename, onDe
   const filteredRecords = useMemo(() => filterCaptureRecords(records, query), [records, query]);
 
   useEffect(() => {
-    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+    return () => {
+      window.setTimeout(() => urls.forEach((u) => URL.revokeObjectURL(u)), 1000);
+    };
   }, [urls]);
 
   const startRename = (record: CaptureRecord) => {

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { CaptureRecord, TldrawState } from "./types";
+import type { CaptureRecord, RegionMode, TldrawState } from "./types";
 import { uid } from "./types";
 import { host, setHost } from "./lib/bridge";
 import { nativeHost, readNativeClipboardImage } from "./lib/nativeHost";
-import { loadImage, makeThumb } from "./lib/storage";
+import { cropImage, loadImage, makeThumb } from "./lib/storage";
 import { normalizeCaptureTitle } from "./lib/history";
 import { downloadBlob, flattenToBlob, sanitizeFileName } from "./lib/export";
 import {
@@ -53,6 +53,11 @@ function EditorApp() {
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<"saved" | "saving" | "error">("saved");
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [regionMode, setRegionMode] = useState<RegionMode | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [settings, setSettings] = useState<NativeSettings | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -67,6 +72,8 @@ function EditorApp() {
   const controllerRef = useRef<EditorController | null>(null);
   const saveTimers = useRef(new Map<string, { version: number; timer: number }>());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
+  const retrySaveRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     if (isTauriRuntime()) setHost(nativeHost);
@@ -93,6 +100,30 @@ function EditorApp() {
     setOcr({ status: "idle" });
     setCopied(false);
     setNotice(null);
+    setSaveState("saved");
+    setSaveError(null);
+    setRegionMode(null);
+  }, []);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (moreRef.current && !moreRef.current.contains(event.target as Node)) setMoreOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [moreOpen]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "?" || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      event.preventDefault();
+      setShortcutsOpen((open) => !open);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   const newCapture = useCallback(
@@ -251,10 +282,15 @@ function EditorApp() {
     async (recordId: string, annotations: TldrawState, version: number) => {
       const s = saveTimers.current.get(recordId);
       if (!s || s.version !== version) return;
+      setSaveState("saving");
+      setSaveError(null);
+      retrySaveRef.current = () => persistAnnotations(recordId, annotations, version);
       await host.updateCaptureAnnotations(recordId, annotations);
       if (saveTimers.current.get(recordId)?.version === version) {
         saveTimers.current.delete(recordId);
         setHistory(await host.listCaptures());
+        setSaveState("saved");
+        retrySaveRef.current = null;
       }
     },
     [],
@@ -263,12 +299,18 @@ function EditorApp() {
   const onAnnotationsChange = useCallback(
     (recordId: string, annotations: TldrawState) => {
       setRec((r) => (r && r.id === recordId ? { ...r, annotations, updatedAt: Date.now() } : r));
+      setSaveState("saving");
+      setSaveError(null);
+      retrySaveRef.current = null;
       const prev = saveTimers.current.get(recordId);
       if (prev) window.clearTimeout(prev.timer);
       const version = (prev?.version ?? 0) + 1;
       const timer = window.setTimeout(() => {
         void persistAnnotations(recordId, annotations, version).catch((error: unknown) => {
-          setNotice(nativeErrorMessage(error, "Could not save the capture annotations."));
+          const message = nativeErrorMessage(error, "Could not save the capture annotations.");
+          setSaveState("error");
+          setSaveError(message);
+          setNotice(message);
         });
       }, 400);
       saveTimers.current.set(recordId, { version, timer });
@@ -285,6 +327,10 @@ function EditorApp() {
     setNotice(null);
     setShowHistory(false);
     setHistoryState({ canUndo: false, canRedo: false });
+    setSaveState("saved");
+    setSaveError(null);
+    setRegionMode(null);
+    setMoreOpen(false);
   }, []);
 
   const onHistoryState = useCallback((next: { canUndo: boolean; canRedo: boolean }) => {
@@ -399,6 +445,61 @@ function EditorApp() {
     }
   }, [rec]);
 
+  const startOcrRegion = useCallback(() => {
+    if (!rec) return;
+    setMoreOpen(false);
+    setOcr({ status: "idle" });
+    setRegionMode("ocr");
+  }, [rec]);
+
+  const runOcrRegion = useCallback(async (rect: { x: number; y: number; width: number; height: number }) => {
+    if (!rec) return;
+    setOcr({ status: "running", progress: 0 });
+    try {
+      const region = await cropImage(rec.imageBlob, rect);
+      const res = await host.recognize(region, (p) => setOcr({ status: "running", progress: p.progress }));
+      setOcr({ status: "done", text: res.text });
+      setNotice(null);
+    } catch (error: unknown) {
+      const message = nativeErrorMessage(error, "OCR could not read that region.");
+      setOcr({ status: "error", message });
+      setNotice(message);
+    }
+  }, [rec]);
+
+  const applyCroppedCapture = useCallback(async (
+    recordId: string,
+    imageBlob: Blob,
+    image: { width: number; height: number },
+    annotations: TldrawState,
+  ) => {
+    const current = recRef.current;
+    if (!current || current.id !== recordId) return;
+    setSaveState("saving");
+    setSaveError(null);
+    try {
+      const next: CaptureRecord = {
+        ...current,
+        imageBlob,
+        thumbBlob: await makeThumb(imageBlob),
+        image,
+        annotations,
+        updatedAt: Date.now(),
+      };
+      retrySaveRef.current = () => applyCroppedCapture(recordId, imageBlob, image, annotations);
+      await host.saveCapture(next);
+      openCapture(next);
+      await refreshHistory();
+      setSaveState("saved");
+      retrySaveRef.current = null;
+    } catch (error: unknown) {
+      const message = nativeErrorMessage(error, "Could not save the cropped capture.");
+      setSaveState("error");
+      setSaveError(message);
+      setNotice(message);
+    }
+  }, [openCapture, refreshHistory]);
+
   const copyOcrText = useCallback(async () => {
     if (!ocr.text) return;
     try {
@@ -499,23 +600,33 @@ function EditorApp() {
               </button>
             </>
           )}
-          <button className="command-btn" onClick={copyImage} disabled={!rec}>
-            {copied ? "Copied" : "Copy image"}
+          <div className="command-separator" />
+          <button className="command-btn copy-command" onClick={copyImage} disabled={!rec}>
+            {copied ? "Copied" : "Copy"}
           </button>
-          <button className="command-btn" onClick={copyFile} disabled={!rec}>
-            Copy file
-          </button>
-          <button className="command-btn" onClick={savePng} disabled={!rec}>
+          <button className="command-btn action-strong save-command" onClick={savePng} disabled={!rec}>
             Save PNG
           </button>
-          <button className="command-btn" onClick={runOcr} disabled={!rec || ocr.status === "running"}>
-            {ocr.status === "running" ? `OCR ${Math.round((ocr.progress ?? 0) * 100)}%` : "Copy text (OCR)"}
-          </button>
-          {isTauriRuntime() && rec && (
-            <button className="command-btn" onClick={() => void pinCapture()}>
-              Pin
+          <div className="topbar-menu-wrap" ref={moreRef}>
+            <button className="command-btn" onClick={() => setMoreOpen((open) => !open)} disabled={!rec} aria-expanded={moreOpen}>
+              More
             </button>
-          )}
+            {moreOpen && (
+              <div className="topbar-menu" role="menu">
+                <div className="topbar-menu-label">Export and share</div>
+                <button role="menuitem" onClick={() => { void copyFile(); setMoreOpen(false); }} disabled={!rec}>Copy as file</button>
+                {isTauriRuntime() && (
+                  <button role="menuitem" onClick={() => { void pinCapture(); setMoreOpen(false); }} disabled={!rec}>Pin above windows</button>
+                )}
+                <div className="topbar-menu-divider" />
+                <div className="topbar-menu-label">Recognize text</div>
+                <button role="menuitem" onClick={() => { void runOcr(); setMoreOpen(false); }} disabled={!rec || ocr.status === "running"}>
+                  {ocr.status === "running" ? `OCR ${Math.round((ocr.progress ?? 0) * 100)}%` : "OCR entire image"}
+                </button>
+                <button role="menuitem" onClick={startOcrRegion} disabled={!rec || ocr.status === "running"}>OCR selected region</button>
+              </div>
+            )}
+          </div>
         </nav>
         <div className="topbar-spacer" />
         <div className="top-actions top-actions-secondary">
@@ -527,6 +638,9 @@ function EditorApp() {
               Settings
             </button>
           )}
+          <button className="command-btn quiet" onClick={() => setShortcutsOpen((open) => !open)} aria-expanded={shortcutsOpen}>
+            Shortcuts
+          </button>
           {rec && <button className="command-btn quiet" onClick={closeCapture}>Close</button>}
         </div>
         <input
@@ -552,6 +666,14 @@ function EditorApp() {
               onChange={onAnnotationsChange}
               controllerRef={controllerRef}
               onHistoryState={onHistoryState}
+              saveState={saveState}
+              saveError={saveError}
+              onRetrySave={() => { void retrySaveRef.current?.(); }}
+              regionMode={regionMode}
+              onRegionModeChange={setRegionMode}
+              onCrop={applyCroppedCapture}
+              onOcrRegion={(rect) => void runOcrRegion(rect)}
+              onRename={renameCapture.bind(null, rec.id)}
             />
           ) : (
             <Dropzone
@@ -578,6 +700,8 @@ function EditorApp() {
       )}
 
       {notice && <div className="topbar-notice" role="status">{notice}</div>}
+
+      {shortcutsOpen && <ShortcutPanel onClose={() => setShortcutsOpen(false)} />}
 
       {ocr.status === "done" && ocr.text && (
         <div className="ocr-panel">
@@ -628,6 +752,43 @@ function EditorApp() {
         </div>
       )}
     </div>
+  );
+}
+
+function ShortcutPanel({ onClose }: { onClose: () => void }) {
+  const groups = [
+    {
+      label: "Tools",
+      items: [
+        ["V", "Select"], ["K", "Highlight"], ["D", "Draw"], ["A", "Arrow"], ["T", "Text"], ["B", "Blur"], ["X", "Redact"],
+      ],
+    },
+    {
+      label: "Editor",
+      items: [["Ctrl + Z", "Undo"], ["Ctrl + Y", "Redo"], ["Ctrl + D", "Duplicate"], ["Delete", "Delete selection"], ["Esc", "Cancel or clear selection"], ["?", "Show shortcuts"]],
+    },
+  ];
+  return (
+    <section className="shortcut-panel" role="dialog" aria-labelledby="shortcut-panel-title">
+      <div className="shortcut-panel-head">
+        <div>
+          <strong id="shortcut-panel-title">Keyboard shortcuts</strong>
+          <span>Keep your hands on the capture.</span>
+        </div>
+        <button className="icon-btn" onClick={onClose} aria-label="Close keyboard shortcuts">×</button>
+      </div>
+      {groups.map((group) => (
+        <div className="shortcut-group" key={group.label}>
+          <div className="shortcut-group-label">{group.label}</div>
+          {group.items.map(([key, label]) => (
+            <div className="shortcut-row" key={key}>
+              <kbd>{key}</kbd>
+              <span>{label}</span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </section>
   );
 }
 
