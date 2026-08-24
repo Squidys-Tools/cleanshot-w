@@ -733,7 +733,7 @@ mod windows_capture {
         if copied_lines == 0 {
             return Err(last_error("Windows could not read the capture bitmap"));
         }
-        for pixel in bgra.chunks_exact_mut(4) {
+        for pixel in bgra.as_chunks_mut::<4>().0 {
             pixel.swap(0, 2);
             pixel[3] = 255;
         }

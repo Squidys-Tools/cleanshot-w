@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactElement, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement, type RefObject } from "react";
 import {
   ArrowShapeArrowheadEndStyle,
   ArrowShapeArrowheadStartStyle,
@@ -18,9 +18,10 @@ import {
 import { Tldraw, useEditor } from "tldraw";
 import { BlurShapeUtil, CounterShapeUtil, PixelateShapeUtil, RedactShapeUtil } from "./customShapes";
 import { BlurTool, CounterTool, PixelateTool, RedactTool } from "./customTools";
-import { ensureBackgroundImage, serializeTldraw, type EditorController, type Exporter } from "../../lib/tldrawDoc";
+import { dataUrlFromUrl, ensureBackgroundImage, getBackgroundImageAsset, serializeTldraw, type EditorController, type Exporter } from "../../lib/tldrawDoc";
 import { applyEditorPreferences, persistEditorPreferences, readEditorPreferences } from "../../lib/preferences";
-import type { TldrawState } from "../../types";
+import type { Rect, RegionMode, TldrawState } from "../../types";
+import { cropImage, loadImage } from "../../lib/storage";
 
 const CUSTOM_SHAPE_UTILS = [CounterShapeUtil, BlurShapeUtil, PixelateShapeUtil, RedactShapeUtil];
 const CUSTOM_TOOLS = [CounterTool, BlurTool, PixelateTool, RedactTool];
@@ -104,10 +105,36 @@ type TldrawCanvasProps = {
   onChange: (doc: TldrawState) => void;
   controllerRef: { current: EditorController | null };
   onHistoryState: (state: { canUndo: boolean; canRedo: boolean }) => void;
+  saveState: "saved" | "saving" | "error";
+  saveError?: string | null;
+  onRetrySave?: () => void;
+  regionMode: RegionMode | null;
+  onRegionModeChange: (mode: RegionMode | null) => void;
+  onCrop: (imageBlob: Blob, image: { width: number; height: number }, annotations: TldrawState) => Promise<void>;
+  onOcrRegion: (rect: Rect) => void;
+  onRename: (title: string) => Promise<boolean>;
 };
 
-export default function TldrawCanvas({ imageUrl, imgW, imgH, title, initialDoc, onChange, controllerRef, onHistoryState }: TldrawCanvasProps) {
+export default function TldrawCanvas({
+  imageUrl,
+  imgW,
+  imgH,
+  title,
+  initialDoc,
+  onChange,
+  controllerRef,
+  onHistoryState,
+  saveState,
+  saveError,
+  onRetrySave,
+  regionMode,
+  onRegionModeChange,
+  onCrop,
+  onOcrRegion,
+  onRename,
+}: TldrawCanvasProps) {
   const [editor, setEditor] = useState<Editor | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const initialRef = useRef(initialDoc);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -142,7 +169,6 @@ export default function TldrawCanvas({ imageUrl, imgW, imgH, title, initialDoc, 
     restoreOnce(editor, initialRef.current);
     applyEditorPreferences(editor, readEditorPreferences());
     editor.setCurrentTool("select");
-    editor.zoomToBounds(new Box(0, 0, imgW, imgH), { inset: 48 });
     const notifyHistoryState = () => {
       onHistoryStateRef.current({ canUndo: editor.canUndo(), canRedo: editor.canRedo() });
     };
@@ -161,7 +187,24 @@ export default function TldrawCanvas({ imageUrl, imgW, imgH, title, initialDoc, 
         if (snap) onChangeRef.current(snap);
       }
     };
-  }, [editor, imgW, imgH, scheduleSave]);
+  }, [editor, scheduleSave]);
+
+  useEffect(() => {
+    if (!editor) return;
+    editor.zoomToBounds(new Box(0, 0, imgW, imgH), { inset: 48 });
+  }, [editor, imgW, imgH]);
+
+  useEffect(() => {
+    if (!regionMode) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onRegionModeChange(null);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [onRegionModeChange, regionMode]);
 
   useEffect(() => {
     if (!editor) return;
@@ -234,13 +277,62 @@ export default function TldrawCanvas({ imageUrl, imgW, imgH, title, initialDoc, 
   }, [editor]);
 
   return (
-    <div className="cs-tldraw">
+    <div className="cs-tldraw" ref={rootRef}>
       <Tldraw hideUi shapeUtils={CUSTOM_SHAPE_UTILS} tools={CUSTOM_TOOLS} onMount={onMount} options={{ maxShapesPerPage: 2000 }}>
         <div className="cs-ui">
-          <Toolbar />
+          {regionMode && (
+            <RegionOverlay
+              mode={regionMode}
+              editor={editor}
+              rootRef={rootRef}
+              imgW={imgW}
+              imgH={imgH}
+              onCancel={() => onRegionModeChange(null)}
+              onApply={async (rect) => {
+                if (regionMode === "ocr") {
+                  onOcrRegion(rect);
+                  onRegionModeChange(null);
+                  return;
+                }
+                if (!editor) return;
+                const asset = getBackgroundImageAsset(editor);
+                const imageShape = editor.getCurrentPageShapes().find((shape) => shape.type === "image");
+                if (!asset || asset.type !== "image" || !asset.props.src || !imageShape || imageShape.type !== "image") return;
+                const nextBlob = await cropImage(new Blob([await (await fetch(asset.props.src)).blob()], { type: asset.props.mimeType || "image/png" }), rect);
+                const nextUrl = URL.createObjectURL(nextBlob);
+                try {
+                  const nextSrc = await dataUrlFromUrl(nextUrl);
+                  const nextDims = await loadImage(nextBlob);
+                  const pageId = editor.getCurrentPageId();
+                  const topLevelShapes = editor.getCurrentPageShapes().filter((shape) => shape.parentId === pageId && shape.type !== "image");
+                  const deleted = topLevelShapes.filter((shape) => {
+                    const bounds = editor.getShapePageBounds(shape);
+                    return !bounds || bounds.maxX <= rect.x || bounds.maxY <= rect.y || bounds.minX >= rect.x + rect.width || bounds.minY >= rect.y + rect.height;
+                  });
+                  editor.run(() => {
+                    editor.markHistoryStoppingPoint();
+                    if (deleted.length) editor.deleteShapes(deleted.map((shape) => shape.id));
+                    editor.updateShapes(
+                      topLevelShapes
+                        .filter((shape) => !deleted.some((item) => item.id === shape.id))
+                        .map((shape) => ({ id: shape.id, type: shape.type, x: shape.x - rect.x, y: shape.y - rect.y })),
+                    );
+                    editor.updateAssets([{ id: asset.id, type: "image", props: { ...asset.props, src: nextSrc, w: nextDims.width, h: nextDims.height } }] as never);
+                    editor.updateShapes([{ id: imageShape.id, type: "image", x: 0, y: 0, props: { w: nextDims.width, h: nextDims.height } }]);
+                  });
+                  editor.zoomToBounds(new Box(0, 0, nextDims.width, nextDims.height), { inset: 48, animation: { duration: 200 } });
+                  await onCrop(nextBlob, nextDims, serializeTldraw(editor));
+                  onRegionModeChange(null);
+                } finally {
+                  URL.revokeObjectURL(nextUrl);
+                }
+              }}
+            />
+          )}
+          <Toolbar cropActive={regionMode === "crop"} onCrop={() => onRegionModeChange("crop")} />
           <SelectionBar />
           <ZoomControls />
-          <StatusBar title={title} imgW={imgW} imgH={imgH} />
+          <StatusBar title={title} imgW={imgW} imgH={imgH} saveState={saveState} saveError={saveError} onRetrySave={onRetrySave} onRename={onRename} />
         </div>
       </Tldraw>
     </div>
@@ -267,6 +359,13 @@ function editableShapeIds(editor: Editor): TLShapeId[] {
   return editor.getSelectedShapeIds().filter((id) => editor.getShape(id)?.type !== "image");
 }
 
+function setStyleForNextAndSelected(editor: Editor, style: unknown, value: unknown): void {
+  editor.setStyleForNextShapes(style as never, value as never);
+  if (editableShapeIds(editor).length > 0) {
+    editor.setStyleForSelectedShapes(style as never, value as never);
+  }
+}
+
 function usePopover(): { ref: RefObject<HTMLDivElement | null>; open: boolean; toggle: () => void; close: () => void } {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
@@ -279,6 +378,122 @@ function usePopover(): { ref: RefObject<HTMLDivElement | null>; open: boolean; t
     return () => document.removeEventListener("pointerdown", close);
   }, [open]);
   return { ref, open, toggle: () => setOpen((o) => !o), close: () => setOpen(false) };
+}
+
+function normalizeRect(start: { x: number; y: number }, end: { x: number; y: number }): Rect {
+  return {
+    x: Math.min(start.x, end.x),
+    y: Math.min(start.y, end.y),
+    width: Math.abs(end.x - start.x),
+    height: Math.abs(end.y - start.y),
+  };
+}
+
+function RegionOverlay({
+  mode,
+  editor,
+  rootRef,
+  imgW,
+  imgH,
+  onCancel,
+  onApply,
+}: {
+  mode: RegionMode;
+  editor: Editor | null;
+  rootRef: RefObject<HTMLDivElement | null>;
+  imgW: number;
+  imgH: number;
+  onCancel: () => void;
+  onApply: (rect: Rect) => Promise<void>;
+}) {
+  const [start, setStart] = useState<{ x: number; y: number } | null>(null);
+  const [rect, setRect] = useState<Rect | null>(null);
+  const [busy, setBusy] = useState(false);
+  const camera = useValue("cs-region-camera", () => editor?.getCamera(), [editor]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const target = rootRef.current;
+    target?.focus();
+  }, [editor, rootRef]);
+
+  if (!editor) return null;
+  void camera;
+
+  const pagePointFromEvent = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const point = editor.screenToPage({ x: event.clientX, y: event.clientY });
+    return {
+      x: Math.max(0, Math.min(imgW, point.x)),
+      y: Math.max(0, Math.min(imgH, point.y)),
+    };
+  };
+
+  const localScreenPoint = (point: { x: number; y: number }) => {
+    const screen = editor.pageToScreen(point);
+    const bounds = rootRef.current?.getBoundingClientRect();
+    return { x: screen.x - (bounds?.left ?? 0), y: screen.y - (bounds?.top ?? 0) };
+  };
+
+  const screenRect = rect
+    ? (() => {
+        const topLeft = localScreenPoint(rect);
+        const bottomRight = localScreenPoint({ x: rect.x + rect.width, y: rect.y + rect.height });
+        return { x: topLeft.x, y: topLeft.y, width: bottomRight.x - topLeft.x, height: bottomRight.y - topLeft.y };
+      })()
+    : null;
+
+  return (
+    <div
+      className="region-overlay"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onCancel();
+        }
+      }}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        const point = pagePointFromEvent(event);
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setStart(point);
+        setRect({ x: point.x, y: point.y, width: 0, height: 0 });
+      }}
+      onPointerMove={(event) => {
+        if (!start) return;
+        setRect(normalizeRect(start, pagePointFromEvent(event)));
+      }}
+      onPointerUp={(event) => {
+        if (!start) return;
+        setRect(normalizeRect(start, pagePointFromEvent(event)));
+        setStart(null);
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+    >
+      {!screenRect && <div className="region-overlay-wash" />}
+      {screenRect && <div className="region-overlay-selection" style={screenRect}>
+        <span>{Math.round(rect?.width ?? 0)} × {Math.round(rect?.height ?? 0)}</span>
+      </div>}
+      <div className="region-overlay-guide">
+        <strong>{mode === "crop" ? "Crop screenshot" : "Read selected text"}</strong>
+        <span>{screenRect ? "Adjust the selection or apply it" : "Drag over the image to select a region"}</span>
+      </div>
+      <div className="region-overlay-actions" onPointerDown={(event) => event.stopPropagation()}>
+        <button className="command-btn quiet" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button
+          className="command-btn primary"
+          onClick={() => {
+            if (!rect || rect.width < 8 || rect.height < 8 || busy) return;
+            setBusy(true);
+            void onApply(rect).finally(() => setBusy(false));
+          }}
+          disabled={!rect || rect.width < 8 || rect.height < 8 || busy}
+        >
+          {busy ? "Working…" : mode === "crop" ? "Crop image" : "Read text"}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /* ------------------------------ Toolbar ------------------------------ */
@@ -301,7 +516,9 @@ const TOOLS: { id: string; label: string; icon: string; kbd?: string }[] = [
   { id: "laser", label: "Laser", icon: "laser" },
 ];
 
-function Toolbar() {
+const PRIMARY_TOOL_IDS = ["select", "highlight", "draw", "arrow", "text", "cs-counter", "cs-blur", "cs-redact"];
+
+function Toolbar({ cropActive, onCrop }: { cropActive: boolean; onCrop: () => void }) {
   const editor = useEditor();
   const { toolId, geo, color, size, fill, dash } = useValue(
     "cs-toolbar",
@@ -320,6 +537,7 @@ function Toolbar() {
 
   const geoPopover = usePopover();
   const stylePopover = usePopover();
+  const morePopover = usePopover();
 
   const setTool = (id: string) => {
     if (id === "rectangle" || id === "ellipse") {
@@ -337,8 +555,8 @@ function Toolbar() {
 
   return (
     <div className="cs-toolbar">
-      <div className="tool-group">
-        {TOOLS.map((t) => (
+      <div className="tool-group toolbar-primary-tools">
+        {TOOLS.filter((t) => PRIMARY_TOOL_IDS.includes(t.id)).map((t) => (
           <button
             key={t.id}
             className={`tool-btn ${toolId === t.id ? "active" : ""}`}
@@ -350,6 +568,36 @@ function Toolbar() {
             {t.kbd && <kbd className="tool-kbd">{t.kbd}</kbd>}
           </button>
         ))}
+        <button className={`tool-btn ${cropActive ? "active" : ""}`} title="Crop screenshot" onClick={onCrop}>
+          <ToolIcon name="crop" />
+          <span className="tool-label">Crop</span>
+        </button>
+        <div className="popover-wrap" ref={morePopover.ref}>
+          <button className={`tool-btn ${TOOLS.some((tool) => tool.id === toolId && !PRIMARY_TOOL_IDS.includes(tool.id)) ? "active" : ""}`} title="More tools" onClick={morePopover.toggle}>
+            <ToolIcon name="more" />
+            <span className="tool-label">More</span>
+          </button>
+          {morePopover.open && (
+            <div className="popover tools-popover">
+              <div className="popover-label">More tools</div>
+              {TOOLS.filter((t) => !PRIMARY_TOOL_IDS.includes(t.id)).map((t) => (
+                <button
+                  key={t.id}
+                  className={`more-tool-btn ${toolId === t.id ? "active" : ""}`}
+                  title={`${t.label}${t.kbd ? ` (${t.kbd})` : ""}`}
+                  onClick={() => {
+                    setTool(t.id);
+                    morePopover.close();
+                  }}
+                >
+                  <ToolIcon name={t.icon} />
+                  <span>{t.label}</span>
+                  {t.kbd && <kbd>{t.kbd}</kbd>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="divider" />
@@ -362,9 +610,11 @@ function Toolbar() {
             onClick={geoPopover.toggle}
           >
             <ToolIcon name={activeGeo.icon} />
+            <span className="tool-label">Shapes</span>
           </button>
           {geoPopover.open && (
             <div className="popover geo-popover">
+              <div className="popover-label">Shapes</div>
               {GEO_SHAPES.map((g) => (
                 <button
                   key={g.id}
@@ -398,7 +648,7 @@ function Toolbar() {
               style={{ background: getColorValue(palette, c, "solid") }}
               title={c}
               onClick={() => {
-                editor.setStyleForNextShapes(DefaultColorStyle, c);
+                setStyleForNextAndSelected(editor, DefaultColorStyle, c);
                 persistEditorPreferences(editor);
               }}
             />
@@ -416,7 +666,7 @@ function Toolbar() {
               className={`size-btn ${size === s.id ? "active" : ""}`}
               title={`Size ${s.label}`}
               onClick={() => {
-                editor.setStyleForNextShapes(DefaultSizeStyle, s.id);
+                setStyleForNextAndSelected(editor, DefaultSizeStyle, s.id);
                 persistEditorPreferences(editor);
               }}
             >
@@ -436,7 +686,7 @@ function Toolbar() {
               className={`seg-btn ${fill === f.id ? "active" : ""}`}
               title={f.label}
               onClick={() => {
-                editor.setStyleForNextShapes(DefaultFillStyle, f.id);
+                setStyleForNextAndSelected(editor, DefaultFillStyle, f.id);
                 persistEditorPreferences(editor);
               }}
             >
@@ -456,7 +706,7 @@ function Toolbar() {
               className={`seg-btn ${dash === d.id ? "active" : ""}`}
               title={d.label}
               onClick={() => {
-                editor.setStyleForNextShapes(DefaultDashStyle, d.id);
+                setStyleForNextAndSelected(editor, DefaultDashStyle, d.id);
                 persistEditorPreferences(editor);
               }}
             >
@@ -508,7 +758,7 @@ function StylePopover({ editor, onClose, onChange }: { editor: Editor; onClose: 
               className={`seg-btn ${font === f.id ? "active" : ""}`}
               title={f.label}
               onClick={() => {
-                editor.setStyleForNextShapes(DefaultFontStyle, f.id);
+                setStyleForNextAndSelected(editor, DefaultFontStyle, f.id);
                 onChange();
               }}
             >
@@ -541,21 +791,21 @@ function StylePopover({ editor, onClose, onChange }: { editor: Editor; onClose: 
       <div className="popover-section">
         <div className="popover-label">Arrowheads</div>
         <div className="popover-row">
-          <select value={ahStart} onChange={(e) => { editor.setStyleForNextShapes(ArrowShapeArrowheadStartStyle, e.target.value as never); onChange(); }}>
+          <select value={ahStart} onChange={(e) => { setStyleForNextAndSelected(editor, ArrowShapeArrowheadStartStyle, e.target.value); onChange(); }}>
             {ARROWHEADS.map((a) => (
               <option key={a.id} value={a.id}>
                 Start · {a.label}
               </option>
             ))}
           </select>
-          <select value={ahEnd} onChange={(e) => { editor.setStyleForNextShapes(ArrowShapeArrowheadEndStyle, e.target.value as never); onChange(); }}>
+          <select value={ahEnd} onChange={(e) => { setStyleForNextAndSelected(editor, ArrowShapeArrowheadEndStyle, e.target.value); onChange(); }}>
             {ARROWHEADS.map((a) => (
               <option key={a.id} value={a.id}>
                 End · {a.label}
               </option>
             ))}
           </select>
-          <select value={ahKind} onChange={(e) => { editor.setStyleForNextShapes(ArrowShapeKindStyle, e.target.value as never); onChange(); }}>
+          <select value={ahKind} onChange={(e) => { setStyleForNextAndSelected(editor, ArrowShapeKindStyle, e.target.value); onChange(); }}>
             {ARROW_KINDS.map((k) => (
               <option key={k.id} value={k.id}>
                 {k.label}
@@ -598,11 +848,11 @@ function SelectionBar() {
   const editor = useEditor();
   const alignPopover = usePopover();
   const orderPopover = usePopover();
-  const { hasSel, canUngroup } = useValue(
+  const { hasSel, canUngroup, selectedCount } = useValue(
     "cs-selection",
     () => {
       const ids = editor.getSelectedShapeIds().filter((id) => editor.getShape(id)?.type !== "image");
-      return { hasSel: ids.length > 0, canUngroup: ids.some((id) => editor.getShape(id)?.type === "group") };
+      return { hasSel: ids.length > 0, canUngroup: ids.some((id) => editor.getShape(id)?.type === "group"), selectedCount: ids.length };
     },
     [editor],
   );
@@ -612,21 +862,24 @@ function SelectionBar() {
 
   return (
     <div className="cs-selection">
+      <span className="selection-label">{selectedCount} selected</span>
+      <div className="divider" />
       <div className="sel-group">
-        <button className="icon-btn" title="Duplicate (Ctrl+D)" onClick={() => runAction(editor, () => editor.duplicateShapes(ids()))}>
+        <button className="icon-btn" aria-label="Duplicate selection" title="Duplicate (Ctrl+D)" onClick={() => runAction(editor, () => editor.duplicateShapes(ids()))}>
           <ToolIcon name="duplicate" />
         </button>
-        <button className="icon-btn" title="Delete" onClick={() => runAction(editor, () => editor.deleteShapes(ids()))}>
+        <button className="icon-btn" aria-label="Delete selection" title="Delete" onClick={() => runAction(editor, () => editor.deleteShapes(ids()))}>
           <ToolIcon name="trash" />
         </button>
       </div>
       <div className="divider" />
       <div className="sel-group">
-        <button className="icon-btn" title="Group (Ctrl+G)" onClick={() => runAction(editor, () => editor.groupShapes(ids()))}>
+        <button className="icon-btn" aria-label="Group selection" title="Group (Ctrl+G)" onClick={() => runAction(editor, () => editor.groupShapes(ids()))}>
           <ToolIcon name="group" />
         </button>
         <button
           className="icon-btn"
+          aria-label="Ungroup selection"
           title="Ungroup (Ctrl+Shift+G)"
           disabled={!canUngroup}
           onClick={() => runAction(editor, () => editor.ungroupShapes(ids()))}
@@ -637,7 +890,7 @@ function SelectionBar() {
       <div className="divider" />
       <div className="sel-group">
         <div className="popover-wrap" ref={alignPopover.ref}>
-          <button className="icon-btn" title="Align & distribute" onClick={alignPopover.toggle}>
+            <button className="icon-btn" aria-label="Align and distribute" title="Align & distribute" onClick={alignPopover.toggle}>
             <ToolIcon name="align" />
           </button>
           {alignPopover.open && (
@@ -727,19 +980,105 @@ function ZoomControls() {
 
 /* ------------------------------ StatusBar ---------------------------- */
 
-function StatusBar({ title, imgW, imgH }: { title: string; imgW: number; imgH: number }) {
+function StatusBar({
+  title,
+  imgW,
+  imgH,
+  saveState,
+  saveError,
+  onRetrySave,
+  onRename,
+}: {
+  title: string;
+  imgW: number;
+  imgH: number;
+  saveState: "saved" | "saving" | "error";
+  saveError?: string | null;
+  onRetrySave?: () => void;
+  onRename: (title: string) => Promise<boolean>;
+}) {
   const editor = useEditor();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(title);
+  const [renaming, setRenaming] = useState(false);
+  const skipBlurRef = useRef(false);
   const count = useValue(
     "cs-count",
     () => editor.getCurrentPageShapes().filter((s) => s.type !== "image" && s.parentId === editor.getCurrentPageId()).length,
     [editor],
   );
+
+  useEffect(() => {
+    if (!editing) setDraft(title);
+  }, [editing, title]);
+
+  const commitTitle = async () => {
+    if (renaming) return;
+    const nextTitle = draft.trim();
+    if (!nextTitle) {
+      setDraft(title);
+      setEditing(false);
+      return;
+    }
+    if (nextTitle === title) {
+      setEditing(false);
+      return;
+    }
+    setRenaming(true);
+    try {
+      if (await onRename(nextTitle)) setEditing(false);
+      else setDraft(title);
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   return (
     <div className="cs-statusbar">
-      <span className="cs-title">{title}</span>
-      <span>
+      <div className="cs-title-slot">
+        {editing ? (
+          <input
+            className="cs-title-input"
+            value={draft}
+            maxLength={500}
+            autoFocus
+            aria-label="Capture title"
+            disabled={renaming}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void commitTitle();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                skipBlurRef.current = true;
+                setDraft(title);
+                setEditing(false);
+              }
+            }}
+            onBlur={() => {
+              if (skipBlurRef.current) {
+                skipBlurRef.current = false;
+                return;
+              }
+              void commitTitle();
+            }}
+          />
+        ) : (
+          <button className="cs-title" title="Rename capture" onClick={() => setEditing(true)}>
+            {title}
+          </button>
+        )}
+      </div>
+      <span className="cs-metadata">
         {imgW} × {imgH} · {count} markup{count === 1 ? "" : "s"}
       </span>
+      <span className={`cs-save-state ${saveState}`} title={saveError || undefined}>
+        <span className="cs-save-dot" aria-hidden="true" />
+        {saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved locally"}
+      </span>
+      {saveState === "error" && onRetrySave && <button className="cs-save-retry" onClick={onRetrySave}>Retry</button>}
     </div>
   );
 }
@@ -812,6 +1151,12 @@ function ToolIcon({ name }: { name: string }) {
       <>
         <path d="M4 4h16" />
         <path d="M6.5 4l5.5 8 5.5-8M12 12v8" />
+      </>
+    ),
+    crop: (
+      <>
+        <path d="M8 4H4v4M16 4h4v4M20 16v4h-4M4 16v4h4" />
+        <rect x="7" y="7" width="10" height="10" rx="1" />
       </>
     ),
     "fill-none": (

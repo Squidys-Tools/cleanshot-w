@@ -13,6 +13,7 @@ export type ToolKind =
 
 export type Point = { x: number; y: number };
 export type Rect = { x: number; y: number; width: number; height: number };
+export type RegionMode = "crop" | "ocr";
 export type Stroke = { color: string; width: number };
 
 export type Annotation =

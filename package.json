@@ -9,8 +9,11 @@
     "preview": "vite preview",
     "test": "bun test",
     "smoke": "node scripts/smoke-tldraw.mjs",
+    "rust:format": "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
+    "rust:check": "node scripts/check-rust.mjs",
     "ocr:assets": "bun scripts/ocr-assets.mjs",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "prepare": "lefthook install"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -25,6 +28,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.5",
+    "lefthook": "^2.1.10",
     "playwright": "^1.62.1",
     "typescript": "~7.0.2",
     "vite": "^8.2.1"
