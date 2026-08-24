@@ -1,0 +1,11 @@
+pre-commit:
+  parallel: true
+  commands:
+    rust-format:
+      glob: "src-tauri/**/*.rs"
+      run: bun run rust:format
+
+pre-push:
+  commands:
+    rust-check:
+      run: bun run rust:check
