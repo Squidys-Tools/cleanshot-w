@@ -1,6 +1,15 @@
 import { spawnSync } from "node:child_process";
 
 const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
+
+// windows-gnu test harness exes lack the comctl32 v6 manifest tauri embeds in
+// the real binary, so they abort at load (STATUS_ENTRYPOINT_NOT_FOUND on
+// TaskDialogIndirect). Rust tests stay on CI's msvc runner; locally we run
+// fmt + clippy only.
+const isWindowsGnu =
+  process.platform === "win32" &&
+  (process.env.RUSTUP_TOOLCHAIN ?? "").endsWith("-windows-gnu");
+
 const commands = [
   ["Format", ["fmt", "--manifest-path", "src-tauri/Cargo.toml", "--", "--check"]],
   [
@@ -19,7 +28,11 @@ const commands = [
   ["Tests", ["test", "--manifest-path", "src-tauri/Cargo.toml"]],
 ];
 
-for (const [name, args] of commands) {
+const applicable = isWindowsGnu
+  ? commands.filter(([name]) => name !== "Tests")
+  : commands;
+
+for (const [name, args] of applicable) {
   console.log(`\n== Rust ${name} ==`);
   const result = spawnSync(cargo, args, { stdio: "inherit" });
   if (result.error) {
