@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "bun test",
+    "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke-tldraw.mjs",
     "rust:format": "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
     "rust:check": "node scripts/check-rust.mjs",
