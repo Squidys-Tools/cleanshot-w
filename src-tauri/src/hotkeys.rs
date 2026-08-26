@@ -2,7 +2,9 @@ use crate::library::{app_data_root, now_millis};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+#[cfg(feature = "app")]
 use tauri::AppHandle;
+#[cfg(feature = "app")]
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 pub const DEFAULT_CAPTURE_HOTKEY: &str = "ctrl+shift+4";
@@ -80,11 +82,13 @@ fn validate_shortcut(shortcut: &str) -> Result<String, String> {
     Ok(value.to_ascii_lowercase())
 }
 
+#[cfg(feature = "app")]
 pub fn register_saved_hotkey(app: &AppHandle) -> Result<(), String> {
     let settings = read_settings()?;
     register_hotkey(app, &settings.capture_hotkey)
 }
 
+#[cfg(feature = "app")]
 fn register_hotkey(app: &AppHandle, shortcut: &str) -> Result<(), String> {
     if app.global_shortcut().is_registered(shortcut) {
         return Ok(());
@@ -94,10 +98,12 @@ fn register_hotkey(app: &AppHandle, shortcut: &str) -> Result<(), String> {
     })
 }
 
+#[cfg(feature = "app")]
 fn unregister_hotkey(app: &AppHandle, shortcut: &str) {
     let _ = app.global_shortcut().unregister(shortcut);
 }
 
+#[cfg(feature = "app")]
 fn apply_settings(app: &AppHandle, next: AppSettings) -> Result<AppSettings, String> {
     let previous = read_settings()?;
     let shortcut_changed = previous.capture_hotkey != next.capture_hotkey;
@@ -253,17 +259,20 @@ fn quote_autostart_command(executable: &str) -> String {
     format!("\"{}\" --minimized", executable.replace('"', "\\\""))
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn get_settings() -> Result<AppSettings, String> {
     read_settings()
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn ensure_capture_hotkey(app: AppHandle) -> Result<(), String> {
     let settings = read_settings()?;
     register_hotkey(&app, &settings.capture_hotkey)
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn set_capture_settings(
     app: AppHandle,
@@ -286,6 +295,7 @@ pub fn set_capture_settings(
     })
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn set_capture_hotkey(app: AppHandle, shortcut: String) -> Result<AppSettings, String> {
     let previous = read_settings()?;

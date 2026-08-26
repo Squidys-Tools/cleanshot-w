@@ -16,7 +16,16 @@ const commands = [
       "warnings",
     ],
   ],
-  ["Tests", ["test", "--manifest-path", "src-tauri/Cargo.toml"]],
+  [
+    "Tests",
+    [
+      "test",
+      "--manifest-path",
+      "src-tauri/Cargo.toml",
+      "--no-default-features",
+      "--lib",
+    ],
+  ],
 ];
 
 for (const [name, args] of commands) {

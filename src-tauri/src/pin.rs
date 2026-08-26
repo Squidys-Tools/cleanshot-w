@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+#[cfg(feature = "app")]
 use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 #[derive(Default)]
@@ -53,6 +54,7 @@ fn window_size(width: u32, height: u32) -> (f64, f64) {
     (width * scale, height * scale)
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn show_pinned_capture(
     app: AppHandle,
@@ -122,6 +124,7 @@ pub fn show_pinned_capture(
     Ok(id)
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn get_pinned_capture(
     state: State<'_, PinState>,
@@ -135,6 +138,7 @@ pub fn get_pinned_capture(
     Ok(captures.get(&id).cloned())
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn close_pinned_capture(
     app: AppHandle,
@@ -151,6 +155,7 @@ pub fn close_pinned_capture(
     Ok(())
 }
 
+#[cfg(feature = "app")]
 pub fn remove_pinned_capture(state: &State<'_, PinState>, id: &str) -> Result<(), String> {
     state
         .captures
