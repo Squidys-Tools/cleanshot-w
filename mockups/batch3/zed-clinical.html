@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CleanShot W — capture_04.png</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --canvas:#141619;
+    --panel:#191c1f;
+    --raised:#1f2327;
+    --hover:#262b30;
+    --hairline:rgba(255,255,255,.07);
+    --hairline-strong:rgba(255,255,255,.11);
+    --txt-hi:#e6e8eb;
+    --txt-mid:#9aa0a6;
+    --txt-low:#5c6167;
+    --accent:#74ade8;
+    --accent-dim:rgba(116,173,232,.14);
+    --green:#7ec9a1;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+    --sans:'IBM Plex Sans',system-ui,sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    background:#0d0f11;
+    font-family:var(--sans);
+    font-size:12px;
+    color:var(--txt-mid);
+    display:flex;align-items:center;justify-content:center;
+    min-height:100vh;padding:24px;
+  }
+  button{font-family:inherit;font-size:inherit;color:inherit;background:none;border:none;cursor:pointer}
+  :focus{outline:none}
+  :focus-visible{outline:1px solid var(--accent);outline-offset:-1px}
+  svg{display:block}
+
+  /* ---------- window frame ---------- */
+  .win{
+    width:1180px;height:760px;
+    background:var(--canvas);
+    border:1px solid var(--hairline-strong);
+    border-radius:5px;
+    display:flex;flex-direction:column;
+    overflow:hidden;
+  }
+
+  /* mono label voice */
+  .mono{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--txt-low)}
+
+  /* ---------- title strip ---------- */
+  .titlebar{
+    height:40px;flex:none;
+    background:var(--panel);
+    border-bottom:1px solid var(--hairline);
+    display:flex;align-items:center;
+    padding:0 10px;gap:14px;
+  }
+  .brand{display:flex;align-items:center;gap:8px}
+  .brand-glyph{
+    width:18px;height:18px;border-radius:3px;
+    background:var(--raised);
+    border:1px solid var(--hairline-strong);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .brand-name{
+    font-family:var(--mono);font-size:11px;letter-spacing:.06em;
+    color:var(--txt-hi);
+  }
+  .menus{display:flex;gap:2px;margin-left:6px}
+  .menu-item{
+    padding:4px 9px;border-radius:3px;
+    color:var(--txt-low);font-size:12px;
+    transition:background 80ms,color 80ms;
+  }
+  .menu-item:hover{background:var(--hover);color:var(--txt-mid)}
+  .spacer{flex:1}
+  .session{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--txt-low)}
+  .session-dot{width:6px;height:6px;border-radius:2px;background:var(--green)}
+
+  /* ---------- body grid ---------- */
+  .body{flex:1;display:flex;min-height:0}
+
+  /* ---------- tool rail ---------- */
+  .rail{
+    width:44px;flex:none;
+    background:var(--panel);
+    border-right:1px solid var(--hairline);
+    display:flex;flex-direction:column;align-items:center;
+    padding-top:8px;gap:2px;
+  }
+  .tool{
+    position:relative;width:32px;height:32px;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    border-radius:3px;color:var(--txt-low);
+    transition:background 80ms,color 80ms;
+  }
+  .tool:hover{background:var(--hover);color:var(--txt-mid)}
+  .tool.active{background:var(--accent-dim);color:var(--accent)}
+  .tool.active .icon{stroke:var(--accent)}
+  .kbd{
+    position:absolute;top:2px;right:3px;
+    font-family:var(--mono);font-size:8px;line-height:1;
+    color:var(--txt-low);letter-spacing:0;
+  }
+  .tool.active .kbd{color:rgba(116,173,232,.75)}
+  .rail-divider{width:20px;height:1px;background:var(--hairline);margin:5px 0;flex:none}
+  .rail-spacer{flex:1}
+  .swatch-stack{display:flex;flex-direction:column;gap:6px;padding-bottom:10px;align-items:center}
+  .swatch-v{width:16px;height:16px;border-radius:3px;border:1px solid rgba(255,255,255,.12);cursor:pointer;padding:0}
+  .swatch-v.on{outline:1px solid var(--accent);outline-offset:2px}
+
+  /* ---------- center column ---------- */
+  .center{flex:1;display:flex;flex-direction:column;min-width:0}
+
+  /* tab row */
+  .tabs{
+    height:34px;flex:none;
+    background:var(--panel);
+    border-bottom:1px solid var(--hairline);
+    display:flex;align-items:flex-end;
+    padding:0 8px;gap:0;
+  }
+  .tab{
+    height:28px;display:flex;align-items:center;gap:8px;
+    padding:0 10px 0 12px;
+    border-radius:4px 4px 0 0;
+    font-family:var(--mono);font-size:10px;letter-spacing:.04em;
+    color:var(--txt-low);
+    border-bottom:2px solid transparent;
+    margin-bottom:-1px;
+    transition:color 80ms,background 80ms;
+  }
+  .tab:hover{color:var(--txt-mid)}
+  .tab.active{
+    color:var(--txt-hi);
+    background:var(--canvas);
+    border-left:1px solid var(--hairline);
+    border-right:1px solid var(--hairline);
+    border-bottom:2px solid var(--accent);
+  }
+  .tab-x{
+    width:14px;height:14px;display:flex;align-items:center;justify-content:center;
+    border-radius:3px;color:var(--txt-low);
+  }
+  .tab-x:hover{background:var(--hover);color:var(--txt-hi)}
+  .tab-ghost{border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tab-actions{margin-left:auto;display:flex;gap:2px;padding-bottom:3px}
+  .ibtn{
+    width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+    border-radius:3px;color:var(--txt-low);
+    transition:background 80ms,color 80ms;
+  }
+  .ibtn:hover{background:var(--hover);color:var(--txt-mid)}
+  .ibtn[disabled]{opacity:.35;pointer-events:none}
+
+  /* style strip */
+  .stylestrip{
+    height:32px;flex:none;
+    background:var(--panel);
+    border-bottom:1px solid var(--hairline);
+    display:flex;align-items:center;gap:18px;
+    padding:0 12px;
+  }
+  .sgroup{display:flex;align-items:center;gap:8px}
+  .seg{display:flex;border:1px solid var(--hairline-strong);border-radius:3px;overflow:hidden}
+  .seg-btn{
+    height:20px;padding:0 9px;
+    font-family:var(--mono);font-size:10px;letter-spacing:.04em;
+    color:var(--txt-low);
+    border-right:1px solid var(--hairline);
+    transition:background 80ms,color 80ms;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .seg-btn:last-child{border-right:none}
+  .seg-btn:hover{background:var(--hover);color:var(--txt-mid)}
+  .seg-btn.on{background:var(--raised);color:var(--txt-hi)}
+  .h-swatches{display:flex;gap:5px}
+  .swatch-h{width:14px;height:14px;border-radius:3px;border:1px solid rgba(255,255,255,.12);padding:0;cursor:pointer}
+  .swatch-h.on{outline:1px solid var(--accent);outline-offset:2px}
+
+  /* ---------- canvas ---------- */
+  .canvas-area{
+    flex:1;background:var(--canvas);
+    display:flex;align-items:center;justify-content:center;
+    min-height:0;overflow:hidden;position:relative;
+  }
+  .shot-wrap{position:relative}
+  .selection-ring{
+    position:absolute;inset:-1px;
+    border:1px solid var(--accent);
+    pointer-events:none;
+  }
+  .handle{position:absolute;width:6px;height:6px;background:#fff;border:1px solid var(--accent)}
+  .h-tl{top:-4px;left:-4px}.h-tr{top:-4px;right:-4px}
+  .h-bl{bottom:-4px;left:-4px}.h-br{bottom:-4px;right:-4px}
+  .dim-chip{
+    position:absolute;bottom:-22px;right:-1px;
+    font-family:var(--mono);font-size:10px;letter-spacing:.04em;
+    color:var(--accent);
+    background:var(--canvas);
+    border:1px solid rgba(116,173,232,.45);
+    border-radius:3px;
+    padding:2px 6px;line-height:1.3;
+  }
+
+  .shot-card{
+    width:520px;
+    background:#ffffff;
+    border:1px solid rgba(0,0,0,.4);
+    border-radius:4px;
+    overflow:hidden;
+    color:#3a3f44;
+  }
+  .shot-titlebar{
+    height:26px;background:#ececee;border-bottom:1px solid #dcdcdf;
+    display:flex;align-items:center;padding:0 10px;gap:10px;
+  }
+  .dots{display:flex;gap:5px}
+  .dot{width:8px;height:8px;border-radius:50%}
+  .d-r{background:#ec6a5e}.d-y{background:#f4bf4f}.d-g{background:#61c554}
+  .shot-docname{font-family:var(--sans);font-size:11px;color:#6b7075}
+  .shot-body{display:flex;height:280px}
+  .shot-side{
+    width:96px;background:#f2f3f5;border-right:1px solid #e2e3e6;
+    padding:12px 12px;display:flex;flex-direction:column;gap:9px;
+  }
+  .side-bar{height:5px;border-radius:2px;background:#cfd2d7}
+  .side-bar:first-child{width:60%}
+  .shot-main{flex:1;padding:22px 26px}
+  .doc-heading{height:14px;width:58%;background:#b8bcc2;border-radius:3px;margin-bottom:16px}
+  .greek{height:7px;border-radius:2px;background:#dde0e4;margin-bottom:10px}
+  .greek.w1{width:94%}.greek.w2{width:88%}.greek.w3{width:97%}
+  .greek.w4{width:72%}.greek.w5{width:91%}.greek.w6{width:60%}
+
+  .arrow-svg{position:absolute;top:150px;left:300px;pointer-events:none}
+  .counter-chip{
+    position:absolute;top:56px;right:64px;
+    width:22px;height:22px;
+    background:var(--canvas);
+    border:1px solid var(--accent);
+    border-radius:3px;
+    color:var(--accent);
+    font-family:var(--mono);font-size:11px;
+    display:flex;align-items:center;justify-content:center;
+  }
+
+  /* ---------- settings dock ---------- */
+  .settings{
+    width:300px;flex:none;
+    background:var(--panel);
+    border-left:1px solid var(--hairline);
+    display:flex;flex-direction:column;
+  }
+  .settings-head{
+    flex:none;height:34px;
+    display:flex;align-items:center;
+    padding:0 14px;
+    border-bottom:1px solid var(--hairline);
+    font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--txt-mid);
+  }
+  .settings-body{flex:1;overflow-y:auto;padding:6px 14px 14px}
+  .row{padding:13px 0;border-bottom:1px solid var(--hairline)}
+  .row-label{
+    font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--txt-mid);margin-bottom:9px;
+  }
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .keychip{
+    font-family:var(--mono);font-size:10px;letter-spacing:.04em;
+    color:var(--txt-hi);
+    background:var(--raised);
+    border:1px solid var(--hairline-strong);
+    border-radius:3px;
+    padding:4px 8px;line-height:1.2;
+  }
+  .hint{font-family:var(--sans);font-size:11px;color:var(--txt-low);margin-top:8px;line-height:1.45}
+  .togglerow{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--hairline)}
+  .toggle-label{font-size:12px;color:var(--txt-mid)}
+  .switch{
+    position:relative;width:28px;height:16px;flex:none;
+    border-radius:2px;
+    background:var(--raised);
+    border:1px solid var(--hairline-strong);
+    cursor:pointer;transition:background 80ms,border-color 80ms;
+  }
+  .switch::after{
+    content:"";position:absolute;top:2px;left:2px;
+    width:10px;height:10px;border-radius:1px;
+    background:var(--txt-low);
+    transition:left 80ms,background 80ms;
+  }
+  .switch.on{background:var(--accent-dim);border-color:var(--accent)}
+  .switch.on::after{left:14px;background:var(--accent)}
+  .save-btn{
+    margin-top:16px;width:100%;height:28px;
+    background:var(--raised);
+    border:1px solid var(--hairline-strong);
+    border-radius:3px;
+    color:var(--txt-hi);font-family:var(--sans);font-size:12px;
+    transition:background 80ms,border-color 80ms;
+  }
+  .save-btn:hover{background:var(--hover);border-color:rgba(255,255,255,.16)}
+  .stored-note{
+    margin-top:auto;padding:12px 14px;
+    border-top:1px solid var(--hairline);
+    font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--txt-low);
+  }
+
+  /* ---------- status bar ---------- */
+  .statusbar{
+    height:26px;flex:none;
+    background:var(--panel);
+    border-top:1px solid var(--hairline);
+    display:flex;align-items:center;
+    padding:0 12px;gap:16px;
+    font-family:var(--mono);font-size:10px;letter-spacing:.05em;
+    color:var(--txt-low);
+  }
+  .status-sep{color:var(--txt-low);opacity:.5}
+  .status-right{margin-left:auto;display:flex;align-items:center;gap:16px}
+</style>
+</head>
+<body>
+
+<div class="win">
+
+  <!-- 1 · title strip -->
+  <header class="titlebar">
+    <div class="brand">
+      <span class="brand-glyph">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#e6e8eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4l7 8-7 8"/><path d="M13 4l7 8-7 8"/>
+        </svg>
+      </span>
+      <span class="brand-name">CleanShot W</span>
+    </div>
+    <nav class="menus">
+      <button class="menu-item">File</button>
+      <button class="menu-item">Edit</button>
+      <button class="menu-item">Capture</button>
+      <button class="menu-item">Help</button>
+    </nav>
+    <span class="spacer"></span>
+    <span class="session"><span class="session-dot"></span>local session</span>
+  </header>
+
+  <div class="body">
+
+    <!-- 4 · tool rail -->
+    <aside class="rail">
+      <button class="tool active" title="Select"><span class="kbd">V</span><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 8-6.5 1.5L9 19z"/></svg></button>
+      <button class="tool" title="Arrow"><span class="kbd">A</span><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18L18 6"/><path d="M10 6h8v8"/></svg></button>
+      <button class="tool" title="Rectangle"><span class="kbd">R</span><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6" width="16" height="12" rx="1"/></svg></button>
+      <button class="tool" title="Ellipse"><span class="kbd">E</span><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg></button>
+      <div class="rail-divider"></div>
+      <button class="tool" title="Pen"><span class="kbd">P</span><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l5 5-8.5 8.5L4 21l4.5-4.5z"/><path d="M12 3l3-1 4 4-1 3"/></svg></button>
+      <button class="tool" title="Text"><span class="kbd">T</span><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5 6V4h14v2"/><path d="M12 4v16"/><path d="M9 20h6"/></svg></button>
+      <button class="tool" title="Counter"><span class="kbd">N</span><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M10 15V9l-1.5 1"/></svg></button>
+      <button class="tool" title="Highlighter"><span class="kbd">H</span><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4l6 6-8 8H6v-6z"/><path d="M4 21h16"/></svg></button>
+      <div class="rail-divider"></div>
+      <button class="tool" title="Blur"><span class="kbd">B</span><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="2.5 3"><circle cx="12" cy="12" r="8"/></svg></button>
+      <button class="tool" title="Pixelate"><span class="kbd">X</span><svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/></svg></button>
+
+      <span class="rail-spacer"></span>
+      <div class="swatch-stack">
+        <button class="swatch-v on" style="background:#74ade8" title="Blue"></button>
+        <button class="swatch-v" style="background:#e06c75" title="Red"></button>
+        <button class="swatch-v" style="background:#e5c07b" title="Yellow"></button>
+        <button class="swatch-v" style="background:#98c379" title="Green"></button>
+        <button class="swatch-v" style="background:#e6e8eb" title="White"></button>
+      </div>
+    </aside>
+
+    <!-- center column -->
+    <main class="center">
+
+      <!-- 2 · document tabs -->
+      <div class="tabs">
+        <button class="tab active">capture_04.png<span class="tab-x"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span></button>
+        <button class="tab tab-ghost">+ new</button>
+        <span class="tab-actions">
+          <button class="ibtn" disabled title="Undo"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5L3 10l5 5"/><path d="M3 10h11a6 6 0 0 1 0 12h-3"/></svg></button>
+          <button class="ibtn" title="Redo"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16 5l5 5-5 5"/><path d="M21 10H10a6 6 0 0 0 0 12h3"/></svg></button>
+        </span>
+      </div>
+
+      <!-- 5 · style strip -->
+      <div class="stylestrip">
+        <div class="sgroup">
+          <span class="mono">Stroke</span>
+          <div class="seg">
+            <button class="seg-btn">2</button>
+            <button class="seg-btn">4</button>
+            <button class="seg-btn on">6</button>
+          </div>
+        </div>
+        <div class="sgroup">
+          <span class="mono">Dash</span>
+          <div class="seg">
+            <button class="seg-btn on">solid</button>
+            <button class="seg-btn">dashed</button>
+          </div>
+        </div>
+        <div class="sgroup">
+          <span class="mono">Color</span>
+          <div class="h-swatches">
+            <button class="swatch-h on" style="background:#74ade8"></button>
+            <button class="swatch-h" style="background:#e06c75"></button>
+            <button class="swatch-h" style="background:#e5c07b"></button>
+            <button class="swatch-h" style="background:#98c379"></button>
+            <button class="swatch-h" style="background:#e6e8eb"></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3 · canvas -->
+      <div class="canvas-area">
+        <div class="shot-wrap">
+          <div class="selection-ring">
+            <span class="handle h-tl"></span><span class="handle h-tr"></span>
+            <span class="handle h-bl"></span><span class="handle h-br"></span>
+            <span class="dim-chip">1280 × 800</span>
+          </div>
+
+          <div class="shot-card">
+            <div class="shot-titlebar">
+              <span class="dots"><span class="dot d-r"></span><span class="dot d-y"></span><span class="dot d-g"></span></span>
+              <span class="shot-docname">Quarterly Report — Draft.docx</span>
+            </div>
+            <div class="shot-body">
+              <div class="shot-side">
+                <span class="side-bar"></span><span class="side-bar"></span>
+                <span class="side-bar"></span><span class="side-bar"></span>
+                <span class="side-bar"></span>
+              </div>
+              <div class="shot-main">
+                <div class="doc-heading"></div>
+                <div class="greek w1"></div><div class="greek w2"></div><div class="greek w3"></div>
+                <div class="greek w4"></div><div class="greek w5"></div><div class="greek w6"></div>
+              </div>
+            </div>
+          </div>
+
+          <svg class="arrow-svg" width="130" height="90" viewBox="0 0 130 90" fill="none">
+            <defs>
+              <marker id="ah" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+                <path d="M0 0L7 3.5L0 7" fill="none" stroke="#74ade8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </marker>
+            </defs>
+            <path d="M8 12 C 50 4, 108 18, 112 62" stroke="#74ade8" stroke-width="3" stroke-linecap="round" marker-end="url(#ah)"/>
+          </svg>
+
+          <div class="counter-chip">1</div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- 7 · settings dock -->
+    <aside class="settings">
+      <div class="settings-head">Settings</div>
+      <div class="settings-body">
+        <div class="row">
+          <div class="row-label">Capture Hotkey</div>
+          <div class="chips">
+            <span class="keychip">CTRL</span>
+            <span class="keychip">SHIFT</span>
+            <span class="keychip">4</span>
+          </div>
+          <p class="hint">Pressed anywhere in Windows to grab the full screen or a selected region.</p>
+        </div>
+
+        <div class="togglerow">
+          <span class="toggle-label">Include cursor</span>
+          <button class="switch on" role="switch" aria-checked="true" aria-label="Include cursor"></button>
+        </div>
+        <div class="togglerow">
+          <span class="toggle-label">Run at startup</span>
+          <button class="switch" role="switch" aria-checked="false" aria-label="Run at startup"></button>
+        </div>
+      </div>
+      <div style="padding:0 14px">
+        <button class="save-btn" style="margin-bottom:14px">Save Changes</button>
+      </div>
+      <div class="stored-note">stored locally · no cloud</div>
+    </aside>
+
+  </div>
+
+  <!-- 6 · status bar -->
+  <footer class="statusbar">
+    <span>capture_04.png</span>
+    <span class="status-sep">·</span>
+    <span>1280×800</span>
+    <span class="status-right">
+      <span>100%</span>
+      <span>RGB</span>
+      <span>14:32:07</span>
+    </span>
+  </footer>
+
+</div>
+
+<script>
+  // toggle switches (mockup interactivity)
+  document.querySelectorAll('.switch').forEach(function(s){
+    s.addEventListener('click', function(){
+      s.classList.toggle('on');
+      s.setAttribute('aria-checked', s.classList.contains('on'));
+    });
+  });
+  // segmented controls
+  document.querySelectorAll('.seg').forEach(function(g){
+    g.querySelectorAll('.seg-btn').forEach(function(b){
+      b.addEventListener('click', function(){
+        g.querySelectorAll('.seg-btn').forEach(function(x){ x.classList.remove('on'); });
+        b.classList.add('on');
+      });
+    });
+  });
+  // tool rail selection
+  document.querySelectorAll('.rail .tool').forEach(function(t){
+    t.addEventListener('click', function(){
+      document.querySelectorAll('.rail .tool').forEach(function(x){ x.classList.remove('active'); });
+      t.classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

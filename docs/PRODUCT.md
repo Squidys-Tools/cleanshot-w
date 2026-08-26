@@ -16,13 +16,13 @@ be easier to annotate, share, organize, and work with in general.
 
 CleanShot W is a local-first screenshot and annotation app. It lets people
 capture an area, window, or full screen; mark up the image; recognize text;
-copy or export the result; and find captures again later. The goal is a simple
-workflow that does not require an account or cloud service.
+and copy or export the result. The goal is a simple workflow that does not
+require an account or cloud service.
 
 ## Positioning
 
 CleanShot W is a private desktop screenshot workflow that combines capture,
-annotation, OCR, export, and local history in one place. It is not a hosted
+annotation, OCR, and export in one place. It is not a hosted
 sharing or collaboration product. Sharing happens through local clipboard and
 file exports.
 
@@ -35,19 +35,20 @@ file exports.
   configurable global shortcut.
 - People can also paste, drop, or choose an image in the editor.
 - Captures can be annotated, copied, saved as PNG, processed with local OCR,
-  pinned above other windows, and reopened from History.
+  and pinned above other windows. There is no capture library: each capture is
+  annotated and exported as it happens.
 
 ## Capabilities and constraints
 
 - Current capabilities include editable drawing, shapes, arrows, text,
   counters, highlights, blur, pixelation, redaction, zoom, pan, undo/redo,
-  OCR, clipboard/file export, capture history, title editing and search,
+  OCR, clipboard/file export through a dedicated export page,
   always-on-top pins, tray controls, a configurable capture hotkey, cursor
   inclusion, and optional per-user startup.
-- Capture history, annotations, images, titles, and settings are stored locally
+- Annotations, images, and settings are stored locally
   in the browser or under `%LOCALAPPDATA%\CleanShotW` in the native app.
 - The product is local-first. No account, cloud sync, telemetry, or network
-  dependency is required for capture, annotation, export, library use, or OCR.
+  dependency is required for capture, annotation, export, or OCR.
   OCR assets are bundled locally.
 - The app is designed for standard-user operation and per-user installation.
   Administrator elevation is not required.
@@ -115,8 +116,8 @@ file exports.
 
 | Reference capability | Status | Current scope / follow-up |
 |---|---|---|
-| Copy, save, annotate, OCR, pin, new, and close actions | Implemented | The main command bar exposes capture, export, OCR, pin, history, settings, and close actions. Annotation tools live in the detached bottom dock. |
-| Capture metadata and drag/drop to another app | Partial | Capture title and history metadata exist; external drag/drop from the overlay is not implemented. |
+| Copy, save, annotate, OCR, pin, new, and close actions | Implemented | The main command bar exposes capture, export, OCR, pin, settings, and close actions; a Done action opens the export page. Annotation tools live in the detached bottom dock. |
+| Capture metadata and drag/drop to another app | Partial | Capture metadata exists internally; external drag/drop from the overlay is not implemented. |
 | Corner popup, restore recently closed overlay, position/size controls, auto-close, swipe gestures, temporary hide | Planned | These are separate overlay UX capabilities and are not part of the current M2 shell. |
 | Multi-display overlay support | Partial | Native capture uses the virtual desktop and is designed for multiple displays; the full overlay positioning and behavior matrix still requires Windows validation. |
 
@@ -158,12 +159,12 @@ file exports.
 | On-device text recognition and clipboard output | Implemented | Bundled tesseract.js assets run locally without a network connection. |
 | OCR on a selected region with word-level interaction | Partial | Word bounding-box support exists in the OCR layer, but the current action recognizes the capture image as a whole and does not provide a dedicated OCR-region selection workflow. |
 
-## History and settings
+## Settings
 
 | Reference capability | Status | Current scope / follow-up |
 |---|---|---|
-| Capture history, thumbnails, reopen, delete, title editing, and title search | Implemented | Browser IndexedDB and native disk-backed history support these workflows. |
-| Filter by capture type and automatic one-month retention | Planned | Current history search is title-based and does not implement the reference retention or filter rules. |
+| Capture history, thumbnails, reopen, delete, title editing, and title search | Out of scope | Removed from the product. CleanShot W annotates and exports captures as they happen and deliberately keeps no screenshot library to manage. |
+| Filter by capture type and automatic one-month retention | Out of scope | Follows from removing the capture library. |
 | Customizable capture behavior | Partial | Hotkey, cursor inclusion, and Windows startup are configurable; the broader settings catalog in the reference product is not yet implemented. |
 
 ## Delivery order

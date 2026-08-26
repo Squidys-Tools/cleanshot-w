@@ -526,6 +526,11 @@ kbd {
   cursor: pointer;
   border-radius: 6px;
   padding: 4px 8px;
+  transition: background 120ms ease, color 120ms ease, transform 160ms ease-out;
+}
+
+.icon-btn:active {
+  transform: scale(0.97);
 }
 
 .icon-btn:hover {
@@ -602,6 +607,14 @@ kbd {
   stroke-linejoin: round;
 }
 
+/* Third-party icon libraries: own sizing/color, no SVG stroke overrides */
+.lib-icon {
+  display: block;
+  width: 20px;
+  height: 20px;
+  color: inherit;
+}
+
 .tool-icon text {
   stroke: none;
   fill: currentColor;
@@ -631,6 +644,11 @@ kbd {
   border: 2px solid transparent;
   cursor: pointer;
   padding: 0;
+  transition: transform 160ms ease-out;
+}
+
+.swatch:active {
+  transform: scale(0.97);
 }
 
 .swatch.active {
@@ -1204,6 +1222,11 @@ kbd {
   color: var(--muted);
   cursor: pointer;
   font-size: 12px;
+  transition: background 120ms ease, color 120ms ease, transform 160ms ease-out;
+}
+
+.size-btn:active {
+  transform: scale(0.97);
 }
 
 .size-btn:hover {
@@ -1272,6 +1295,11 @@ kbd {
   color: var(--muted);
   cursor: pointer;
   font-size: 12px;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 160ms ease-out;
+}
+
+.seg-btn:active {
+  transform: scale(0.97);
 }
 
 .seg-btn:hover {
@@ -1375,6 +1403,11 @@ kbd {
   color: var(--muted);
   cursor: pointer;
   padding: 0;
+  transition: background 120ms ease, color 120ms ease, transform 160ms ease-out;
+}
+
+.geo-opt:active {
+  transform: scale(0.97);
 }
 
 .geo-opt:hover {
@@ -1761,7 +1794,7 @@ button:disabled {
   cursor: pointer;
   font: 600 12px/1 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   white-space: nowrap;
-  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 160ms ease-out;
 }
 
 .command-icon {
@@ -2085,10 +2118,10 @@ button:disabled {
 .cs-toolbar .swatch.active,
 .cs-toolbar .size-btn.active,
 .cs-toolbar .seg-btn.active {
-  border-color: #b9cdf9;
+  border-color: transparent;
   background: #fff;
-  color: var(--accent);
-  box-shadow: 0 1px 3px rgba(32, 33, 36, 0.1);
+  color: #17171b;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 
 .cs-toolbar .icon-btn,
@@ -2284,8 +2317,25 @@ button:disabled {
   *::before,
   *::after {
     scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+  }
+  /* Keep opacity/color transitions (they aid comprehension); drop movement. */
+  .history-flyout,
+  .shortcut-panel,
+  .settings-popover,
+  .ocr-panel,
+  .cs-toolbar .arrow-popover,
+  .cs-toolbar .font-popover,
+  .cs-toolbar .geo-menu,
+  .cs-toolbar .color-popover,
+  .cs-toolbar .tools-popover,
+  .cs-selection .align-popover,
+  .export-card,
+  .export-action,
+  .cs-toolbar .tool-btn:hover,
+  .export-action:hover,
+  .color-chip:hover {
+    transform: none !important;
   }
 }
 
@@ -2687,5 +2737,1282 @@ button:disabled {
 
   .cs-title {
     max-width: 160px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Alcove-cozy world — editor + settings replacement layer.
+
+   THESIS: a warm, calm utility that earns identity from soft depth,
+   precise hairlines, and one coral state color — never from theme.
+   OWN-WORLD: warm near-black ladder (#101013 → #17171b → #1d1d22),
+   hairline rgba(255,255,255,.07), Inter with ss03, radius 8/12/14,
+   coral #ff8f70 reserved for active/selection/focus states, white
+   pill for the primary Copy action.
+   SCOPE: editor chrome, dock, history, settings, pickers, notices.
+   The capture overlay and pin windows keep their existing look.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --bg: #101013;
+  --panel: #17171b;
+  --panel-2: #1d1d22;
+  --panel-hover: #24242a;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --text: #ededf0;
+  --muted: rgba(237, 237, 240, 0.62);
+  --faint: rgba(237, 237, 240, 0.45);
+  --accent: #ff8f70;
+  --accent-soft: rgba(255, 143, 112, 0.14);
+  --accent-border: rgba(255, 143, 112, 0.45);
+  --danger: #ff6b62;
+  --ok: #5fbf8f;
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-float: 14px;
+  --shadow-float: 0 18px 44px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-chip: 0 10px 28px rgba(0, 0, 0, 0.42);
+  font-family: "Inter", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}
+
+body {
+  font-feature-settings: "ss03" on;
+  letter-spacing: -0.006em;
+}
+
+kbd {
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--panel-2);
+  color: var(--muted);
+  padding: 2px 6px;
+}
+
+:where(button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Top bar ─────────────────────────────────────────────────── */
+
+.topbar {
+  height: 54px;
+  flex-basis: 54px;
+  gap: 10px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: none;
+  z-index: 600;
+}
+
+.brand {
+  color: var(--text);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.brand em {
+  color: var(--accent);
+  font-style: normal;
+}
+
+.brand-mark {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(150deg, #ffb08e, var(--accent) 55%, #e56a4c);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    inset 0 -2px 4px rgba(120, 40, 15, 0.35);
+}
+
+.brand-mark::before,
+.brand-mark::after,
+.brand-mark > span {
+  background: #fff;
+}
+
+.command-icon,
+.command-btn {
+  height: 32px;
+  border-radius: var(--radius-control);
+  color: var(--text);
+  background: transparent;
+  font: 500 12.5px/1 "Inter", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  transition: background 140ms ease-out, color 140ms ease-out, border-color 140ms ease-out, transform 140ms ease-out;
+}
+
+.command-icon:hover:not(:disabled),
+.command-btn:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--panel-hover);
+}
+
+.command-icon:active:not(:disabled),
+.command-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.command-icon:disabled,
+.command-btn:disabled {
+  color: var(--faint);
+}
+
+/* Button system — one language across the app:
+   primary = white pill · secondary = 8px hairline ghost · quiet = text only.
+   Coral is a state color, never a button fill. */
+
+.command-btn.primary {
+  border-radius: var(--radius-card);
+  border-color: transparent;
+  background: #fff;
+  color: #17171b;
+  font-weight: 600;
+  padding: 0 16px;
+}
+
+.command-btn.primary:hover:not(:disabled) {
+  background: #f4f4f6;
+}
+
+.command-btn.copy-command {
+  border-radius: var(--radius-card);
+  border-color: transparent;
+  background: #fff;
+  color: #17171b;
+  font-weight: 600;
+  padding: 0 16px;
+}
+
+.command-btn.copy-command:hover:not(:disabled) {
+  background: #f4f4f6;
+}
+
+/* Disabled variants must read as unavailable, not as quiet active buttons:
+   the variant selectors above outrank the generic :disabled rule. */
+.command-btn.primary:disabled,
+.command-btn.copy-command:disabled {
+  border-radius: var(--radius-card);
+  background: var(--panel-2);
+  color: var(--faint);
+}
+
+.command-btn.action-strong.save-command:disabled {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--faint);
+}
+
+.btn.primary:disabled {
+  background: var(--panel-2);
+  color: var(--faint);
+}
+
+.dz-actions .btn,
+.settings-actions .btn {
+  height: 32px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 12.5px;
+}
+
+.command-btn.action-strong.save-command {
+  border-color: var(--border-strong);
+  background: transparent;
+  color: var(--text);
+}
+
+.command-btn.quiet {
+  color: var(--muted);
+}
+
+.command-separator {
+  height: 20px;
+  align-self: center;
+  background: var(--border-strong);
+}
+
+.topbar-menu {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: var(--shadow-float);
+}
+
+.topbar-menu-label {
+  color: var(--faint);
+}
+
+.topbar-menu button {
+  border-radius: var(--radius-control);
+  font-weight: 500;
+}
+
+.topbar-menu button:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--panel-hover);
+}
+
+.topbar-menu button:disabled {
+  color: var(--faint);
+}
+
+.topbar-notice {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--shadow-float);
+}
+
+/* ── Workspace / dropzone ────────────────────────────────────── */
+
+.workspace,
+.stage,
+.editor {
+  background: transparent;
+}
+
+.viewport {
+  background:
+    radial-gradient(90vw 60vh at 50% 38%, #16161c, var(--bg) 72%);
+}
+
+.dropzone {
+  border: 1px dashed var(--border-strong);
+  border-radius: 18px;
+  background: rgba(23, 23, 27, 0.55);
+  box-shadow: none;
+  transition: border-color 160ms ease-out, background 160ms ease-out, box-shadow 160ms ease-out;
+}
+
+.dropzone.over {
+  border-color: var(--accent);
+  background: rgba(255, 143, 112, 0.06);
+  box-shadow: 0 0 0 4px rgba(255, 143, 112, 0.08);
+}
+
+.dropzone h2 {
+  color: var(--text);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.dropzone p {
+  color: var(--muted);
+}
+
+.dz-icon {
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.btn {
+  border-color: var(--border-strong);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+  transition: background 140ms ease-out, border-color 140ms ease-out;
+}
+
+.btn:hover {
+  border-color: var(--border-strong);
+  background: var(--panel-hover);
+}
+
+.btn.primary {
+  border-radius: var(--radius-card);
+  border-color: transparent;
+  background: #fff;
+  color: #17171b;
+  font-weight: 600;
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: #f4f4f6;
+}
+
+/* ── History flyout ──────────────────────────────────────────── */
+
+.history-flyout {
+  top: 68px;
+  right: 16px;
+  border-radius: var(--radius-float);
+  box-shadow: var(--shadow-float);
+  z-index: 650;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 160ms ease-out, transform 160ms ease-out, visibility 160ms;
+}
+
+.history-flyout.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.history-flyout .history {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-float);
+  background: var(--panel);
+}
+
+.history-head {
+  color: var(--text);
+}
+
+.history-head span,
+.history-search {
+  background: var(--panel-2);
+  color: var(--muted);
+}
+
+.history-search {
+  border-color: var(--border);
+  border-radius: var(--radius-control);
+}
+
+.history-search:focus-within {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.history-search input {
+  color: var(--text);
+}
+
+.history-item {
+  border-radius: 10px;
+}
+
+.history-item:hover,
+.history-item.active {
+  background: var(--panel-hover);
+}
+
+.history-item.active {
+  box-shadow: inset 0 0 0 1px var(--accent-border);
+}
+
+.history-item img {
+  border-color: var(--border-strong);
+  background: #0c0c0f;
+}
+
+.history-meta strong,
+.history-title {
+  color: var(--text);
+}
+
+.history-title:hover {
+  color: var(--accent);
+}
+
+.history-title-input {
+  background: var(--bg);
+}
+
+.history-meta span,
+.history-empty {
+  color: var(--muted);
+}
+
+.icon-btn:hover {
+  background: var(--panel-hover);
+  color: var(--text);
+}
+
+/* ── Editor canvas chrome ────────────────────────────────────── */
+
+.cs-tldraw,
+.cs-tldraw .tl-container,
+.cs-tldraw .tl-viewport,
+.cs-tldraw .tl-canvas,
+.cs-tldraw .tl-background {
+  background:
+    radial-gradient(90vw 60vh at 50% 40%, #16161c, var(--bg) 72%) !important;
+}
+
+.capture-img {
+  border-radius: 6px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+.cs-ui {
+  color: var(--text);
+}
+
+/* The capsule dock — the signature element. */
+.cs-toolbar {
+  bottom: 20px;
+  gap: 6px;
+  padding: 7px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.cs-toolbar .tool-btn {
+  border-radius: 7px;
+  color: var(--muted);
+  transition: background 140ms ease-out, color 140ms ease-out, transform 160ms ease-out;
+}
+
+.cs-toolbar .tool-btn:hover:not(.active) {
+  border-color: transparent;
+  background: var(--panel-hover);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.cs-toolbar .tool-btn:active {
+  transform: translateY(0) scale(0.97);
+}
+
+/* Active tool: hairline ring only — icon at full brightness, nothing else. */
+.cs-toolbar .tool-btn.active {
+  border-color: transparent;
+  background: none;
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+.cs-toolbar .divider {
+  background: var(--border);
+}
+
+.cs-toolbar .swatches,
+.cs-toolbar .sizes,
+.cs-toolbar .segmented {
+  border-radius: 999px;
+  border-color: var(--border);
+  background: var(--panel-2);
+  padding: 2px;
+}
+
+.cs-toolbar .swatch.active {
+  position: relative;
+  border-color: transparent;
+  box-shadow:
+    0 0 0 2px var(--panel),
+    0 0 0 3.5px rgba(255, 255, 255, 0.9);
+  transform: scale(1.08);
+  transition: transform 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+.cs-toolbar .swatch.active::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 8px;
+  height: 4.5px;
+  border-left: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(-45deg);
+  filter: drop-shadow(0 0.5px 1px rgba(0, 0, 0, 0.85));
+}
+
+.cs-toolbar .size-btn.active,
+.cs-toolbar .seg-btn.active {
+  border-color: transparent;
+  background: #fff;
+  color: #17171b;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.cs-toolbar .icon-btn:hover,
+.cs-selection .icon-btn:hover,
+.cs-zoom .icon-btn:hover {
+  border-color: transparent;
+  background: var(--panel-hover);
+  color: var(--text);
+}
+
+.cs-toolbar .tool-kbd {
+  color: var(--faint);
+}
+
+.cs-zoom,
+.cs-statusbar,
+.cs-selection {
+  border: 1px solid var(--border-strong);
+  background: var(--panel);
+  box-shadow: var(--shadow-chip);
+  border-radius: var(--radius-card);
+}
+
+.cs-zoom {
+  transition: transform 180ms ease-out;
+}
+
+.app.shortcuts-open .cs-zoom {
+  transform: translateX(-350px);
+}
+
+.cs-statusbar {
+  color: var(--muted);
+}
+
+.cs-save-dot {
+  background: var(--ok);
+}
+
+.cs-save-state.saving {
+  color: var(--accent);
+}
+
+.cs-save-state.saving .cs-save-dot {
+  background: var(--accent);
+}
+
+.cs-save-retry {
+  border-color: rgba(255, 107, 98, 0.4);
+  border-radius: 6px;
+  background: rgba(255, 107, 98, 0.08);
+  color: var(--danger);
+}
+
+.cs-save-retry:hover {
+  background: rgba(255, 107, 98, 0.16);
+}
+
+.cs-title {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.cs-title:hover {
+  color: var(--accent);
+}
+
+.cs-title-input {
+  border-color: var(--accent);
+  border-radius: 6px;
+  background: var(--raised, var(--panel-2));
+  color: var(--text);
+  font-weight: 500;
+}
+
+.more-tool-btn {
+  border-radius: var(--radius-control);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.more-tool-btn:hover {
+  border-color: transparent;
+  background: var(--panel-hover);
+  color: #fff;
+}
+
+.more-tool-btn.active {
+  border-color: transparent;
+  background: none;
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+.selection-label {
+  color: var(--muted);
+}
+
+/* ── Popovers and panels ─────────────────────────────────────── */
+
+.popover {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: var(--shadow-float);
+}
+
+.popover-label {
+  color: var(--faint);
+}
+
+.popover-section {
+  border-bottom-color: var(--border);
+}
+
+.popover-item:hover,
+.geo-opt:hover {
+  border-radius: var(--radius-control);
+  background: var(--panel-hover);
+  color: #fff;
+}
+
+.geo-opt.active {
+  border-radius: var(--radius-control);
+  background: none;
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+.settings-popover {
+  top: 66px;
+  right: 16px;
+  width: 340px;
+  padding: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-float);
+  background: var(--panel);
+  box-shadow: var(--shadow-float);
+}
+
+.settings-head h2,
+.window-picker-head h2 {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.eyebrow {
+  display: none;
+}
+
+.settings-field {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.settings-field input {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--panel-2);
+  color: var(--text);
+  font: 500 13px "IBM Plex Mono", Consolas, ui-monospace, monospace;
+  transition: border-color 140ms ease-out, box-shadow 140ms ease-out;
+}
+
+.settings-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 143, 112, 0.15);
+}
+
+.settings-check {
+  accent-color: var(--accent);
+  color: var(--text);
+}
+
+.settings-check strong {
+  font-weight: 500;
+}
+
+.settings-error,
+.window-picker-message.error {
+  color: var(--danger);
+}
+
+.window-picker-backdrop {
+  background: rgba(8, 8, 10, 0.6);
+}
+
+.window-picker {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-float);
+  background: var(--panel);
+  box-shadow: var(--shadow-float);
+}
+
+.window-picker-item {
+  border-color: var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--text);
+  transition: background 140ms ease-out, border-color 140ms ease-out;
+}
+
+.window-picker-item:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.window-picker-preview {
+  border-color: var(--border-strong);
+  background: linear-gradient(135deg, #26262d 0 24%, #1b1b21 24% 100%);
+}
+
+.window-picker-copy small {
+  color: var(--muted);
+}
+
+.shortcut-panel {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-float);
+  background: var(--panel);
+  box-shadow: var(--shadow-float);
+}
+
+.shortcut-panel-head {
+  border-bottom-color: var(--border);
+}
+
+.shortcut-group-label {
+  color: var(--faint);
+}
+
+.shortcut-row kbd {
+  border-color: var(--border-strong);
+  background: var(--panel-2);
+  color: var(--muted);
+}
+
+.ocr-panel {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  background: var(--panel);
+  box-shadow: var(--shadow-float);
+}
+
+.ocr-panel pre {
+  color: var(--text);
+}
+
+.link-btn {
+  color: var(--accent);
+}
+
+/* ── Surfaces outside the redesign scope stay put ────────────── */
+
+.pin-view,
+.pin-state {
+  background: radial-gradient(circle at 50% 40%, #202735, #0f1115 75%);
+}
+
+.pin-close {
+  background: rgba(15, 17, 21, 0.82);
+  color: var(--text);
+}
+
+.pin-state {
+  color: var(--muted);
+}
+
+.pin-state strong {
+  color: var(--text);
+}
+
+.capture-overlay-cancel:hover {
+  background: #eef0f4;
+}
+
+.text-edit {
+  border-color: var(--accent);
+  background: rgba(16, 16, 19, 0.78);
+  color: var(--text);
+}
+
+/* Prominent close affordance for panels */
+.close-btn {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  transition: background 140ms ease-out, color 140ms ease-out, border-color 140ms ease-out;
+}
+
+.close-btn:hover {
+  border-color: rgba(255, 107, 98, 0.45);
+  background: rgba(255, 107, 98, 0.1);
+  color: var(--danger);
+}
+
+/* ── Overlay layering, transitions, zoom dodge ───────────────── */
+
+.settings-popover,
+.shortcut-panel,
+.ocr-panel {
+  z-index: 650;
+}
+
+.topbar-notice {
+  z-index: 660;
+}
+
+.shortcut-panel {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.98);
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 160ms ease-out, transform 160ms ease-out, visibility 160ms;
+}
+
+.shortcut-panel.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.arrow-popover {
+  width: 210px;
+}
+
+/* ── Toolbar tightening + menu clipping fixes ────────────────── */
+
+/* The topbar clips vertically (for narrow-window scrolling), which cut the
+   More menu off. Let it overflow at normal widths; keep scrolling only when
+   the window is genuinely narrow. */
+.topbar {
+  overflow: visible;
+}
+
+@media (max-width: 1080px) {
+  .topbar {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+}
+
+.cs-toolbar {
+  gap: 3px;
+  padding: 5px 6px;
+}
+
+/* Icon-only tools: names live in tooltips and the Shortcuts panel. */
+.cs-toolbar .tool-btn {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  gap: 0;
+  border-radius: 7px;
+  padding: 0;
+}
+
+.cs-toolbar .tool-btn .tool-icon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+}
+
+.cs-toolbar .divider {
+  height: 20px;
+  margin: 6px 2px;
+}
+
+.cs-toolbar .swatches {
+  gap: 3px;
+  padding: 2px;
+}
+
+.cs-toolbar .swatch {
+  width: 14px;
+  height: 14px;
+}
+
+.cs-toolbar .swatch.active::after {
+  width: 7px;
+  height: 4px;
+}
+
+.cs-toolbar .size-btn,
+.cs-toolbar .seg-btn {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+}
+
+/* Shapes menu: grid plus its own fill row */
+.geo-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 208px;
+}
+
+.geo-menu .geo-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 34px);
+  gap: 4px;
+  justify-content: center;
+}
+
+.font-popover {
+  width: 190px;
+}
+
+/* ── Dock popovers: open/close transitions ───────────────────── */
+
+.cs-toolbar .arrow-popover,
+.cs-toolbar .font-popover,
+.cs-toolbar .geo-menu,
+.cs-toolbar .color-popover {
+  opacity: 0;
+  transform: translateY(4px) scale(0.98);
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 140ms ease-out, transform 140ms ease-out, visibility 140ms;
+}
+
+.cs-toolbar .arrow-popover.open,
+.cs-toolbar .font-popover.open,
+.cs-toolbar .geo-menu.open,
+.cs-toolbar .color-popover.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* Conditionally-mounted popovers (tools list, selection menus): same entry
+   as the always-mounted ones, via @starting-style. */
+.cs-toolbar .tools-popover,
+.cs-selection .align-popover {
+  transition: opacity 140ms ease-out, transform 140ms ease-out;
+}
+
+@starting-style {
+  .cs-toolbar .tools-popover,
+  .cs-selection .align-popover {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+/* Shapes menu layout */
+.geo-menu {
+  width: 216px;
+  padding: 10px;
+}
+
+.geo-menu .geo-grid {
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.geo-menu .popover-label {
+  margin: 4px 2px 6px;
+}
+
+/* ── Export page ─────────────────────────────────────────────── */
+
+.export-page {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 32px 24px;
+  overflow-y: auto;
+  background:
+    radial-gradient(90vw 60vh at 50% 38%, #16161c, var(--bg) 72%);
+}
+
+.export-card {
+  width: min(560px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-float);
+  background: var(--panel);
+  box-shadow: var(--shadow-float);
+}
+
+.export-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.export-head h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.export-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.export-preview {
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--panel-2);
+}
+
+.export-preview img {
+  max-width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+
+.export-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.export-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition: background 140ms ease-out, border-color 140ms ease-out, transform 140ms ease-out;
+}
+
+.export-action:hover {
+  background: var(--panel-hover);
+  transform: translateY(-1px);
+}
+
+.export-action:active {
+  transform: scale(0.99);
+}
+
+.export-action strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.export-action small {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.export-action.primary {
+  border-color: transparent;
+  background: #fff;
+  color: #17171b;
+}
+
+.export-action.primary:hover {
+  background: #f4f4f6;
+}
+
+.export-action.primary small {
+  color: rgba(23, 23, 27, 0.62);
+}
+
+/* ── Color chip + palette popover (Figma-style) ──────────────── */
+
+.color-chip {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 140ms ease-out;
+}
+
+.color-chip:hover {
+  transform: scale(1.08);
+}
+
+.color-chip:active {
+  transform: scale(0.96);
+}
+
+.color-chip span {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
+.color-popover {
+  width: 158px;
+  padding: 12px;
+}
+
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px 6px;
+  justify-items: center;
+}
+
+.color-popover .swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+}
+
+.color-popover .swatch.active::after {
+  width: 9px;
+  height: 5px;
+}
+
+/* Quick color chips: instant apply, active ringed; caret opens palette */
+.color-chip.active {
+  border-color: rgba(255, 255, 255, 0.9);
+}
+
+.color-chip.active span {
+  box-shadow: none;
+}
+
+.color-more {
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--panel-2);
+}
+
+.color-more svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.color-more:hover svg {
+  stroke: var(--text);
+}
+
+/* ── Style popover (color + size + dash + opacity) ───────────── */
+
+.color-popover {
+  width: 196px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.color-popover .color-grid {
+  margin-bottom: 2px;
+}
+
+.color-popover .popover-label {
+  margin: 2px 2px 0;
+}
+
+/* ── Icon library toast ─────────────────────────────────────── */
+
+.icon-lib-toast {
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  z-index: 660;
+  animation: toast-in 200ms ease-out, toast-out 200ms ease-out 1.3s forwards;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* ── Audit fixes: tokens, hover gating, entrances ───────────── */
+
+:root {
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* Touch devices: no false-hover motion */
+@media not ((hover: hover) and (pointer: fine)) {
+  .cs-toolbar .tool-btn:hover,
+  .export-action:hover,
+  .color-chip:hover {
+    transform: none;
+  }
+}
+
+/* Screenshot outline so dark captures don't bleed into the dark canvas */
+.tl-image {
+  outline: 1px solid oklch(1 0 0 / 0.1);
+  outline-offset: -1px;
+}
+
+/* Export page entrance (mounts once per visit) */
+.export-page {
+  animation: export-fade 180ms ease-out;
+}
+
+.export-card {
+  animation: export-card-in 220ms var(--ease-out-strong);
+}
+
+.export-action {
+  animation: export-card-in 200ms ease-out backwards;
+}
+
+.export-action:nth-child(2) { animation-delay: 40ms; }
+.export-action:nth-child(3) { animation-delay: 80ms; }
+
+@keyframes export-fade {
+  from { opacity: 0; }
+}
+
+@keyframes export-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+/* Settings popover entry (conditionally mounted) */
+.settings-popover {
+  transition: opacity 160ms ease-out, transform 160ms ease-out;
+}
+
+@starting-style {
+  .settings-popover {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
   }
 }

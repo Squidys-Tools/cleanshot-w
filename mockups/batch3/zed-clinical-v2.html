@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CleanShot W — Zed Clinical v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --canvas: #141619;
+    --panel: #191c1f;
+    --raised: #1f2327;
+    --hover: #262b30;
+    --hairline: rgba(255, 255, 255, 0.07);
+    --hairline-strong: rgba(255, 255, 255, 0.14);
+    --text: #e6e8eb;
+    --muted: #9aa0a6;
+    --faint: #5c6167;
+    --accent: #74ade8;
+    --accent-dim: rgba(116, 173, 232, 0.14);
+    --ok: #7ec9a1;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--canvas);
+    color: var(--text);
+    font: 400 13px/1.45 "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .mono { font-family: "IBM Plex Mono", Consolas, monospace; }
+  .microlabel {
+    font: 500 9.5px/1 "IBM Plex Mono", Consolas, monospace;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint);
+  }
+  svg.ic { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ── Command bar ───────────────────────────────── */
+  .topbar { flex: 0 0 52px; display: flex; align-items: center; gap: 10px; padding: 0 14px;
+    background: var(--panel); border-bottom: 1px solid var(--hairline); z-index: 5; }
+  .brand { display: flex; align-items: center; gap: 9px; padding-right: 14px; border-right: 1px solid var(--hairline); }
+  .brand-glyph { width: 20px; height: 20px; border-radius: 4px; border: 1.5px solid var(--muted); position: relative; }
+  .brand-glyph::after { content: ""; position: absolute; inset: 4px; border-top: 1.5px solid var(--accent); transform: rotate(-35deg); transform-origin: 0 50%; }
+  .brand strong { font-size: 13px; font-weight: 600; }
+  .tbtn {
+    height: 30px; padding: 0 11px; display: inline-flex; align-items: center; gap: 7px;
+    background: none; border: 1px solid transparent; border-radius: 4px;
+    color: var(--muted); cursor: pointer; font: 500 12.5px/1 inherit;
+  }
+  .tbtn:hover:not(:disabled) { background: var(--raised); color: var(--text); }
+  .tbtn:disabled { opacity: 0.35; cursor: default; }
+  .icon-btn { width: 30px; padding: 0; justify-content: center; }
+  .kbd-badge {
+    font: 500 9px/1 "IBM Plex Mono", Consolas, monospace; color: var(--faint);
+    border: 1px solid var(--hairline); border-bottom-width: 2px; border-radius: 3px; padding: 2px 4px;
+  }
+  .primary-btn {
+    height: 30px; padding: 0 13px; border-radius: 4px; cursor: pointer;
+    background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent);
+    font: 500 12.5px/1 inherit;
+  }
+  .primary-btn:hover { background: rgba(116, 173, 232, 0.22); }
+  .spacer { flex: 1; }
+  .divider-v { width: 1px; height: 20px; background: var(--hairline); margin: 0 4px; }
+
+  /* ── Stage ─────────────────────────────────────── */
+  .stage { flex: 1; min-height: 0; position: relative;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.008) 0 1px, transparent 1px 48px),
+      radial-gradient(70vw 46vh at 50% 42%, #171a1e, var(--canvas) 75%);
+  }
+  .canvas-wrap { position: absolute; inset: 0; display: grid; place-items: center; padding: 40px 40px 96px; }
+  .shot-sel { position: relative; outline: 1px solid var(--accent); outline-offset: 0; }
+  .handle { position: absolute; width: 7px; height: 7px; background: #fff; border: 1px solid var(--accent); z-index: 3; }
+  .handle.tl { top: -4px; left: -4px; } .handle.tr { top: -4px; right: -4px; }
+  .handle.bl { bottom: -4px; left: -4px; } .handle.br { bottom: -4px; right: -4px; }
+  .dims-tag {
+    position: absolute; right: -1px; bottom: -26px; padding: 3px 7px;
+    background: var(--raised); border: 1px solid var(--hairline); border-radius: 3px;
+    font: 500 10px/1 "IBM Plex Mono", Consolas, monospace; color: var(--muted);
+  }
+  .shot { width: 560px; max-width: 58vw; background: #fff; user-select: none; display: block; }
+  .shot-bar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; background: #e8eaed; border-bottom: 1px solid #d5d8dd; }
+  .shot-bar b { width: 9px; height: 9px; border-radius: 50%; background: #c4c8ce; }
+  .shot-bar em { font-style: normal; font-size: 11px; color: #5f6368; margin-left: 6px; }
+  .shot-body { display: flex; }
+  .shot-side { width: 92px; padding: 12px 10px; display: grid; gap: 8px; align-content: start; background: #f4f5f7; border-right: 1px solid #e3e5e9; }
+  .shot-side i { height: 7px; border-radius: 3px; background: #d9dce1; }
+  .shot-doc { flex: 1; padding: 16px 18px; display: grid; gap: 9px; align-content: start; }
+  .shot-doc h4 { margin: 0 0 2px; height: 12px; width: 46%; border-radius: 3px; background: #9aa0a6; }
+  .shot-doc p { margin: 0; height: 7px; border-radius: 3px; background: #e0e2e6; }
+  .anno { position: absolute; inset: 0; pointer-events: none; }
+  .counter-chip {
+    position: absolute; bottom: 22px; right: 34px; min-width: 24px; height: 24px; padding: 0 4px;
+    background: var(--canvas); border: 1.5px solid var(--accent); border-radius: 3px;
+    color: var(--accent); display: grid; place-items: center;
+    font: 500 12px/1 "IBM Plex Mono", Consolas, monospace;
+  }
+
+  /* ── Floating chrome chips ─────────────────────── */
+  .zoom-chip {
+    position: absolute; top: 14px; right: 14px; display: flex; align-items: center; gap: 2px;
+    background: var(--panel); border: 1px solid var(--hairline); border-radius: 4px; padding: 3px;
+  }
+  .zoom-chip button { width: 24px; height: 24px; display: grid; place-items: center; background: none;
+    border: 0; border-radius: 3px; color: var(--muted); cursor: pointer; font: 400 13px/1 "IBM Plex Mono", monospace; }
+  .zoom-chip button:hover { background: var(--hover); color: var(--text); }
+  .zoom-val { min-width: 44px; text-align: center; font-size: 11px; color: var(--muted); }
+  .status-chip {
+    position: absolute; left: 14px; bottom: 14px; display: flex; align-items: center; gap: 10px;
+    background: var(--panel); border: 1px solid var(--hairline); border-radius: 4px; padding: 6px 11px;
+    font: 400 10.5px/1 "IBM Plex Mono", Consolas, monospace; color: var(--muted);
+  }
+  .status-chip i { width: 5px; height: 5px; border-radius: 50%; background: var(--ok); }
+
+  /* ── Bottom dock ───────────────────────────────── */
+  .dock {
+    position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 10;
+    display: flex; align-items: stretch;
+    background: var(--panel); border: 1px solid var(--hairline-strong); border-radius: 5px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  }
+  .group { padding: 7px 10px 8px; display: grid; gap: 6px; justify-items: center; }
+  .group + .group { border-left: 1px solid var(--hairline); }
+  .row-btns { display: flex; gap: 2px; }
+  .tool-btn {
+    width: 32px; height: 32px; position: relative; display: grid; place-items: center;
+    background: none; border: 1px solid transparent; border-radius: 4px; color: var(--muted); cursor: pointer; padding: 0;
+  }
+  .tool-btn:hover:not(.active):not(:disabled) { background: var(--hover); color: var(--text); }
+  .tool-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+  .tool-btn .kbd-badge { position: absolute; top: 1px; right: 1px; font-size: 7.5px; padding: 1px 2.5px; border-bottom-width: 1px; }
+  .swatch { width: 15px; height: 15px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.25); cursor: pointer; padding: 0; background: none; }
+  .swatch.on { outline: 1.5px solid var(--accent); outline-offset: 1.5px; }
+  .width-btn { width: 24px; height: 24px; display: grid; place-items: center; background: none; border: 1px solid transparent; border-radius: 3px; color: var(--muted); cursor: pointer; }
+  .width-btn:hover { background: var(--hover); }
+  .width-btn.on { border-color: var(--accent); color: var(--text); }
+  .width-btn i { display: block; width: 13px; border-radius: 1px; background: currentColor; }
+
+  /* ── Settings popover ──────────────────────────── */
+  .settings-pop {
+    position: fixed; top: 64px; right: 14px; width: 320px; z-index: 20;
+    background: var(--panel); border: 1px solid var(--hairline-strong); border-radius: 5px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  }
+  .pop-head { padding: 12px 14px 10px; border-bottom: 1px solid var(--hairline); display: grid; gap: 2px; }
+  .pop-head strong { font: 500 10.5px/1 "IBM Plex Mono", Consolas, monospace; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text); }
+  .pop-head span { font-size: 11px; color: var(--faint); }
+  .srow { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--hairline); }
+  .srow b { font-size: 12.5px; font-weight: 500; display: block; margin-bottom: 2px; }
+  .srow small { color: var(--faint); font-size: 11px; line-height: 1.4; }
+  .hotkey { display: inline-flex; gap: 3px; }
+  .hk {
+    min-width: 28px; height: 24px; padding: 0 7px; display: grid; place-items: center;
+    background: var(--raised); border: 1px solid var(--hairline-strong); border-bottom-width: 2px; border-radius: 3px;
+    font: 500 10px/1 "IBM Plex Mono", Consolas, monospace; color: var(--muted);
+  }
+  .switch { width: 32px; height: 17px; border-radius: 3px; border: 1px solid var(--hairline-strong); background: var(--raised); position: relative; cursor: pointer; }
+  .switch i { position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 2px; background: var(--faint); transition: all 100ms steps(2, end); }
+  .switch.on { border-color: var(--accent); background: var(--accent-dim); }
+  .switch.on i { left: 17px; background: var(--accent); }
+  .pop-foot { display: flex; justify-content: space-between; align-items: center; padding: 11px 14px; }
+  .save-btn {
+    height: 28px; padding: 0 12px; border-radius: 4px; cursor: pointer;
+    background: none; border: 1px solid var(--hairline-strong); color: var(--text); font: 500 11.5px/1 inherit;
+  }
+  .save-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  :where(button, input):focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><span class="brand-glyph"></span><strong>CleanShot W</strong></div>
+
+  <button class="primary-btn">New capture <span class="kbd-badge">PRTSC</span></button>
+  <button class="tbtn icon-btn" disabled title="Undo"><svg class="ic" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+  <button class="tbtn icon-btn" title="Redo"><svg class="ic" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+
+  <span class="divider-v"></span>
+
+  <button class="tbtn">OCR</button>
+  <button class="tbtn">Pin</button>
+
+  <span class="spacer"></span>
+
+  <button class="primary-btn">Copy <span class="kbd-badge">CTRL+C</span></button>
+  <button class="tbtn">Save</button>
+  <span class="divider-v"></span>
+  <button class="tbtn icon-btn" title="History"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></button>
+  <button class="tbtn icon-btn" title="Settings"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.5-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.5 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.5-2-1.5c.1-.4.1-.8.1-1.2Z"/></svg></button>
+</header>
+
+<main class="stage">
+  <div class="canvas-wrap">
+    <div class="shot-sel">
+      <span class="handle tl"></span><span class="handle tr"></span><span class="handle bl"></span><span class="handle br"></span>
+      <div class="shot">
+        <div class="shot-bar"><b></b><b></b><b></b><em>Quarterly Report — Draft.docx</em></div>
+        <div class="shot-body">
+          <div class="shot-side"><i style="width:80%"></i><i style="width:65%"></i><i style="width:74%"></i><i style="width:58%"></i><i style="width:70%"></i></div>
+          <div class="shot-doc">
+            <h4></h4>
+            <p style="width:96%"></p><p style="width:88%"></p><p style="width:93%"></p>
+            <p style="width:64%"></p>
+            <p style="width:91%"></p><p style="width:85%"></p>
+          </div>
+        </div>
+        <svg class="anno" viewBox="0 0 560 340">
+          <defs><marker id="ahz" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7 Z" fill="#74ade8"/></marker></defs>
+          <path d="M150 240 C 220 200, 260 160, 330 132" fill="none" stroke="#74ade8" stroke-width="3.5" marker-end="url(#ahz)" stroke-linecap="round"/>
+        </svg>
+        <span class="counter-chip">1</span>
+      </div>
+      <span class="dims-tag">1280 × 800</span>
+    </div>
+  </div>
+
+  <!-- Zoom chip -->
+  <div class="zoom-chip">
+    <button title="Zoom out">−</button>
+    <span class="zoom-val mono">100%</span>
+    <button title="Zoom in">+</button>
+  </div>
+
+  <!-- Status chip -->
+  <div class="status-chip"><i></i><span>capture_04.png</span><span>·</span><span>RGB · PNG</span><span>·</span><span>edited just now</span></div>
+
+  <!-- Annotation dock -->
+  <div class="dock">
+    <div class="group">
+      <div class="row-btns" style="margin-top:12px">
+        <button class="tool-btn active" title="Select"><svg class="ic" viewBox="0 0 24 24"><path d="m5 3 7 17 2.5-6.5L21 11z"/></svg><span class="kbd-badge">V</span></button>
+        <button class="tool-btn" title="Arrow"><svg class="ic" viewBox="0 0 24 24"><path d="M5 19 19 5M19 5h-8M19 5v8"/></svg><span class="kbd-badge">A</span></button>
+        <button class="tool-btn" title="Rectangle"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1"/></svg><span class="kbd-badge">R</span></button>
+        <button class="tool-btn" title="Ellipse"><svg class="ic" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg><span class="kbd-badge">E</span></button>
+      </div>
+    </div>
+    <div class="group">
+      <div class="row-btns" style="margin-top:12px">
+        <button class="tool-btn" title="Pen"><svg class="ic" viewBox="0 0 24 24"><path d="m14 4 6 6L8 22l-6 1 1-6z"/></svg><span class="kbd-badge">P</span></button>
+        <button class="tool-btn" title="Text"><svg class="ic" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg><span class="kbd-badge">T</span></button>
+        <button class="tool-btn" title="Counter"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><text x="12" y="15.5" text-anchor="middle" font-size="10" fill="currentColor" stroke="none" font-weight="600">2</text></svg><span class="kbd-badge">N</span></button>
+        <button class="tool-btn" title="Highlighter"><svg class="ic" viewBox="0 0 24 24"><path d="m9 15-4 6h14"/><path d="M9 15 17 4l4 3-8 11z"/></svg><span class="kbd-badge">H</span></button>
+      </div>
+    </div>
+    <div class="group">
+      <div class="row-btns" style="margin-top:12px">
+        <button class="tool-btn" title="Blur"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" stroke-dasharray="2 3"/><circle cx="12" cy="12" r="3"/></svg><span class="kbd-badge">B</span></button>
+        <button class="tool-btn" title="Pixelate"><svg class="ic" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg><span class="kbd-badge">X</span></button>
+      </div>
+    </div>
+    <div class="group">
+      <span class="microlabel">color</span>
+      <div class="row-btns" style="align-items:center;height:32px;gap:5px">
+        <button class="swatch on" style="background:#74ade8"></button>
+        <button class="swatch" style="background:#e05243"></button>
+        <button class="swatch" style="background:#7ec9a1"></button>
+        <button class="swatch" style="background:#e9c53f"></button>
+        <button class="swatch" style="background:#ffffff"></button>
+        <button class="swatch" style="background:#141619"></button>
+      </div>
+    </div>
+    <div class="group">
+      <span class="microlabel">stroke / dash</span>
+      <div class="row-btns" style="align-items:center;height:32px;gap:3px">
+        <button class="width-btn"><i style="height:2px"></i></button>
+        <button class="width-btn on"><i style="height:3.5px"></i></button>
+        <button class="width-btn"><i style="height:5px"></i></button>
+        <span class="divider-v" style="height:18px;margin:0 3px"></span>
+        <button class="tool-btn" title="Solid" style="width:24px;height:24px"><i style="display:block;width:14px;height:2px;background:currentColor;border-radius:1px"></i></button>
+        <button class="tool-btn" title="Dashed" style="width:24px;height:24px"><i style="display:block;width:14px;height:2px;background:repeating-linear-gradient(90deg,currentColor 0 3px,transparent 3px 5px);border-radius:1px"></i></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings popover -->
+  <section class="settings-pop">
+    <header class="pop-head">
+      <strong>Settings</strong>
+      <span>Local-first · nothing leaves this PC</span>
+    </header>
+    <div class="srow">
+      <div><b>Capture hotkey</b><small>Starts an area capture from anywhere in Windows.</small></div>
+      <span class="hotkey"><span class="hk">CTRL</span><span class="hk">SHIFT</span><span class="hk">4</span></span>
+    </div>
+    <div class="srow">
+      <div><b>Include cursor</b><small>Show the mouse pointer in captures.</small></div>
+      <span class="switch on"><i></i></span>
+    </div>
+    <div class="srow">
+      <div><b>Run at startup</b><small>Sit quietly in the tray.</small></div>
+      <span class="switch"><i></i></span>
+    </div>
+    <footer class="pop-foot">
+      <span class="microlabel">v1.0 · %LOCALAPPDATA%</span>
+      <button class="save-btn">Done</button>
+    </footer>
+  </section>
+</main>
+
+</body>
+</html>
