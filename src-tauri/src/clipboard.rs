@@ -93,6 +93,7 @@ fn encode_png(width: usize, height: usize, rgba: &[u8]) -> Result<Vec<u8>, Strin
     Ok(bytes)
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn copy_image_to_clipboard(png_base64: String) -> Result<(), String> {
     let bytes = decode_base64(&png_base64)?;
@@ -108,6 +109,7 @@ pub fn copy_image_to_clipboard(png_base64: String) -> Result<(), String> {
         .map_err(|error| format!("Could not copy image to clipboard: {error}"))
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn read_image_from_clipboard() -> Result<Option<String>, String> {
     let mut clipboard =
@@ -121,6 +123,7 @@ pub fn read_image_from_clipboard() -> Result<Option<String>, String> {
     Ok(Some(BASE64.encode(png)))
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn copy_file_to_clipboard(png_base64: String) -> Result<(), String> {
     let bytes = decode_base64(&png_base64)?;
@@ -140,6 +143,7 @@ pub fn copy_file_to_clipboard(png_base64: String) -> Result<(), String> {
         .map_err(|error| format!("Could not copy file to clipboard: {error}"))
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn copy_text_to_clipboard(text: String) -> Result<(), String> {
     let mut clipboard =

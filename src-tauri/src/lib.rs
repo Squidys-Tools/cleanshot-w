@@ -5,16 +5,22 @@ mod hotkeys;
 mod library;
 mod pin;
 
+#[cfg(feature = "app")]
 use tauri::menu::{Menu, MenuItem};
+#[cfg(feature = "app")]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+#[cfg(feature = "app")]
 use tauri::{Emitter, Manager, WindowEvent};
+#[cfg(feature = "app")]
 use tauri_plugin_global_shortcut::ShortcutState;
 
+#[cfg(feature = "app")]
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+#[cfg(feature = "app")]
 fn show_main(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -23,6 +29,7 @@ fn show_main(app: &tauri::AppHandle) {
     }
 }
 
+#[cfg(feature = "app")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     capture::configure_dpi_awareness();

@@ -180,6 +180,7 @@ fn load_record(root: &Path, entry: &IndexEntry) -> Result<CaptureRecordWire, Str
     })
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn library_save_capture(record: CaptureRecordWire) -> Result<(), String> {
     validate_id(&record.id)?;
@@ -212,6 +213,7 @@ pub fn library_save_capture(record: CaptureRecordWire) -> Result<(), String> {
     write_index(&root, &entries)
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn library_list_captures() -> Result<Vec<CaptureRecordWire>, String> {
     let root = library_root()?;
@@ -223,6 +225,7 @@ pub fn library_list_captures() -> Result<Vec<CaptureRecordWire>, String> {
         .collect()
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn library_get_capture(id: String) -> Result<Option<CaptureRecordWire>, String> {
     validate_id(&id)?;
@@ -235,6 +238,7 @@ pub fn library_get_capture(id: String) -> Result<Option<CaptureRecordWire>, Stri
         .transpose()
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn library_update_annotations(id: String, annotations: Option<Value>) -> Result<bool, String> {
     validate_id(&id)?;
@@ -250,6 +254,7 @@ pub fn library_update_annotations(id: String, annotations: Option<Value>) -> Res
     Ok(true)
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn library_update_title(id: String, title: String) -> Result<bool, String> {
     validate_id(&id)?;
@@ -265,6 +270,7 @@ pub fn library_update_title(id: String, title: String) -> Result<bool, String> {
     Ok(true)
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn library_delete_capture(id: String) -> Result<(), String> {
     validate_id(&id)?;
