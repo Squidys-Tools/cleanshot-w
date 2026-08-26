@@ -205,21 +205,21 @@ try {
   await page.click('.cs-toolbar .color-more');
   await page.waitForSelector('.color-popover.open', { timeout: 5000 });
 
-  await page.click('.cs-toolbar .swatch[title="green"]');
+  await page.click('.color-popover .swatch[title="green"]');
   await page.waitForFunction(
-    () => document.querySelector('.cs-toolbar .swatch[title="green"]')?.classList.contains("active"),
+    () => document.querySelector('.color-popover .swatch[title="green"]')?.classList.contains("active"),
     { timeout: 5000 },
   );
   check("color swatch selects green", true);
 
-  await page.click('.cs-toolbar .seg-btn[title="Solid fill"]');
-  await page.click('.cs-toolbar .seg-btn[title="Dashed"]');
-  await page.click('.cs-toolbar .size-btn[title^="Size L"]');
+  await page.click('.color-popover .seg-btn[title="Solid fill"]');
+  await page.click('.color-popover .seg-btn[title="Dashed"]');
+  await page.click('.color-popover .size-btn[title^="Size L"]');
   await page.waitForFunction(
     () => {
-      const fill = document.querySelector('.cs-toolbar .seg-btn[title="Solid fill"]')?.classList.contains("active");
-      const dash = document.querySelector('.cs-toolbar .seg-btn[title="Dashed"]')?.classList.contains("active");
-      const size = document.querySelector('.cs-toolbar .size-btn[title^="Size L"]')?.classList.contains("active");
+      const fill = document.querySelector('.color-popover .seg-btn[title="Solid fill"]')?.classList.contains("active");
+      const dash = document.querySelector('.color-popover .seg-btn[title="Dashed"]')?.classList.contains("active");
+      const size = document.querySelector('.color-popover .size-btn[title^="Size L"]')?.classList.contains("active");
       return fill && dash && size;
     },
     { timeout: 5000 },
@@ -227,9 +227,9 @@ try {
   check("fill/dash/size style buttons reflect state", true);
 
   /* opacity in color popover */
-  await page.click('.cs-toolbar .seg-btn[title="50%"]');
+  await page.click('.color-popover .seg-btn[title="50%"]');
   await page.waitForFunction(
-    () => document.querySelector('.cs-toolbar .seg-btn[title="50%"]')?.classList.contains("active"),
+    () => document.querySelector('.color-popover .seg-btn[title="50%"]')?.classList.contains("active"),
     { timeout: 5000 },
   );
   check("opacity button reflects state", true);
