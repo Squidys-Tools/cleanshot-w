@@ -21,7 +21,6 @@ export default function SettingsPopover({
     <div className="settings-popover" role="dialog" aria-labelledby="settings-title">
       <div className="settings-head">
         <div>
-          <span className="eyebrow">Preferences</span>
           <h2 id="settings-title">Capture settings</h2>
         </div>
         <button className="icon-btn" onClick={onClose} aria-label="Close settings">

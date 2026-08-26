@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CleanShot W — Miura Fold</title>
+<style>
+  :root {
+    --sheet: #f5f3ed;
+    --sheet-deep: #ece9e0;
+    --ink: #26241f;
+    --muted: #7d786c;
+    --mountain: #b8b2a4;
+    --valley: #a9c3d9;
+    --gold: #c9a227;
+    --gold-deep: #a8861d;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background:
+      repeating-linear-gradient(60deg, rgba(184,178,164,0.05) 0 1px, transparent 1px 34px),
+      repeating-linear-gradient(-60deg, rgba(169,195,217,0.07) 0 1px, transparent 1px 34px),
+      var(--sheet);
+    color: var(--ink);
+    font: 13px/1.45 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .spec { font: 600 10px/1 ui-monospace, Consolas, monospace; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+
+  /* ── Header band ───────────────────────────────── */
+  .band { flex: 0 0 58px; display: flex; align-items: center; gap: 16px; padding: 0 18px;
+    background: var(--sheet); position: relative;
+    box-shadow: 0 1px 0 var(--mountain); z-index: 5; }
+  .band::after { /* diagonal fold seams across the band */
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      linear-gradient(115deg, transparent calc(24% - 1px), var(--mountain) 24%, transparent calc(24% + 6px)),
+      linear-gradient(65deg, transparent calc(52% - 1px), rgba(169,195,217,0.55) 52%, transparent calc(52% + 6px)),
+      linear-gradient(100deg, transparent calc(76% - 1px), var(--mountain) 76%, transparent calc(76% + 6px));
+    opacity: 0.35;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding-right: 16px; border-right: 1px solid var(--sheet-deep); }
+  .packet { width: 24px; height: 24px; background: linear-gradient(135deg, #e3c25a, var(--gold)); border-radius: 3px;
+    clip-path: polygon(0 0, 100% 0, 100% 72%, 72% 100%, 0 100%);
+    box-shadow: inset -2px -2px 4px rgba(120,90,10,0.45); }
+  .brand strong { font-size: 14px; letter-spacing: -0.01em; }
+  .tool-btn {
+    height: 32px; padding: 0 12px; border: 0; cursor: pointer; color: var(--ink);
+    background: none; font: 600 12px/1 inherit; border-radius: 4px; display: inline-flex; align-items: center; gap: 7px;
+  }
+  .tool-btn:hover { background: var(--sheet-deep); }
+  .tool-btn.fold-active { background: #fff; box-shadow: inset 2px 0 0 var(--gold), inset 0 0 0 1px var(--sheet-deep); color: var(--gold-deep); }
+  .tool-btn kbd { font: 9px/1 ui-monospace, Consolas, monospace; color: var(--muted); border: 1px solid var(--sheet-deep); border-radius: 3px; padding: 1px 4px; background: #fff; }
+  svg.ic { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .spacer { flex: 1; }
+  .primary-btn {
+    height: 34px; padding: 0 18px; border-radius: 4px; cursor: pointer; border: 0;
+    background: linear-gradient(180deg, #dcc04f, var(--gold));
+    color: #211a04; font: 700 12px/1 inherit;
+    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+  }
+  .quiet-btn { composes: tool-btn; }
+
+  /* ── Deployed sheet (stage) ────────────────────── */
+  .stage { flex: 1; min-height: 0; position: relative; display: grid; place-items: center; padding-bottom: 96px; }
+  .crease-cell { position: relative; transform: rotate(-0.4deg); }
+  .shot-shadow { filter: drop-shadow(0 14px 22px rgba(38,36,31,0.22)) drop-shadow(0 3px 6px rgba(38,36,31,0.14)); }
+  .shot { width: 560px; max-width: 60vw; background: #fff; color: #202124; user-select: none;
+    outline: 1px solid rgba(184,178,164,0.8); }
+  .shot-bar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; background: #e8eaed; border-bottom: 1px solid #d5d8dd; }
+  .shot-bar b { width: 9px; height: 9px; border-radius: 50%; background: #c4c8ce; }
+  .shot-bar em { font-style: normal; font-size: 11px; color: #5f6368; margin-left: 6px; }
+  .shot-body { display: flex; }
+  .shot-side { width: 92px; padding: 12px 10px; display: grid; gap: 8px; align-content: start; background: #f4f5f7; border-right: 1px solid #e3e5e9; }
+  .shot-side i { height: 7px; border-radius: 3px; background: #d9dce1; }
+  .shot-doc { flex: 1; padding: 16px 18px; display: grid; gap: 9px; align-content: start; }
+  .shot-doc h4 { margin: 0 0 2px; height: 12px; width: 46%; border-radius: 3px; background: #9aa0a6; }
+  .shot-doc p { margin: 0; height: 7px; border-radius: 3px; background: #e0e2e6; }
+  .anno { position: absolute; inset: 0; pointer-events: none; }
+  .counter-chip {
+    position: absolute; bottom: 30px; right: 44px; width: 27px; height: 27px; border-radius: 50%;
+    background: var(--gold); color: #211a04; display: grid; place-items: center;
+    font: 800 13px/1 inherit; box-shadow: 0 3px 8px rgba(120,90,10,0.35);
+  }
+  .cell-tag { position: absolute; top: -20px; left: -6px; display: flex; gap: 14px; }
+
+  /* ── Deployed crease dock ──────────────────────── */
+  .dock {
+    position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%) rotate(0.3deg); z-index: 10;
+    display: flex; align-items: stretch; background: #fbfaf6; overflow: hidden;
+    clip-path: polygon(0 10px, 14px 0, 28px 10px, 42px 0, 56px 10px, 70px 0, 84px 10px, 98px 0,
+                       calc(100% - 98px) 0, calc(100% - 84px) 10px, calc(100% - 70px) 0, calc(100% - 56px) 10px,
+                       calc(100% - 42px) 0, calc(100% - 28px) 10px, calc(100% - 14px) 0, 100% 10px,
+                       100% 100%, 0 100%);
+    box-shadow: 0 16px 34px rgba(38,36,31,0.18);
+  }
+  .pleat { padding: 20px 14px 14px; display: grid; gap: 8px; align-content: start; position: relative; }
+  .pleat + .pleat::before { content: ""; position: absolute; top: 14px; bottom: 10px; left: 0; width: 1px;
+    background: linear-gradient(180deg, var(--mountain), var(--valley), var(--mountain)); opacity: 0.7;
+    transform: rotate(6deg); }
+  .pleat-row { display: flex; gap: 4px; }
+  .crease-btn {
+    width: 32px; height: 32px; display: grid; place-items: center; cursor: pointer; border: 0; padding: 0;
+    background: #fff; color: var(--muted); border-radius: 3px;
+    box-shadow: inset 0 0 0 1px var(--sheet-deep), inset 3px 3px 6px rgba(184,178,164,0.35);
+  }
+  .crease-btn:hover { color: var(--ink); }
+  .crease-btn.on { color: var(--gold-deep);
+    box-shadow: inset 0 0 0 1.5px var(--gold), inset -3px -3px 6px rgba(184,178,164,0.3); background: #fffdf4; }
+  .swatch { width: 18px; height: 18px; border-radius: 50%; border: 1px solid rgba(38,36,31,0.18); cursor: pointer; padding: 0; }
+  .swatch.on { outline: 2px solid var(--gold); outline-offset: 1px; }
+
+  /* ── Unfolded settings panel ───────────────────── */
+  .unfold { position: fixed; top: 74px; right: 18px; width: 320px; z-index: 20; background: #fbfaf6;
+    clip-path: polygon(0 12px, 16px 0, 32px 12px, 48px 0, 64px 12px, 80px 0, 96px 12px, 112px 0, 128px 12px,
+                       144px 0, 160px 12px, 176px 0, 192px 12px, 208px 0, 224px 12px, 240px 0, 256px 12px,
+                       272px 0, 288px 12px, 304px 0, 320px 12px, 320px 100%, 0 100%);
+    box-shadow: 0 20px 46px rgba(38,36,31,0.22); padding-top: 10px; }
+  .unfold-inner { padding: 14px 18px 16px;
+    background:
+      repeating-linear-gradient(60deg, rgba(184,178,164,0.08) 0 1px, transparent 1px 26px),
+      repeating-linear-gradient(-60deg, rgba(169,195,217,0.10) 0 1px, transparent 1px 26px); }
+  .u-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px dashed var(--mountain); }
+  .u-row:last-of-type { border-bottom: 0; }
+  .u-copy { display: grid; gap: 3px; }
+  .u-copy b { font-size: 13px; font-weight: 600; }
+  .u-copy small { color: var(--muted); font-size: 11px; line-height: 1.4; }
+  .hotkey { display: inline-flex; gap: 3px; }
+  .hk { padding: 4px 7px; background: #fff; border: 1px solid var(--sheet-deep); border-radius: 3px;
+    font: 600 10px/1 ui-monospace, Consolas, monospace; color: var(--ink);
+    box-shadow: 0 1px 0 var(--mountain); }
+  .fold-toggle { width: 40px; height: 20px; border-radius: 10px; background: var(--sheet-deep); position: relative; cursor: pointer;
+    box-shadow: inset 0 1px 3px rgba(38,36,31,0.18); }
+  .fold-toggle i { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+    background: linear-gradient(135deg, #e3c25a, var(--gold)); box-shadow: 0 1px 3px rgba(120,90,10,0.4); transition: left 140ms cubic-bezier(.34,1.56,.64,1); }
+  .fold-toggle.on i { left: 21px; }
+</style>
+</head>
+<body>
+
+<header class="band">
+  <div class="brand"><span class="packet"></span><strong>CleanShot W</strong></div>
+
+  <button class="tool-btn"><svg class="ic" viewBox="0 0 24 24"><path d="M4 8V5h3M20 8V5h-3M4 16v3h3M20 16v3h-3"/><path d="M9 12h6"/></svg> New capture <kbd>PrtSc</kbd></button>
+  <button class="tool-btn fold-active"><svg class="ic" viewBox="0 0 24 24"><path d="m5 3 7 17 2.5-6.5L21 11z"/></svg> Edit</button>
+
+  <div style="display:flex;gap:2px;padding:0 6px;border-left:1px solid var(--sheet-deep)">
+    <button class="tool-btn" disabled title="Undo" style="opacity:.4"><svg class="ic" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+    <button class="tool-btn" title="Redo"><svg class="ic" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+  </div>
+
+  <span class="spacer"></span>
+
+  <span class="spec">1280 × 800 · cell A-01</span>
+  <button class="tool-btn">OCR</button>
+  <button class="tool-btn">Pin</button>
+  <button class="primary-btn">Copy</button>
+  <button class="tool-btn"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></button>
+  <button class="tool-btn fold-active"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.5-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.5 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.5-2-1.5c.1-.4.1-.8.1-1.2Z"/></svg></button>
+</header>
+
+<main class="stage">
+  <div class="crease-cell shot-shadow">
+    <div class="cell-tag">
+      <span class="spec" style="color:#9a9486">Sheet deployed · one pull</span>
+    </div>
+    <div class="shot" style="position:relative">
+      <div class="shot-bar"><b></b><b></b><b></b><em>Quarterly Report — Draft.docx</em></div>
+      <div class="shot-body">
+        <div class="shot-side"><i style="width:80%"></i><i style="width:65%"></i><i style="width:74%"></i><i style="width:58%"></i><i style="width:70%"></i></div>
+        <div class="shot-doc">
+          <h4></h4>
+          <p style="width:96%"></p><p style="width:88%"></p><p style="width:93%"></p>
+          <p style="width:64%"></p>
+          <p style="width:91%"></p><p style="width:85%"></p>
+        </div>
+      </div>
+      <svg class="anno" viewBox="0 0 560 340">
+        <defs><marker id="ah3" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7 Z" fill="#a8861d"/></marker></defs>
+        <path d="M150 240 C 220 200, 260 160, 330 132" fill="none" stroke="#c9a227" stroke-width="4" marker-end="url(#ah3)" stroke-linecap="round"/>
+      </svg>
+      <span class="counter-chip">1</span>
+    </div>
+  </div>
+
+  <!-- Crease dock -->
+  <div class="dock">
+    <div class="pleat">
+      <span class="spec">Tools</span>
+      <div class="pleat-row">
+        <button class="crease-btn on" title="Select"><svg class="ic" viewBox="0 0 24 24"><path d="m5 3 7 17 2.5-6.5L21 11z"/></svg></button>
+        <button class="crease-btn" title="Arrow"><svg class="ic" viewBox="0 0 24 24"><path d="M5 19 19 5M19 5h-8M19 5v8"/></svg></button>
+        <button class="crease-btn" title="Rectangle"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1"/></svg></button>
+        <button class="crease-btn" title="Ellipse"><svg class="ic" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg></button>
+      </div>
+    </div>
+    <div class="pleat">
+      <span class="spec">Mark</span>
+      <div class="pleat-row">
+        <button class="crease-btn" title="Pen"><svg class="ic" viewBox="0 0 24 24"><path d="m14 4 6 6L8 22l-6 1 1-6z"/></svg></button>
+        <button class="crease-btn" title="Text"><svg class="ic" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg></button>
+        <button class="crease-btn" title="Counter"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><text x="12" y="15.5" text-anchor="middle" font-size="10" fill="currentColor" stroke="none" font-weight="700">2</text></svg></button>
+        <button class="crease-btn" title="Highlighter"><svg class="ic" viewBox="0 0 24 24"><path d="m9 15-4 6h14"/><path d="M9 15 17 4l4 3-8 11z"/></svg></button>
+      </div>
+    </div>
+    <div class="pleat">
+      <span class="spec">FX</span>
+      <div class="pleat-row">
+        <button class="crease-btn" title="Blur"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" stroke-dasharray="2 3"/><circle cx="12" cy="12" r="3"/></svg></button>
+        <button class="crease-btn" title="Pixelate"><svg class="ic" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></button>
+      </div>
+    </div>
+    <div class="pleat">
+      <span class="spec">Ink</span>
+      <div class="pleat-row" style="align-items:center;height:32px">
+        <button class="swatch on" style="background:#c9a227"></button>
+        <button class="swatch" style="background:#c94a3c"></button>
+        <button class="swatch" style="background:#3f7ac2"></button>
+        <button class="swatch" style="background:#ffffff"></button>
+        <button class="swatch" style="background:#26241f"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unfolded settings -->
+  <section class="unfold">
+    <div class="unfold-inner">
+      <header style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+        <strong style="font-size:15px;letter-spacing:-0.01em">Settings</strong>
+        <span class="spec" style="color:#9a9486">panel F-02 · unfolded</span>
+      </header>
+      <div class="u-row">
+        <div class="u-copy"><b>Capture hotkey</b><small>Starts an area capture from anywhere.</small></div>
+        <span class="hotkey"><span class="hk">CTRL</span><span class="hk">SHIFT</span><span class="hk">4</span></div>
+      </div>
+      <div class="u-row">
+        <div class="u-copy"><b>Include cursor</b><small>Show the pointer in captures.</small></div>
+        <span class="fold-toggle on"><i></i></span>
+      </div>
+      <div class="u-row">
+        <div class="u-copy"><b>Run at startup</b><small>Wait quietly in the tray.</small></div>
+        <span class="fold-toggle"><i></i></span>
+      </div>
+      <footer style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <span class="spec" style="color:#9a9486">stored locally</span>
+        <button class="primary-btn" style="height:30px;font-size:11px">Done</button>
+      </footer>
+    </div>
+  </section>
+</main>
+
+</body>
+</html>

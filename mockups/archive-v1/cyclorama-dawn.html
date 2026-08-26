@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CleanShot W — Cyclorama Dawn</title>
+<style>
+  :root {
+    --night: #05070c;
+    --night-2: #0a0e16;
+    --cobalt: #1d47c9;
+    --cobalt-lit: #3a63e8;
+    --rose: #d4567e;
+    --rose-dim: rgba(212, 86, 126, 0.35);
+    --day: #f4f6fb;
+    --text: #e6e9f2;
+    --muted: #8b93a8;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background:
+      radial-gradient(120vw 60vh at 50% 108%,
+        rgba(244,246,251,0.10) 0%,
+        rgba(58,99,232,0.14) 22%,
+        rgba(29,71,201,0.10) 42%,
+        transparent 66%),
+      var(--night);
+    color: var(--text);
+    font: 13px/1.45 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .cue { font-size: 10px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); }
+
+  /* ── Header: first light band ──────────────────── */
+  .band { flex: 0 0 56px; display: flex; align-items: center; gap: 14px; padding: 0 18px;
+    background: linear-gradient(180deg, rgba(212,86,126,0.12) 0%, rgba(29,71,201,0.10) 55%, transparent 100%), var(--night);
+    border-bottom: 1px solid rgba(58,99,232,0.35); position: relative; z-index: 5; }
+  .band::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+    background: linear-gradient(90deg, var(--rose) 0%, var(--cobalt) 34%, transparent 78%); opacity: 0.85; }
+  .brand { display: flex; align-items: baseline; gap: 9px; padding-right: 15px; border-right: 1px solid rgba(58,99,232,0.3); }
+  .brand strong { font-size: 14px; letter-spacing: -0.01em; }
+  .phase-btns { display: flex; gap: 2px; }
+  .cue-btn {
+    height: 32px; padding: 0 13px; border-radius: 4px; cursor: pointer;
+    background: none; border: 1px solid transparent; color: var(--muted);
+    font: 700 10px/1 inherit; letter-spacing: 0.18em; text-transform: uppercase;
+  }
+  .cue-btn:hover { color: var(--text); background: rgba(58,99,232,0.12); }
+  .cue-btn.live { color: #fff; border-color: rgba(58,99,232,0.7); background: rgba(29,71,201,0.28); box-shadow: inset 0 1px 0 rgba(255,255,255,0.08); }
+  svg.ic { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-btn { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 5px; border: 0;
+    background: none; color: var(--muted); cursor: pointer; }
+  .icon-btn:hover:not(:disabled) { background: rgba(58,99,232,0.15); color: var(--text); }
+  .icon-btn:disabled { opacity: 0.35; cursor: default; }
+  .spacer { flex: 1; }
+  .go-btn {
+    height: 34px; padding: 0 20px; border: 0; border-radius: 4px; cursor: pointer;
+    background: linear-gradient(180deg, var(--cobalt-lit), var(--cobalt));
+    color: #fff; font: 700 11px/1 inherit; letter-spacing: 0.16em; text-transform: uppercase;
+    box-shadow: 0 0 18px rgba(58,99,232,0.45), inset 0 1px 0 rgba(255,255,255,0.25);
+  }
+
+  /* ── Stage: day wash behind the capture ────────── */
+  .stage { flex: 1; min-height: 0; display: grid; place-items: center; position: relative; padding-bottom: 92px; }
+  /* the cyc itself: black night below, cobalt horizon band, rose gathering above, white day where the work is */
+  .cyc { position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(52vw 30vh at 50% 46%, rgba(244,246,251,0.16), transparent 70%),
+      linear-gradient(180deg,
+        transparent 0%, rgba(212,86,126,0.07) 30%, rgba(212,86,126,0.05) 44%,
+        rgba(29,71,201,0.16) 62%, rgba(29,71,201,0.08) 74%, transparent 88%);
+  }
+  .horizon-line { position: absolute; left: 8%; right: 8%; top: 62%; height: 1px; pointer-events: none;
+    background: linear-gradient(90deg, transparent, rgba(58,99,232,0.55), transparent); }
+  .frame { position: relative; transform: translateY(-3vh); }
+  .shot-glow { filter: drop-shadow(0 0 34px rgba(122,150,240,0.28)) drop-shadow(0 18px 40px rgba(0,0,0,0.65)); }
+  .shot { width: 560px; max-width: 60vw; background: #fff; color: #202124; user-select: none; border-radius: 2px; overflow: hidden;
+    outline: 1px solid rgba(230,233,242,0.28); outline-offset: 4px; }
+  .shot-bar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; background: #e8eaed; border-bottom: 1px solid #d5d8dd; }
+  .shot-bar b { width: 9px; height: 9px; border-radius: 50%; background: #c4c8ce; }
+  .shot-bar em { font-style: normal; font-size: 11px; color: #5f6368; margin-left: 6px; }
+  .shot-body { display: flex; }
+  .shot-side { width: 92px; padding: 12px 10px; display: grid; gap: 8px; align-content: start; background: #f4f5f7; border-right: 1px solid #e3e5e9; }
+  .shot-side i { height: 7px; border-radius: 3px; background: #d9dce1; }
+  .shot-doc { flex: 1; padding: 16px 18px; display: grid; gap: 9px; align-content: start; }
+  .shot-doc h4 { margin: 0 0 2px; height: 12px; width: 46%; border-radius: 3px; background: #9aa0a6; }
+  .shot-doc p { margin: 0; height: 7px; border-radius: 3px; background: #e0e2e6; }
+  .anno { position: absolute; inset: 0; pointer-events: none; }
+  .counter-beam {
+    position: absolute; bottom: 26px; right: 40px; width: 27px; height: 27px; border-radius: 50%;
+    background: var(--rose); color: #fff; display: grid; place-items: center; font: 800 13px/1 inherit;
+    box-shadow: 0 0 16px var(--rose-dim), 0 3px 10px rgba(0,0,0,0.4);
+  }
+  .dim-tag { position: absolute; top: -30px; right: 0; display: grid; justify-items: end; gap: 3px; }
+  .dim-tag code { font: 11px ui-monospace, Consolas, monospace; color: var(--muted); letter-spacing: 0.08em; }
+
+  /* ── Dock: the cobalt band ─────────────────────── */
+  .dock {
+    position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 10;
+    display: flex; align-items: stretch;
+    background: linear-gradient(180deg, #14275e 0%, #101b40 100%);
+    border: 1px solid rgba(58,99,232,0.5); border-top-color: rgba(212,86,126,0.4);
+    border-radius: 8px; box-shadow: 0 18px 44px rgba(0,0,0,0.6), 0 0 24px rgba(29,71,201,0.25);
+    overflow: hidden;
+  }
+  .sector { padding: 10px 13px 12px; display: grid; gap: 7px; align-content: start; }
+  .sector + .sector { border-left: 1px solid rgba(58,99,232,0.35); }
+  .lamp-row { display: flex; gap: 4px; }
+  .lamp {
+    min-width: 31px; height: 31px; padding: 0 6px; display: grid; place-items: center; cursor: pointer;
+    background: rgba(10,14,22,0.65); border: 1px solid rgba(139,147,168,0.25); border-radius: 4px; color: var(--muted);
+  }
+  .lamp:hover { color: var(--text); border-color: rgba(139,147,168,0.5); }
+  .lamp.lit { color: #fff; background: linear-gradient(180deg, rgba(58,99,232,0.75), rgba(29,71,201,0.55));
+    border-color: var(--cobalt-lit); box-shadow: 0 0 10px rgba(58,99,232,0.5), inset 0 1px 0 rgba(255,255,255,0.2); }
+  .lamp.warm.lit { background: linear-gradient(180deg, rgba(212,86,126,0.8), rgba(160,54,94,0.6));
+    border-color: var(--rose); box-shadow: 0 0 10px rgba(212,86,126,0.45), inset 0 1px 0 rgba(255,255,255,0.2); }
+  .swatch { width: 17px; height: 17px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.25); cursor: pointer; padding: 0; }
+  .swatch.on { outline: 2px solid var(--rose); outline-offset: 1px; }
+
+  /* ── Settings: lighting desk panel ─────────────── */
+  .desk { position: fixed; top: 72px; right: 16px; width: 310px; z-index: 20; border-radius: 8px;
+    background: linear-gradient(180deg, #0d1526 0%, #0a0f1c 100%);
+    border: 1px solid rgba(58,99,232,0.45); box-shadow: 0 22px 54px rgba(0,0,0,0.65); overflow: hidden; }
+  .desk-head { padding: 13px 16px 11px; border-bottom: 1px solid rgba(58,99,232,0.35);
+    background: linear-gradient(90deg, rgba(212,86,126,0.14), transparent 55%); }
+  .channel { display: flex; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid rgba(58,99,232,0.22); }
+  .ch-copy { flex: 1; display: grid; gap: 3px; }
+  .ch-copy small { color: var(--muted); font-size: 11px; line-height: 1.4; }
+  .fader-key { font: 600 11px/1 ui-monospace, Consolas, monospace; color: #cdd6ea; letter-spacing: 0.06em;
+    background: rgba(10,14,22,0.8); border: 1px solid rgba(139,147,168,0.3); border-radius: 4px; padding: 6px 10px; }
+  .dimmer { width: 38px; height: 19px; border-radius: 10px; background: rgba(10,14,22,0.9); border: 1px solid rgba(139,147,168,0.3); position: relative; cursor: pointer; }
+  .dimmer i { position: absolute; top: 2.5px; left: 3px; width: 12px; height: 12px; border-radius: 50%;
+    background: #4a5468; transition: all 130ms; }
+  .dimmer.at-full { border-color: var(--cobalt-lit); box-shadow: 0 0 8px rgba(58,99,232,0.4); }
+  .dimmer.at-full i { left: 21px; background: var(--cobalt-lit); box-shadow: 0 0 7px rgba(58,99,232,0.8); }
+  .desk-foot { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; }
+</style>
+</head>
+<body>
+
+<header class="band">
+  <div class="brand"><strong>CleanShot W</strong><span class="cue" style="color:#b98fa4">House open</span></div>
+
+  <div style="display:grid;gap:3px">
+    <span class="cue">Cue · source</span>
+    <div class="phase-btns">
+      <button class="cue-btn live">Area</button>
+      <button class="cue-btn">Window</button>
+      <button class="cue-btn">Full</button>
+    </div>
+  </div>
+
+  <button class="icon-btn" disabled title="Undo"><svg class="ic" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+  <button class="icon-btn" title="Redo"><svg class="ic" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+
+  <span class="spacer"></span>
+
+  <span class="cue">1280 × 800 px</span>
+  <button class="cue-btn">OCR</button>
+  <button class="cue-btn">Pin</button>
+  <button class="go-btn">Copy →</button>
+  <button class="icon-btn" title="History"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></button>
+  <button class="icon-btn" title="Settings"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.5-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.5 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.5-2-1.5c.1-.4.1-.8.1-1.2Z"/></svg></button>
+</header>
+
+<main class="stage">
+  <div class="cyc"></div>
+  <div class="horizon-line"></div>
+
+  <div class="frame shot-glow">
+    <div class="dim-tag">
+      <span class="cue">Day wash · full up</span>
+      <code>1280 × 800</code>
+    </div>
+    <div class="shot" style="position:relative">
+      <div class="shot-bar"><b></b><b></b><b></b><em>Quarterly Report — Draft.docx</em></div>
+      <div class="shot-body">
+        <div class="shot-side"><i style="width:80%"></i><i style="width:65%"></i><i style="width:74%"></i><i style="width:58%"></i><i style="width:70%"></i></div>
+        <div class="shot-doc">
+          <h4></h4>
+          <p style="width:96%"></p><p style="width:88%"></p><p style="width:93%"></p>
+          <p style="width:64%"></p>
+          <p style="width:91%"></p><p style="width:85%"></p>
+        </div>
+      </div>
+      <svg class="anno" viewBox="0 0 560 340">
+        <defs><marker id="ah4" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7 Z" fill="#d4567e"/></marker></defs>
+        <path d="M150 240 C 220 200, 260 160, 330 132" fill="none" stroke="#d4567e" stroke-width="4" marker-end="url(#ah4)" stroke-linecap="round"/>
+      </svg>
+      <span class="counter-beam">1</span>
+    </div>
+  </div>
+
+  <!-- Dock -->
+  <div class="dock">
+    <div class="sector">
+      <span class="cue">Instruments</span>
+      <div class="lamp-row">
+        <button class="lamp lit" title="Select"><svg class="ic" viewBox="0 0 24 24"><path d="m5 3 7 17 2.5-6.5L21 11z"/></svg></button>
+        <button class="lamp" title="Arrow"><svg class="ic" viewBox="0 0 24 24"><path d="M5 19 19 5M19 5h-8M19 5v8"/></svg></button>
+        <button class="lamp" title="Rectangle"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1"/></svg></button>
+        <button class="lamp" title="Ellipse"><svg class="ic" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg></button>
+      </div>
+    </div>
+    <div class="sector">
+      <span class="cue">Mark</span>
+      <div class="lamp-row">
+        <button class="lamp warm lit" title="Pen"><svg class="ic" viewBox="0 0 24 24"><path d="m14 4 6 6L8 22l-6 1 1-6z"/></svg></button>
+        <button class="lamp" title="Text"><svg class="ic" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg></button>
+        <button class="lamp" title="Counter"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><text x="12" y="15.5" text-anchor="middle" font-size="10" fill="currentColor" stroke="none" font-weight="700">2</text></svg></button>
+        <button class="lamp" title="Highlighter"><svg class="ic" viewBox="0 0 24 24"><path d="m9 15-4 6h14"/><path d="M9 15 17 4l4 3-8 11z"/></svg></button>
+      </div>
+    </div>
+    <div class="sector">
+      <span class="cue">FX</span>
+      <div class="lamp-row">
+        <button class="lamp" title="Blur"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" stroke-dasharray="2 3"/><circle cx="12" cy="12" r="3"/></svg></button>
+        <button class="lamp" title="Pixelate"><svg class="ic" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></button>
+      </div>
+    </div>
+    <div class="sector">
+      <span class="cue">Gel</span>
+      <div class="lamp-row" style="align-items:center;height:31px">
+        <button class="swatch on" style="background:#d4567e"></button>
+        <button class="swatch" style="background:#3a63e8"></button>
+        <button class="swatch" style="background:#f2b90d"></button>
+        <button class="swatch" style="background:#ffffff"></button>
+        <button class="swatch" style="background:#111319"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lighting desk (settings) -->
+  <section class="desk">
+    <header class="desk-head">
+      <strong style="font-size:14px;letter-spacing:-0.01em;color:var(--text)">Settings</strong>
+      <div class="cue" style="margin-top:3px;color:#b98fa4">Lighting desk · house rig</div>
+    </header>
+    <div class="channel">
+      <div class="ch-copy"><strong style="font-weight:600;font-size:13px">Capture hotkey</strong><small>Starts an area capture from anywhere.</small></div>
+      <span class="fader-key">CTRL+SHIFT+4</span>
+    </div>
+    <div class="channel">
+      <div class="ch-copy"><strong style="font-weight:600;font-size:13px">Include cursor</strong><small>Pointer appears in captures.</small></div>
+      <span class="dimmer at-full"><i></i></span>
+    </div>
+    <div class="channel">
+      <div class="ch-copy"><strong style="font-weight:600;font-size:13px">Run at startup</strong><small>Wait quietly in the tray.</small></div>
+      <span class="dimmer"><i></i></span>
+    </div>
+    <footer class="desk-foot">
+      <span class="cue" style="letter-spacing:0.14em">Local only · blackout-safe</span>
+      <button class="go-btn" style="height:30px;font-size:10px;padding:0 14px">Done</button>
+    </footer>
+  </section>
+</main>
+
+</body>
+</html>
