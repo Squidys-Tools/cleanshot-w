@@ -4,6 +4,9 @@ pre-commit:
     rust-format:
       glob: "src-tauri/**/*.rs"
       run: bun run rust:format
+    lockfile-fresh:
+      glob: "package.json"
+      run: bun install --frozen-lockfile
 
 pre-push:
   commands:
