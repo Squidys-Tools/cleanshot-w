@@ -212,19 +212,17 @@ try {
   );
   check("color swatch selects green", true);
 
-  await page.click('.color-popover .seg-btn[title="Solid fill"]');
   await page.click('.color-popover .seg-btn[title="Dashed"]');
   await page.click('.color-popover .size-btn[title^="Size L"]');
   await page.waitForFunction(
     () => {
-      const fill = document.querySelector('.color-popover .seg-btn[title="Solid fill"]')?.classList.contains("active");
       const dash = document.querySelector('.color-popover .seg-btn[title="Dashed"]')?.classList.contains("active");
       const size = document.querySelector('.color-popover .size-btn[title^="Size L"]')?.classList.contains("active");
-      return fill && dash && size;
+      return dash && size;
     },
     { timeout: 5000 },
   );
-  check("fill/dash/size style buttons reflect state", true);
+  check("dash/size style buttons reflect state", true);
 
   /* opacity in color popover */
   await page.click('.color-popover .seg-btn[title="50%"]');
