@@ -378,7 +378,6 @@ function restoreOnce(editor: Editor, state: TldrawState): void {
 /* Fit the capture inside the app chrome: clear of the top chips, the dock,
    and the window edges, centered in what remains. */
 function frameImage(ed: Editor, imgW: number, imgH: number): void {
-  const vp = ed.getViewportScreenBounds();
   const M = 24; // breathing room between image and any UI
   let insetT = M;
   let insetB = M;
@@ -394,8 +393,8 @@ function frameImage(ed: Editor, imgW: number, imgH: number): void {
       insetB = Math.max(insetB, window.innerHeight - r.top + M);
     }
   });
-  const availW = Math.max(64, vp.width - 2 * M);
-  const availH = Math.max(64, vp.height - insetT - insetB);
+  const availW = Math.max(64, window.innerWidth - 2 * M);
+  const availH = Math.max(64, window.innerHeight - insetT - insetB);
 
   // Frame the image shape's real page bounds so placement is correct even if
   // the shape is not at the page origin.
@@ -405,15 +404,18 @@ function frameImage(ed: Editor, imgW: number, imgH: number): void {
   const bh = b?.height ?? imgH;
   const zoom = Math.min(Math.max(Math.min(availW / bw, availH / bh), 0.05), 8);
 
-  // Desired on-screen top-left of the image, then solve the camera that
-  // puts it there: screenPos = (pagePos - camera) * zoom.
-  const sx = M + (availW - bw * zoom) / 2;
-  const sy = insetT + (availH - bh * zoom) / 2;
-  if (b) {
-    ed.setCamera({ x: b.x - sx / zoom, y: b.y - sy / zoom, z: zoom });
-  } else {
-    ed.setCamera({ x: -sx / zoom, y: -sy / zoom, z: zoom });
-  }
+  // Desired on-screen top-left of the image in window coordinates, then
+  // solve the camera that puts it there. tldraw maps page points to screen
+  // points as screen = (page + camera) * zoom + screenBounds.xy, so
+  // camera = (target - screenBounds.xy) / zoom - page.
+  const sb = ed.getViewportScreenBounds();
+  const tx = M + (availW - bw * zoom) / 2;
+  const ty = insetT + (availH - bh * zoom) / 2;
+  ed.setCamera({
+    x: (tx - sb.x) / zoom - (b?.x ?? 0),
+    y: (ty - sb.y) / zoom - (b?.y ?? 0),
+    z: zoom,
+  });
 }
 
 function runAction(editor: Editor, fn: () => void): void {
