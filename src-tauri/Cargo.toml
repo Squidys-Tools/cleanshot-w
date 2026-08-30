@@ -17,14 +17,23 @@ name = "cleanshot_w_lib"
 # symbol exported. The rlib is linked by src-tauri/src/main.rs.
 crate-type = ["staticlib", "rlib"]
 
+[features]
+default = ["app"]
+app = [
+    "dep:tauri",
+    "dep:tauri-plugin-opener",
+    "dep:tauri-plugin-global-shortcut",
+    "dep:tauri-plugin-single-instance",
+]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-opener = "2"
-tauri-plugin-global-shortcut = "2"
-tauri-plugin-single-instance = "2"
+tauri = { version = "2", features = ["tray-icon"], optional = true }
+tauri-plugin-opener = { version = "2", optional = true }
+tauri-plugin-global-shortcut = { version = "2", optional = true }
+tauri-plugin-single-instance = { version = "2", optional = true }
 arboard = "3"
 base64 = "0.23"
 dirs = "6"

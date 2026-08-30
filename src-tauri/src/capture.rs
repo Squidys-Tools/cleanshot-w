@@ -2,6 +2,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use std::time::Duration;
+#[cfg(feature = "app")]
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 /// Make all native capture and overlay coordinates physical-pixel accurate.
@@ -188,6 +189,7 @@ fn encode_png(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn capture_screen(app: AppHandle) -> Result<CaptureFrame, String> {
     hide_main_for_capture(&app)?;
@@ -197,11 +199,13 @@ pub fn capture_screen(app: AppHandle) -> Result<CaptureFrame, String> {
     result
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn list_capture_windows() -> Result<Vec<WindowInfo>, String> {
     platform_list_windows()
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn capture_window(app: AppHandle, window_id: String) -> Result<CaptureFrame, String> {
     let window_id = window_id
@@ -214,6 +218,7 @@ pub fn capture_window(app: AppHandle, window_id: String) -> Result<CaptureFrame,
     result
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn get_active_capture(state: State<'_, CaptureState>) -> Result<CaptureFrame, String> {
     let active = state
@@ -226,6 +231,7 @@ pub fn get_active_capture(state: State<'_, CaptureState>) -> Result<CaptureFrame
         .frame()
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub async fn start_area_capture(
     app: AppHandle,
@@ -321,6 +327,7 @@ pub async fn start_area_capture(
     Ok(())
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn complete_area_capture(
     app: AppHandle,
@@ -356,6 +363,7 @@ pub fn complete_area_capture(
     close_result
 }
 
+#[cfg(feature = "app")]
 #[tauri::command]
 pub fn cancel_area_capture(app: AppHandle, state: State<'_, CaptureState>) -> Result<(), String> {
     state
@@ -368,11 +376,13 @@ pub fn cancel_area_capture(app: AppHandle, state: State<'_, CaptureState>) -> Re
     close_result
 }
 
+#[cfg(feature = "app")]
 pub fn overlay_destroyed(app: &AppHandle, state: State<'_, CaptureState>) {
     clear_active_capture(&state);
     restore_main(app);
 }
 
+#[cfg(feature = "app")]
 fn close_capture_overlay(app: &AppHandle) -> Result<(), String> {
     if let Some(overlay) = app.get_webview_window("capture-overlay") {
         overlay
@@ -382,10 +392,12 @@ fn close_capture_overlay(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(feature = "app")]
 fn clear_active_capture(state: &State<'_, CaptureState>) {
     let _ = state.active.lock().map(|mut active| active.take());
 }
 
+#[cfg(feature = "app")]
 fn hide_main_for_capture(app: &AppHandle) -> Result<(), String> {
     if let Some(main) = app.get_webview_window("main") {
         main.hide()
@@ -394,6 +406,7 @@ fn hide_main_for_capture(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(feature = "app")]
 fn restore_main(app: &AppHandle) {
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.show();

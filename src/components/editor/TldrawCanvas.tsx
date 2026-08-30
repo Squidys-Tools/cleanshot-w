@@ -18,6 +18,13 @@ import {
 import { Tldraw, useEditor } from "tldraw";
 import { BlurShapeUtil, CounterShapeUtil, PixelateShapeUtil, RedactShapeUtil } from "./customShapes";
 import { BlurTool, CounterTool, PixelateTool, RedactTool } from "./customTools";
+import {
+  type IconLibraryId,
+  LIBRARY_LABELS,
+  cycleIconLib,
+  getIconComponent,
+  useIconLib,
+} from "./IconLibrary";
 import { dataUrlFromUrl, ensureBackgroundImage, getBackgroundImageAsset, serializeTldraw, type EditorController, type Exporter } from "../../lib/tldrawDoc";
 import { applyEditorPreferences, persistEditorPreferences, readEditorPreferences } from "../../lib/preferences";
 import type { Rect, RegionMode, TldrawState } from "../../types";
@@ -27,6 +34,9 @@ const CUSTOM_SHAPE_UTILS = [CounterShapeUtil, BlurShapeUtil, PixelateShapeUtil, 
 const CUSTOM_TOOLS = [CounterTool, BlurTool, PixelateTool, RedactTool];
 
 const SWATCH_COLORS = ["red", "orange", "yellow", "green", "blue", "violet", "black", "grey"] as const;
+
+/* One-click colors in the dock; the caret opens the full palette. */
+const QUICK_COLORS = ["red", "blue", "black"] as const;
 
 const SIZES = [
   { id: "s", label: "S" },
@@ -100,7 +110,6 @@ type TldrawCanvasProps = {
   imageUrl: string;
   imgW: number;
   imgH: number;
-  title: string;
   initialDoc: TldrawState;
   onChange: (doc: TldrawState) => void;
   controllerRef: { current: EditorController | null };
@@ -112,26 +121,20 @@ type TldrawCanvasProps = {
   onRegionModeChange: (mode: RegionMode | null) => void;
   onCrop: (imageBlob: Blob, image: { width: number; height: number }, annotations: TldrawState) => Promise<void>;
   onOcrRegion: (rect: Rect) => void;
-  onRename: (title: string) => Promise<boolean>;
 };
 
 export default function TldrawCanvas({
   imageUrl,
   imgW,
   imgH,
-  title,
   initialDoc,
   onChange,
   controllerRef,
   onHistoryState,
-  saveState,
-  saveError,
-  onRetrySave,
   regionMode,
   onRegionModeChange,
   onCrop,
   onOcrRegion,
-  onRename,
 }: TldrawCanvasProps) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -157,9 +160,10 @@ export default function TldrawCanvas({
   const onMount = useCallback(
     (ed: Editor) => {
       setEditor(ed);
-      void ensureBackgroundImage(ed, imageUrl, imgW, imgH).then(() => {
-        ed.zoomToBounds(new Box(0, 0, imgW, imgH), { inset: 48, animation: { duration: 200 } });
-      });
+      // Keep the chosen tool active after each stroke; the user switches
+      // tools deliberately, not after every action.
+      ed.updateInstanceState({ isToolLocked: true });
+      void ensureBackgroundImage(ed, imageUrl, imgW, imgH);
     },
     [imageUrl, imgW, imgH],
   );
@@ -191,7 +195,31 @@ export default function TldrawCanvas({
 
   useEffect(() => {
     if (!editor) return;
-    editor.zoomToBounds(new Box(0, 0, imgW, imgH), { inset: 48 });
+    // Frame the capture once layout has settled. Early frames can run while
+    // the canvas, topbar, or dock are still laying out, so keep re-framing
+    // until the container geometry is stable for several consecutive frames.
+    let raf = 0;
+    let lastW = -1;
+    let lastH = -1;
+    let stableFrames = 0;
+    const start = performance.now();
+    const tick = () => {
+      const target = rootRef.current;
+      const w = target?.getBoundingClientRect().width ?? -1;
+      const h = target?.getBoundingClientRect().height ?? -1;
+      if (w === lastW && h === lastH) stableFrames += 1;
+      else {
+        stableFrames = 0;
+        lastW = w;
+        lastH = h;
+      }
+      frameImage(editor, imgW, imgH);
+      if (stableFrames < 5 && performance.now() - start < 2000) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   }, [editor, imgW, imgH]);
 
   useEffect(() => {
@@ -320,7 +348,7 @@ export default function TldrawCanvas({
                     editor.updateAssets([{ id: asset.id, type: "image", props: { ...asset.props, src: nextSrc, w: nextDims.width, h: nextDims.height } }] as never);
                     editor.updateShapes([{ id: imageShape.id, type: "image", x: 0, y: 0, props: { w: nextDims.width, h: nextDims.height } }]);
                   });
-                  editor.zoomToBounds(new Box(0, 0, nextDims.width, nextDims.height), { inset: 48, animation: { duration: 200 } });
+                  frameImage(editor, nextDims.width, nextDims.height);
                   await onCrop(nextBlob, nextDims, serializeTldraw(editor));
                   onRegionModeChange(null);
                 } finally {
@@ -331,8 +359,7 @@ export default function TldrawCanvas({
           )}
           <Toolbar cropActive={regionMode === "crop"} onCrop={() => onRegionModeChange("crop")} />
           <SelectionBar />
-          <ZoomControls />
-          <StatusBar title={title} imgW={imgW} imgH={imgH} saveState={saveState} saveError={saveError} onRetrySave={onRetrySave} onRename={onRename} />
+          <ZoomControls imgW={imgW} imgH={imgH} />
         </div>
       </Tldraw>
     </div>
@@ -348,6 +375,49 @@ function restoreOnce(editor: Editor, state: TldrawState): void {
   }
 }
 
+/* Fit the capture inside the app chrome: clear of the top chips, the dock,
+   and the window edges, centered in what remains. */
+function frameImage(ed: Editor, imgW: number, imgH: number): void {
+  const M = 24; // breathing room between image and any UI
+  let insetT = M;
+  let insetB = M;
+  // Measure real chrome (topbar, dock, zoom controls) so the image can
+  // never touch it, whatever the window size.
+  document.querySelectorAll<HTMLElement>("[data-chrome]").forEach((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) return;
+    const midY = r.top + r.height / 2;
+    if (midY < window.innerHeight * 0.45) {
+      insetT = Math.max(insetT, r.bottom + M);
+    } else if (midY > window.innerHeight * 0.55) {
+      insetB = Math.max(insetB, window.innerHeight - r.top + M);
+    }
+  });
+  const availW = Math.max(64, window.innerWidth - 2 * M);
+  const availH = Math.max(64, window.innerHeight - insetT - insetB);
+
+  // Frame the image shape's real page bounds so placement is correct even if
+  // the shape is not at the page origin.
+  const img = ed.getCurrentPageShapes().find((s) => s.type === "image");
+  const b = img ? ed.getShapePageBounds(img.id) : null;
+  const bw = b?.width ?? imgW;
+  const bh = b?.height ?? imgH;
+  const zoom = Math.min(Math.max(Math.min(availW / bw, availH / bh), 0.05), 8);
+
+  // Desired on-screen top-left of the image in window coordinates, then
+  // solve the camera that puts it there. tldraw maps page points to screen
+  // points as screen = (page + camera) * zoom + screenBounds.xy, so
+  // camera = (target - screenBounds.xy) / zoom - page.
+  const sb = ed.getViewportScreenBounds();
+  const tx = M + (availW - bw * zoom) / 2;
+  const ty = insetT + (availH - bh * zoom) / 2;
+  ed.setCamera({
+    x: (tx - sb.x) / zoom - (b?.x ?? 0),
+    y: (ty - sb.y) / zoom - (b?.y ?? 0),
+    z: zoom,
+  });
+}
+
 function runAction(editor: Editor, fn: () => void): void {
   editor.run(() => {
     editor.markHistoryStoppingPoint();
@@ -361,7 +431,10 @@ function editableShapeIds(editor: Editor): TLShapeId[] {
 
 function setStyleForNextAndSelected(editor: Editor, style: unknown, value: unknown): void {
   editor.setStyleForNextShapes(style as never, value as never);
-  if (editableShapeIds(editor).length > 0) {
+  // Only restyle the selection when the user is deliberately in Select mode.
+  // After drawing, the new shape stays selected (tool lock), and style
+  // changes must not reach back and alter it.
+  if (editor.getCurrentToolId() === "select" && editableShapeIds(editor).length > 0) {
     editor.setStyleForSelectedShapes(style as never, value as never);
   }
 }
@@ -378,6 +451,48 @@ function usePopover(): { ref: RefObject<HTMLDivElement | null>; open: boolean; t
     return () => document.removeEventListener("pointerdown", close);
   }, [open]);
   return { ref, open, toggle: () => setOpen((o) => !o), close: () => setOpen(false) };
+}
+
+/* Opens after a short hover intent and closes shortly after the pointer
+   leaves, so tool-specific options appear in place without a click. */
+function useHoverPopover(openDelay = 400, closeDelay = 150): {
+  ref: RefObject<HTMLDivElement | null>;
+  open: boolean;
+  show: () => void;
+  hide: () => void;
+  keep: () => void;
+} {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const timer = useRef<number | null>(null);
+  const clearTimer = () => {
+    if (timer.current !== null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+  };
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [open]);
+  useEffect(() => clearTimer, []);
+  return {
+    ref,
+    open,
+    show: () => {
+      clearTimer();
+      timer.current = window.setTimeout(() => setOpen(true), openDelay);
+    },
+    hide: () => {
+      clearTimer();
+      timer.current = window.setTimeout(() => setOpen(false), closeDelay);
+    },
+    keep: clearTimer,
+  };
 }
 
 function normalizeRect(start: { x: number; y: number }, end: { x: number; y: number }): Rect {
@@ -520,7 +635,7 @@ const PRIMARY_TOOL_IDS = ["select", "highlight", "draw", "arrow", "text", "cs-co
 
 function Toolbar({ cropActive, onCrop }: { cropActive: boolean; onCrop: () => void }) {
   const editor = useEditor();
-  const { toolId, geo, color, size, fill, dash } = useValue(
+  const { toolId, geo, color, size, fill, dash, font, opacity, ahStart, ahEnd, ahKind } = useValue(
     "cs-toolbar",
     () => ({
       toolId: editor.getCurrentToolId(),
@@ -529,6 +644,11 @@ function Toolbar({ cropActive, onCrop }: { cropActive: boolean; onCrop: () => vo
       size: editor.getStyleForNextShape(DefaultSizeStyle),
       fill: editor.getStyleForNextShape(DefaultFillStyle),
       dash: editor.getStyleForNextShape(DefaultDashStyle),
+      font: editor.getStyleForNextShape(DefaultFontStyle),
+      opacity: editor.getSharedOpacity(),
+      ahStart: editor.getStyleForNextShape(ArrowShapeArrowheadStartStyle),
+      ahEnd: editor.getStyleForNextShape(ArrowShapeArrowheadEndStyle),
+      ahKind: editor.getStyleForNextShape(ArrowShapeKindStyle),
     }),
     [editor],
   );
@@ -536,8 +656,37 @@ function Toolbar({ cropActive, onCrop }: { cropActive: boolean; onCrop: () => vo
   const palette = theme.colors[editor.getColorMode()];
 
   const geoPopover = usePopover();
-  const stylePopover = usePopover();
+  const colorPopover = usePopover();
   const morePopover = usePopover();
+  const arrowPopover = useHoverPopover();
+  const textPopover = useHoverPopover();
+
+  // Icon library cycler — Shift+I to cycle libraries; shared via useIconLib
+  const [iconLib, setIconLibState] = useIconLib();
+  const [iconLibToast, setIconLibToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.shiftKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === "i") {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        setIconLibState(cycleIconLib(iconLib));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [iconLib, setIconLibState]);
+  // Toast when library changes
+  useEffect(() => {
+    if (iconLib === "svg") {
+      setIconLibToast(null);
+      return;
+    }
+    setIconLibToast(LIBRARY_LABELS[iconLib]);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setIconLibToast(null), 1500);
+    return () => { if (toastTimer.current) clearTimeout(toastTimer.current); };
+  }, [iconLib]);
 
   const setTool = (id: string) => {
     if (id === "rectangle" || id === "ellipse") {
@@ -554,28 +703,127 @@ function Toolbar({ cropActive, onCrop }: { cropActive: boolean; onCrop: () => vo
   const activeGeo = GEO_SHAPES.find((g) => g.id === geo) ?? GEO_SHAPES[0];
 
   return (
-    <div className="cs-toolbar">
+    <>
+    <div className="cs-toolbar" data-chrome>
       <div className="tool-group toolbar-primary-tools">
-        {TOOLS.filter((t) => PRIMARY_TOOL_IDS.includes(t.id)).map((t) => (
-          <button
-            key={t.id}
-            className={`tool-btn ${toolId === t.id ? "active" : ""}`}
-            title={`${t.label}${t.kbd ? ` (${t.kbd})` : ""}`}
-            onClick={() => setTool(t.id)}
-          >
-            <ToolIcon name={t.icon} />
-            <span className="tool-label">{t.label}</span>
-            {t.kbd && <kbd className="tool-kbd">{t.kbd}</kbd>}
-          </button>
-        ))}
+        {TOOLS.filter((t) => PRIMARY_TOOL_IDS.includes(t.id)).map((t) => {
+          if (t.id === "arrow") {
+            return (
+              <div
+                key={t.id}
+                className="popover-wrap"
+                ref={arrowPopover.ref}
+                onMouseEnter={arrowPopover.show}
+                onMouseLeave={arrowPopover.hide}
+              >
+                <button
+                  className={`tool-btn ${toolId === t.id ? "active" : ""}`}
+                  title={`${t.label}${t.kbd ? ` (${t.kbd})` : ""}`}
+                  onClick={() => setTool(t.id)}
+                >
+                  <ToolIcon name={t.icon} iconLib={iconLib} />
+                </button>
+                <div className={arrowPopover.open ? "popover arrow-popover open" : "popover arrow-popover"} onMouseEnter={arrowPopover.keep} aria-hidden={!arrowPopover.open}>
+                    <div className="popover-label">Arrowheads</div>
+                    <div className="popover-row">
+                      <select
+                        value={ahStart}
+                        onChange={(e) => {
+                          setStyleForNextAndSelected(editor, ArrowShapeArrowheadStartStyle, e.target.value);
+                          persistEditorPreferences(editor);
+                        }}
+                      >
+                        {ARROWHEADS.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            Start · {a.label}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={ahEnd}
+                        onChange={(e) => {
+                          setStyleForNextAndSelected(editor, ArrowShapeArrowheadEndStyle, e.target.value);
+                          persistEditorPreferences(editor);
+                        }}
+                      >
+                        {ARROWHEADS.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            End · {a.label}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={ahKind}
+                        onChange={(e) => {
+                          setStyleForNextAndSelected(editor, ArrowShapeKindStyle, e.target.value);
+                          persistEditorPreferences(editor);
+                        }}
+                      >
+                        {ARROW_KINDS.map((k) => (
+                          <option key={k.id} value={k.id}>
+                            {k.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+            if (t.id === "text") {
+            return (
+              <div
+                key={t.id}
+                className="popover-wrap"
+                ref={textPopover.ref}
+                onMouseEnter={textPopover.show}
+                onMouseLeave={textPopover.hide}
+              >
+                <button
+                  className={`tool-btn ${toolId === t.id ? "active" : ""}`}
+                  title={`${t.label}${t.kbd ? ` (${t.kbd})` : ""}`}
+                  onClick={() => setTool(t.id)}
+                >
+                  <ToolIcon name={t.icon} iconLib={iconLib} />
+                </button>
+                <div className={textPopover.open ? "popover font-popover open" : "popover font-popover"} onMouseEnter={textPopover.keep} aria-hidden={!textPopover.open}>
+                  <div className="popover-label">Font</div>
+                  <div className="segmented">
+                    {FONTS.map((f) => (
+                      <button
+                        key={f.id}
+                        className={`seg-btn ${font === f.id ? "active" : ""}`}
+                        title={f.label}
+                        onClick={() => {
+                          setStyleForNextAndSelected(editor, DefaultFontStyle, f.id);
+                            persistEditorPreferences(editor);
+                          }}
+                        >
+                          <span className={`font-sample font-${f.id}`}>Aa</span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <button
+              key={t.id}
+              className={`tool-btn ${toolId === t.id ? "active" : ""}`}
+              title={`${t.label}${t.kbd ? ` (${t.kbd})` : ""}`}
+              onClick={() => setTool(t.id)}
+            >
+              <ToolIcon name={t.icon} iconLib={iconLib} />
+            </button>
+          );
+        })}
         <button className={`tool-btn ${cropActive ? "active" : ""}`} title="Crop screenshot" onClick={onCrop}>
-          <ToolIcon name="crop" />
-          <span className="tool-label">Crop</span>
+          <ToolIcon name="crop" iconLib={iconLib} />
         </button>
         <div className="popover-wrap" ref={morePopover.ref}>
           <button className={`tool-btn ${TOOLS.some((tool) => tool.id === toolId && !PRIMARY_TOOL_IDS.includes(tool.id)) ? "active" : ""}`} title="More tools" onClick={morePopover.toggle}>
-            <ToolIcon name="more" />
-            <span className="tool-label">More</span>
+            <ToolIcon name="more" iconLib={iconLib} />
           </button>
           {morePopover.open && (
             <div className="popover tools-popover">
@@ -590,9 +838,8 @@ function Toolbar({ cropActive, onCrop }: { cropActive: boolean; onCrop: () => vo
                     morePopover.close();
                   }}
                 >
-                  <ToolIcon name={t.icon} />
+                  <ToolIcon name={t.icon} iconLib={iconLib} />
                   <span>{t.label}</span>
-                  {t.kbd && <kbd>{t.kbd}</kbd>}
                 </button>
               ))}
             </div>
@@ -609,236 +856,149 @@ function Toolbar({ cropActive, onCrop }: { cropActive: boolean; onCrop: () => vo
             title={`Shape: ${activeGeo.label}`}
             onClick={geoPopover.toggle}
           >
-            <ToolIcon name={activeGeo.icon} />
-            <span className="tool-label">Shapes</span>
+            <ToolIcon name={activeGeo.icon} iconLib={iconLib} />
           </button>
-          {geoPopover.open && (
-            <div className="popover geo-popover">
-              <div className="popover-label">Shapes</div>
-              {GEO_SHAPES.map((g) => (
+          <div className={geoPopover.open ? "popover geo-menu open" : "popover geo-menu"} aria-hidden={!geoPopover.open}>
+              <div className="geo-grid">
+                {GEO_SHAPES.map((g) => (
+                  <button
+                    key={g.id}
+                    className={`geo-opt ${geo === g.id ? "active" : ""}`}
+                    title={g.label}
+                    onClick={() => {
+                      editor.run(() => {
+                        editor.setStyleForNextShapes(GeoShapeGeoStyle, g.id as never);
+                        editor.setCurrentTool("geo");
+                      });
+                      persistEditorPreferences(editor);
+                      geoPopover.close();
+                    }}
+                  >
+                    <ToolIcon name={g.icon} iconLib={iconLib} />
+                  </button>
+                ))}
+              </div>
+              <div className="popover-label">Fill</div>
+              <div className="segmented" role="group" aria-label="Fill">
+                {FILLS.map((f) => (
+                  <button
+                    key={f.id}
+                    className={`seg-btn ${fill === f.id ? "active" : ""}`}
+                    title={f.label}
+                    onClick={() => {
+                      setStyleForNextAndSelected(editor, DefaultFillStyle, f.id);
+                      persistEditorPreferences(editor);
+                    }}
+                  >
+                    <ToolIcon name={f.icon} iconLib={iconLib} />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+      <div className="divider" />
+
+      <div className="prop-group">
+        {QUICK_COLORS.map((c) => (
+          <button
+            key={c}
+            className={`color-chip ${color === c ? "active" : ""}`}
+            title={`Color: ${c}`}
+            aria-label={`Use ${c}`}
+            onClick={() => {
+              setStyleForNextAndSelected(editor, DefaultColorStyle, c);
+              persistEditorPreferences(editor);
+            }}
+          >
+            <span style={{ background: getColorValue(palette, c, "solid") }} />
+          </button>
+        ))}
+        <div className="popover-wrap" ref={colorPopover.ref}>
+          <button
+            className="color-chip color-more"
+            title="Color and stroke"
+            aria-label="Color and stroke"
+            onClick={colorPopover.toggle}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          <div className={colorPopover.open ? "popover color-popover open" : "popover color-popover"} aria-hidden={!colorPopover.open}>
+            <div className="color-grid">
+              {SWATCH_COLORS.map((c) => (
                 <button
-                  key={g.id}
-                  className={`geo-opt ${geo === g.id ? "active" : ""}`}
-                  title={g.label}
+                  key={c}
+                  className={`swatch ${color === c ? "active" : ""}`}
+                  style={{ background: getColorValue(palette, c, "solid") }}
+                  title={c}
                   onClick={() => {
-                    editor.run(() => {
-                      editor.setStyleForNextShapes(GeoShapeGeoStyle, g.id as never);
-                      editor.setCurrentTool("geo");
-                    });
+                    setStyleForNextAndSelected(editor, DefaultColorStyle, c);
                     persistEditorPreferences(editor);
-                    geoPopover.close();
+                  }}
+                />
+              ))}
+            </div>
+            <div className="popover-label">Size</div>
+            <div className="segmented" role="group" aria-label="Size">
+              {SIZES.map((s) => (
+                <button
+                  key={s.id}
+                  className={`size-btn ${size === s.id ? "active" : ""}`}
+                  title={`Size ${s.label}`}
+                  onClick={() => {
+                    setStyleForNextAndSelected(editor, DefaultSizeStyle, s.id);
+                    persistEditorPreferences(editor);
                   }}
                 >
-                  <ToolIcon name={g.icon} />
+                  {s.label}
                 </button>
               ))}
             </div>
-          )}
-        </div>
-      </div>
-
-      <div className="divider" />
-
-      <div className="prop-group">
-        <div className="swatches">
-          {SWATCH_COLORS.map((c) => (
-            <button
-              key={c}
-              className={`swatch ${color === c ? "active" : ""}`}
-              style={{ background: getColorValue(palette, c, "solid") }}
-              title={c}
-              onClick={() => {
-                setStyleForNextAndSelected(editor, DefaultColorStyle, c);
-                persistEditorPreferences(editor);
-              }}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className="divider" />
-
-      <div className="prop-group">
-        <div className="sizes">
-          {SIZES.map((s) => (
-            <button
-              key={s.id}
-              className={`size-btn ${size === s.id ? "active" : ""}`}
-              title={`Size ${s.label}`}
-              onClick={() => {
-                setStyleForNextAndSelected(editor, DefaultSizeStyle, s.id);
-                persistEditorPreferences(editor);
-              }}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="divider" />
-
-      <div className="prop-group">
-        <div className="segmented" role="group" aria-label="Fill">
-          {FILLS.map((f) => (
-            <button
-              key={f.id}
-              className={`seg-btn ${fill === f.id ? "active" : ""}`}
-              title={f.label}
-              onClick={() => {
-                setStyleForNextAndSelected(editor, DefaultFillStyle, f.id);
-                persistEditorPreferences(editor);
-              }}
-            >
-              <ToolIcon name={f.icon} />
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="divider" />
-
-      <div className="prop-group">
-        <div className="segmented" role="group" aria-label="Dash">
-          {DASHES.map((d) => (
-            <button
-              key={d.id}
-              className={`seg-btn ${dash === d.id ? "active" : ""}`}
-              title={d.label}
-              onClick={() => {
-                setStyleForNextAndSelected(editor, DefaultDashStyle, d.id);
-                persistEditorPreferences(editor);
-              }}
-            >
-              <span className={`dash-mark dash-${d.id}`} />
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="divider" />
-
-      <div className="prop-group">
-        <div className="popover-wrap" ref={stylePopover.ref}>
-          <button className="tool-btn" title="More styles" onClick={stylePopover.toggle}>
-            <ToolIcon name="more" />
-          </button>
-          {stylePopover.open && <StylePopover editor={editor} onClose={stylePopover.close} onChange={() => persistEditorPreferences(editor)} />}
+            <div className="popover-label">Dash</div>
+            <div className="segmented" role="group" aria-label="Dash">
+              {DASHES.map((d) => (
+                <button
+                  key={d.id}
+                  className={`seg-btn ${dash === d.id ? "active" : ""}`}
+                  title={d.label}
+                  onClick={() => {
+                    setStyleForNextAndSelected(editor, DefaultDashStyle, d.id);
+                    persistEditorPreferences(editor);
+                  }}
+                >
+                  <span className={`dash-mark dash-${d.id}`} />
+                </button>
+              ))}
+            </div>
+            <div className="popover-label">Opacity</div>
+            <div className="segmented" role="group" aria-label="Opacity">
+              {OPACITIES.map((o) => (
+                <button
+                  key={o}
+                  className={`seg-btn ${opacity !== undefined && opacity.type !== "mixed" && Math.abs(opacity.value - o) < 0.001 ? "active" : ""}`}
+                  title={`${Math.round(o * 100)}%`}
+                  onClick={() => {
+                    if (editor.getCurrentToolId() === "select") {
+                      editor.setOpacityForSelectedShapes(o);
+                    }
+                    editor.setOpacityForNextShapes(o);
+                    persistEditorPreferences(editor);
+                  }}
+                >
+                  {Math.round(o * 100)}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
     </div>
-  );
-}
-
-function StylePopover({ editor, onClose, onChange }: { editor: Editor; onClose: () => void; onChange: () => void }) {
-  const { font, opacity, ahStart, ahEnd, ahKind, snap, grid, dark } = useValue(
-    "cs-styles",
-    () => ({
-      font: editor.getStyleForNextShape(DefaultFontStyle),
-      opacity: editor.getSharedOpacity(),
-      ahStart: editor.getStyleForNextShape(ArrowShapeArrowheadStartStyle),
-      ahEnd: editor.getStyleForNextShape(ArrowShapeArrowheadEndStyle),
-      ahKind: editor.getStyleForNextShape(ArrowShapeKindStyle),
-      snap: editor.user.getIsSnapMode(),
-      grid: editor.getInstanceState().isGridMode,
-      dark: editor.user.getUserPreferences().colorScheme === "dark",
-    }),
-    [editor],
-  );
-
-  return (
-    <div className="popover style-popover" onClick={(e) => e.stopPropagation()}>
-      <div className="popover-section">
-        <div className="popover-label">Font</div>
-        <div className="segmented">
-          {FONTS.map((f) => (
-            <button
-              key={f.id}
-              className={`seg-btn ${font === f.id ? "active" : ""}`}
-              title={f.label}
-              onClick={() => {
-                setStyleForNextAndSelected(editor, DefaultFontStyle, f.id);
-                onChange();
-              }}
-            >
-              <span className={`font-sample font-${f.id}`}>Aa</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="popover-section">
-        <div className="popover-label">Opacity</div>
-        <div className="segmented">
-          {OPACITIES.map((o) => (
-            <button
-              key={o}
-              className={`seg-btn ${opacity !== undefined && opacity.type !== "mixed" && Math.abs(opacity.value - o) < 0.001 ? "active" : ""}`}
-              title={`${Math.round(o * 100)}%`}
-              onClick={() => {
-                editor.setOpacityForSelectedShapes(o);
-                editor.setOpacityForNextShapes(o);
-                onChange();
-              }}
-            >
-              {Math.round(o * 100)}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="popover-section">
-        <div className="popover-label">Arrowheads</div>
-        <div className="popover-row">
-          <select value={ahStart} onChange={(e) => { setStyleForNextAndSelected(editor, ArrowShapeArrowheadStartStyle, e.target.value); onChange(); }}>
-            {ARROWHEADS.map((a) => (
-              <option key={a.id} value={a.id}>
-                Start · {a.label}
-              </option>
-            ))}
-          </select>
-          <select value={ahEnd} onChange={(e) => { setStyleForNextAndSelected(editor, ArrowShapeArrowheadEndStyle, e.target.value); onChange(); }}>
-            {ARROWHEADS.map((a) => (
-              <option key={a.id} value={a.id}>
-                End · {a.label}
-              </option>
-            ))}
-          </select>
-          <select value={ahKind} onChange={(e) => { setStyleForNextAndSelected(editor, ArrowShapeKindStyle, e.target.value); onChange(); }}>
-            {ARROW_KINDS.map((k) => (
-              <option key={k.id} value={k.id}>
-                {k.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="popover-section">
-        <div className="popover-row">
-          <label className="cs-toggle">
-            <input type="checkbox" checked={snap} onChange={(e) => { editor.user.updateUserPreferences({ isSnapMode: e.target.checked }); onChange(); }} />
-            Snap
-          </label>
-          <label className="cs-toggle">
-            <input type="checkbox" checked={grid} onChange={(e) => { editor.updateInstanceState({ isGridMode: e.target.checked }); onChange(); }} />
-            Grid
-          </label>
-          <label className="cs-toggle">
-            <input
-              type="checkbox"
-              checked={dark}
-              onChange={(e) => { editor.user.updateUserPreferences({ colorScheme: e.target.checked ? "dark" : "light" }); onChange(); }}
-            />
-            Dark
-          </label>
-        </div>
-      </div>
-      <button className="popover-close" onClick={onClose}>
-        Close
-      </button>
-    </div>
+    {iconLibToast && <div className="icon-lib-toast">{iconLibToast}</div>}
+    </>
   );
 }
 
@@ -959,133 +1119,46 @@ function SelectionBar() {
 
 /* ---------------------------- Zoom controls -------------------------- */
 
-function ZoomControls() {
+function ZoomControls({ imgW, imgH }: { imgW: number; imgH: number }) {
   const editor = useEditor();
   const zoom = useValue("cs-zoom", () => editor.getCamera().z, [editor]);
   return (
-    <div className="cs-zoom">
-      <button className="icon-btn" title="Zoom out" onClick={() => editor.zoomOut()}>
-        −
+    <div className="cs-zoom" data-chrome>
+      <button className="icon-btn" title="Zoom out" aria-label="Zoom out" onClick={() => editor.zoomOut()}>
+        <svg viewBox="0 0 24 24" className="tool-icon" aria-hidden="true">
+          <path d="M5 12h14" />
+        </svg>
       </button>
       <span className="zoom-label">{Math.round(zoom * 100)}%</span>
-      <button className="icon-btn" title="Zoom in" onClick={() => editor.zoomIn()}>
-        +
+      <button className="icon-btn" title="Zoom in" aria-label="Zoom in" onClick={() => editor.zoomIn()}>
+        <svg viewBox="0 0 24 24" className="tool-icon" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
       </button>
-      <button className="icon-btn" title="Fit to window" onClick={() => editor.zoomToFit()}>
+      <button className="icon-btn" title="Fit to window" onClick={() => frameImage(editor, imgW, imgH)}>
         Fit
       </button>
     </div>
   );
 }
 
-/* ------------------------------ StatusBar ---------------------------- */
-
-function StatusBar({
-  title,
-  imgW,
-  imgH,
-  saveState,
-  saveError,
-  onRetrySave,
-  onRename,
-}: {
-  title: string;
-  imgW: number;
-  imgH: number;
-  saveState: "saved" | "saving" | "error";
-  saveError?: string | null;
-  onRetrySave?: () => void;
-  onRename: (title: string) => Promise<boolean>;
-}) {
-  const editor = useEditor();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(title);
-  const [renaming, setRenaming] = useState(false);
-  const skipBlurRef = useRef(false);
-  const count = useValue(
-    "cs-count",
-    () => editor.getCurrentPageShapes().filter((s) => s.type !== "image" && s.parentId === editor.getCurrentPageId()).length,
-    [editor],
-  );
-
-  useEffect(() => {
-    if (!editing) setDraft(title);
-  }, [editing, title]);
-
-  const commitTitle = async () => {
-    if (renaming) return;
-    const nextTitle = draft.trim();
-    if (!nextTitle) {
-      setDraft(title);
-      setEditing(false);
-      return;
-    }
-    if (nextTitle === title) {
-      setEditing(false);
-      return;
-    }
-    setRenaming(true);
-    try {
-      if (await onRename(nextTitle)) setEditing(false);
-      else setDraft(title);
-    } finally {
-      setRenaming(false);
-    }
-  };
-
-  return (
-    <div className="cs-statusbar">
-      <div className="cs-title-slot">
-        {editing ? (
-          <input
-            className="cs-title-input"
-            value={draft}
-            maxLength={500}
-            autoFocus
-            aria-label="Capture title"
-            disabled={renaming}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void commitTitle();
-              }
-              if (event.key === "Escape") {
-                event.preventDefault();
-                skipBlurRef.current = true;
-                setDraft(title);
-                setEditing(false);
-              }
-            }}
-            onBlur={() => {
-              if (skipBlurRef.current) {
-                skipBlurRef.current = false;
-                return;
-              }
-              void commitTitle();
-            }}
-          />
-        ) : (
-          <button className="cs-title" title="Rename capture" onClick={() => setEditing(true)}>
-            {title}
-          </button>
-        )}
-      </div>
-      <span className="cs-metadata">
-        {imgW} × {imgH} · {count} markup{count === 1 ? "" : "s"}
-      </span>
-      <span className={`cs-save-state ${saveState}`} title={saveError || undefined}>
-        <span className="cs-save-dot" aria-hidden="true" />
-        {saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved locally"}
-      </span>
-      {saveState === "error" && onRetrySave && <button className="cs-save-retry" onClick={onRetrySave}>Retry</button>}
-    </div>
-  );
-}
-
 /* ------------------------------- Icons ------------------------------- */
 
-function ToolIcon({ name }: { name: string }) {
+function ToolIcon({ name, iconLib = "svg" }: { name: string; iconLib?: IconLibraryId }) {
+  // Try the active library first; fall back to hand-drawn SVG
+  const LibIcon = iconLib !== "svg" ? getIconComponent(iconLib, name) : null;
+  if (LibIcon) {
+    return (
+      <LibIcon
+        size={20}
+        strokeWidth={1.75}
+        weight={iconLib === "phosphor" ? "bold" : undefined}
+        className="lib-icon"
+        aria-hidden
+      />
+    );
+  }
+
   const p: Record<string, ReactElement> = {
     select: <path d="M5 3l6 14 2-5 5-1-13-8z" />,
     rect: <rect x="3.5" y="5" width="17" height="14" rx="1" />,
@@ -1232,3 +1305,6 @@ function ToolIcon({ name }: { name: string }) {
   };
   return <svg viewBox="0 0 24 24" className="tool-icon" aria-hidden="true">{p[name] ?? p.select}</svg>;
 }
+
+
+
