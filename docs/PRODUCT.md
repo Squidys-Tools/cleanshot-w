@@ -41,9 +41,9 @@ file exports.
 
 - Current capabilities include editable drawing, shapes, arrows, text,
   counters, highlights, blur, pixelation, redaction, zoom, pan, undo/redo,
-  OCR, clipboard/file export, capture history, title editing and search,
-  always-on-top pins, tray controls, a configurable capture hotkey, cursor
-  inclusion, and optional per-user startup.
+  OCR, clipboard/file export through a dedicated export page, capture history,
+  title editing and search, always-on-top pins, tray controls, a configurable
+  capture hotkey, cursor inclusion, and optional per-user startup.
 - Capture history, annotations, images, titles, and settings are stored locally
   in the browser or under `%LOCALAPPDATA%\CleanShotW` in the native app.
 - The product is local-first. No account, cloud sync, telemetry, or network
@@ -115,7 +115,7 @@ file exports.
 
 | Reference capability | Status | Current scope / follow-up |
 |---|---|---|
-| Copy, save, annotate, OCR, pin, new, and close actions | Implemented | The main command bar exposes capture, export, OCR, pin, history, settings, and close actions. Annotation tools live in the detached bottom dock. |
+| Copy, save, annotate, OCR, pin, new, and close actions | Implemented | The main command bar exposes capture, export, OCR, pin, history, settings, and close actions; a Done action opens the export page. Annotation tools live in the detached bottom dock. |
 | Capture metadata and drag/drop to another app | Partial | Capture title and history metadata exist; external drag/drop from the overlay is not implemented. |
 | Corner popup, restore recently closed overlay, position/size controls, auto-close, swipe gestures, temporary hide | Planned | These are separate overlay UX capabilities and are not part of the current M2 shell. |
 | Multi-display overlay support | Partial | Native capture uses the virtual desktop and is designed for multiple displays; the full overlay positioning and behavior matrix still requires Windows validation. |

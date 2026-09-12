@@ -33,6 +33,7 @@ import type { OcrStatus } from "./components/QuickAccess";
 import SettingsPopover from "./components/SettingsPopover";
 import WindowPicker from "./components/WindowPicker";
 import PinnedCapture from "./components/PinnedCapture";
+import { getIconComponent, useIconLib } from "./components/editor/IconLibrary";
 import "./App.css";
 
 type OcrState = { status: OcrStatus; text?: string; progress?: number; message?: string };
@@ -58,6 +59,7 @@ function EditorApp() {
   const [regionMode, setRegionMode] = useState<RegionMode | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [settings, setSettings] = useState<NativeSettings | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -288,12 +290,12 @@ function EditorApp() {
       await host.updateCaptureAnnotations(recordId, annotations);
       if (saveTimers.current.get(recordId)?.version === version) {
         saveTimers.current.delete(recordId);
-        setHistory(await host.listCaptures());
         setSaveState("saved");
         retrySaveRef.current = null;
+        void refreshHistory();
       }
     },
-    [],
+    [refreshHistory],
   );
 
   const onAnnotationsChange = useCallback(
@@ -325,6 +327,7 @@ function EditorApp() {
     setRec(null);
     setOcr({ status: "idle" });
     setNotice(null);
+    setExportOpen(false);
     setShowHistory(false);
     setHistoryState({ canUndo: false, canRedo: false });
     setSaveState("saved");
@@ -557,14 +560,8 @@ function EditorApp() {
   }, [newCapture]);
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true"><span /></span>
-          <span>
-            CleanShot <em>W</em>
-          </span>
-        </div>
+    <div className={shortcutsOpen ? "app shortcuts-open" : "app"}>
+      <header className="topbar" data-chrome>
         <div className="command-actions" aria-label="Edit commands">
           <button
             className="command-icon"
@@ -587,9 +584,6 @@ function EditorApp() {
         </div>
         <div className="command-separator" />
         <nav className="top-actions" aria-label="Capture and export commands">
-          <button className="command-btn primary" onClick={startCapture} disabled={busy}>
-            New capture
-          </button>
           {isTauriRuntime() && (
             <>
               <button className="command-btn" onClick={openWindowPicker}>
@@ -642,6 +636,11 @@ function EditorApp() {
             Shortcuts
           </button>
           {rec && <button className="command-btn quiet" onClick={closeCapture}>Close</button>}
+          {rec && (
+            <button className="command-btn primary done-command" onClick={() => setExportOpen(true)}>
+              Done
+            </button>
+          )}
         </div>
         <input
           ref={fileInputRef}
@@ -659,22 +658,34 @@ function EditorApp() {
       <div className="workspace">
         <main className="stage">
           {rec && imageUrl ? (
-            <Editor
-              key={rec.id}
-              doc={rec}
-              imageUrl={imageUrl}
-              onChange={onAnnotationsChange}
-              controllerRef={controllerRef}
-              onHistoryState={onHistoryState}
-              saveState={saveState}
-              saveError={saveError}
-              onRetrySave={() => { void retrySaveRef.current?.(); }}
-              regionMode={regionMode}
-              onRegionModeChange={setRegionMode}
-              onCrop={applyCroppedCapture}
-              onOcrRegion={(rect) => void runOcrRegion(rect)}
-              onRename={renameCapture.bind(null, rec.id)}
-            />
+            exportOpen ? (
+              <ExportPage
+                rec={rec}
+                imageUrl={imageUrl}
+                copied={copied}
+                onBack={() => setExportOpen(false)}
+                onCopyImage={() => void copyImage()}
+                onSavePng={() => void savePng()}
+                onCopyFile={() => void copyFile()}
+              />
+            ) : (
+              <Editor
+                key={rec.id}
+                doc={rec}
+                imageUrl={imageUrl}
+                onChange={onAnnotationsChange}
+                controllerRef={controllerRef}
+                onHistoryState={onHistoryState}
+                saveState={saveState}
+                saveError={saveError}
+                onRetrySave={() => { void retrySaveRef.current?.(); }}
+                regionMode={regionMode}
+                onRegionModeChange={setRegionMode}
+                onCrop={applyCroppedCapture}
+                onOcrRegion={(rect) => void runOcrRegion(rect)}
+                onRename={renameCapture.bind(null, rec.id)}
+              />
+            )
           ) : (
             <Dropzone
               onFile={(blob, name) => newCapture(blob, name)}
@@ -688,7 +699,7 @@ function EditorApp() {
       </div>
 
       {showHistory && (
-        <div className="history-flyout">
+        <div className="history-flyout open">
           <HistoryRail
             records={history}
             currentId={rec?.id ?? null}
@@ -701,7 +712,7 @@ function EditorApp() {
 
       {notice && <div className="topbar-notice" role="status">{notice}</div>}
 
-      {shortcutsOpen && <ShortcutPanel onClose={() => setShortcutsOpen(false)} />}
+      <ShortcutPanel open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
       {ocr.status === "done" && ocr.text && (
         <div className="ocr-panel">
@@ -755,7 +766,58 @@ function EditorApp() {
   );
 }
 
-function ShortcutPanel({ onClose }: { onClose: () => void }) {
+function ExportPage({
+  rec,
+  imageUrl,
+  copied,
+  onBack,
+  onCopyImage,
+  onSavePng,
+  onCopyFile,
+}: {
+  rec: CaptureRecord;
+  imageUrl: string;
+  copied: boolean;
+  onBack: () => void;
+  onCopyImage: () => void;
+  onSavePng: () => void;
+  onCopyFile: () => void;
+}) {
+  return (
+    <div className="export-page">
+      <section className="export-card">
+        <header className="export-head">
+          <div>
+            <h2>Export capture</h2>
+            <span>Choose where this capture goes.</span>
+          </div>
+          <button className="command-btn quiet" onClick={onBack}>
+            Back to editing
+          </button>
+        </header>
+        <div className="export-preview">
+          <img src={imageUrl} alt={rec.title} />
+        </div>
+        <div className="export-actions">
+          <button className="export-action primary" onClick={onCopyImage}>
+            <strong>{copied ? "Copied to clipboard" : "Copy to clipboard"}</strong>
+            <small>Paste it straight into chats, docs, and issues.</small>
+          </button>
+          <button className="export-action" onClick={onSavePng}>
+            <strong>Save as PNG</strong>
+            <small>Write the flattened image to a file.</small>
+          </button>
+          <button className="export-action" onClick={onCopyFile}>
+            <strong>Copy as file</strong>
+            <small>A PNG file on the clipboard, ready to attach.</small>
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ShortcutPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const groups = [
     {
       label: "Tools",
@@ -769,13 +831,13 @@ function ShortcutPanel({ onClose }: { onClose: () => void }) {
     },
   ];
   return (
-    <section className="shortcut-panel" role="dialog" aria-labelledby="shortcut-panel-title">
+    <section className={open ? "shortcut-panel open" : "shortcut-panel"} role="dialog" aria-labelledby="shortcut-panel-title" aria-hidden={!open}>
       <div className="shortcut-panel-head">
         <div>
           <strong id="shortcut-panel-title">Keyboard shortcuts</strong>
           <span>Keep your hands on the capture.</span>
         </div>
-        <button className="icon-btn" onClick={onClose} aria-label="Close keyboard shortcuts">×</button>
+        <button className="close-btn" onClick={onClose} aria-label="Close keyboard shortcuts">×</button>
       </div>
       {groups.map((group) => (
         <div className="shortcut-group" key={group.label}>
@@ -793,6 +855,19 @@ function ShortcutPanel({ onClose }: { onClose: () => void }) {
 }
 
 function CommandIcon({ name }: { name: "undo" | "redo" }) {
+  const [iconLib] = useIconLib();
+  const LibIcon = iconLib !== "svg" ? getIconComponent(iconLib, name) : null;
+  if (LibIcon) {
+    return (
+      <LibIcon
+        size={18}
+        strokeWidth={1.75}
+        weight={iconLib === "phosphor" ? "bold" : undefined}
+        className="lib-icon"
+        aria-hidden
+      />
+    );
+  }
   return (
     <svg className="command-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
       {name === "undo" ? (

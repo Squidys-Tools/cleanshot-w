@@ -1,249 +1,132 @@
 ---
 name: CleanShot W
-description: A calm Windows screenshot capture, markup, and sharing workspace.
+description: A warm, calm Windows screenshot capture and markup workspace.
 colors:
-  primary: "#2f6fed"
-  primary-deep: "#245fd8"
-  neutral-bg: "#f2f3f5"
-  surface: "#ffffff"
-  surface-soft: "#eef2f8"
-  border: "#d5dce7"
-  text: "#202124"
-  muted: "#687386"
-  accent-soft: "#e9f0ff"
-  danger: "#c94a3c"
+  primary: "#ff8f70"
+  bg: "#101013"
+  panel: "#17171b"
+  raised: "#1d1d22"
+  hover: "#24242a"
+  hairline: "rgba(255,255,255,0.07)"
+  hairline-strong: "rgba(255,255,255,0.14)"
+  text: "#ededf0"
+  muted: "rgba(237,237,240,0.62)"
+  faint: "rgba(237,237,240,0.45)"
+  danger: "#ff6b62"
+  ok: "#5fbf8f"
 typography:
-  display:
-    fontFamily: "Segoe UI Variable, Segoe UI, system-ui, sans-serif"
-    fontSize: "22px"
-    fontWeight: 600
-    lineHeight: 1.2
-    letterSpacing: "-0.02em"
-  body:
-    fontFamily: "Segoe UI Variable, Segoe UI, system-ui, sans-serif"
-    fontSize: "14px"
-    fontWeight: 400
-    lineHeight: 1.5
-  label:
-    fontFamily: "Segoe UI Variable, Segoe UI, system-ui, sans-serif"
-    fontSize: "12px"
-    fontWeight: 600
-    lineHeight: 1
+  ui:
+    fontFamily: "Inter, Segoe UI Variable, Segoe UI, system-ui, sans-serif"
+    bodySize: "13px"
+    fontWeight: 400-600
+    featureSettings: '"ss03" on'
+    letterSpacing: "-0.006em"
+  mono:
+    fontFamily: "IBM Plex Mono, Consolas, ui-monospace, monospace"
+    use: "hotkey fields, dimension readouts, save-state metadata"
 rounded:
-  sm: "8px"
-  md: "12px"
-  lg: "18px"
+  control: "8px"
+  card: "12px"
+  float: "14px"
+  capsule: "22px"
+  pill: "999px"
 spacing:
   xs: "4px"
   sm: "8px"
   md: "12px"
-  lg: "18px"
-  xl: "32px"
-components:
-  button-primary:
-    backgroundColor: "{colors.primary}"
-    textColor: "#ffffff"
-    rounded: "{rounded.sm}"
-    padding: "0 10px"
-    height: "34px"
-  button-command:
-    backgroundColor: "transparent"
-    textColor: "{colors.text}"
-    rounded: "{rounded.sm}"
-    padding: "0 10px"
-    height: "34px"
-  annotation-dock:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text}"
-    rounded: "{rounded.lg}"
-    padding: "8px 10px"
+  lg: "16px"
+  xl: "24px"
 ---
 
 # Design system: CleanShot W
 
 ## Overview
 
-**Creative North Star: "The Clear Markup Desk"**
+**Creative North Star: "The calm warm utility."**
 
-CleanShot W is a quiet Windows utility that keeps the captured screenshot as
-the visual authority. The editor gives the image generous neutral space, then
-brings annotation tools together in a detached whiteboard-style dock at the
-bottom. Export and sharing stay close to the top command bar, where they are
-readable at a glance rather than hidden behind ambiguous icons.
+CleanShot W's editor is a quiet, cozy dark workspace in the register of modern
+polished utilities (Raycast, Alcove, Mole): a warm near-black surface ladder,
+hairline edges instead of heavy chrome, soft ambient depth under floating
+layers, and exactly one coral state color. Identity comes from craft and
+micro-interaction — springy presses, hover lifts, a capsule dock — never from
+theme or decoration.
 
-The system is native-feeling, compact, and functional. The capture overlay is a
-separate surface with a darkened screen, a high-contrast selection frame,
-dimensions, and a direct Cancel action. It does not carry instructional copy or
-a decorative workspace texture. Persistent left and right sidebars are not part
-of the system. History, settings, and other secondary tasks appear as overlays
-or flyouts.
-
-**Key characteristics:**
-
-- Screenshot-first neutral canvas with generous breathing room.
-- Text-led command bar. Undo and Redo are the only icon-only top controls.
-- Detached, labeled annotation dock with intuitive single-key shortcuts.
-- Light Windows-native surfaces with restrained borders and ambient depth.
+**Scope note:** this system governs the editor window (command bar, canvas
+chrome, annotation dock, history flyout, settings, pickers, notices). The
+fullscreen capture overlay and pin windows intentionally keep their own
+high-contrast look.
 
 ## Colors
 
-The palette is cool, neutral, and high-contrast, with one clear blue action
-voice.
+### Surface ladder (never pure black)
 
-### Primary
+- `--bg #101013` — workspace ground, with a subtle radial tint toward `#16161c`
+  at the visual center so the capture card sits in gentle light.
+- `--panel #17171b` — top bar, dock, popovers, panels.
+- `--panel-2 #1d1d22` — raised controls, inputs, segmented wells.
+- `--panel-hover #24242a` — hover state for all interactive surfaces.
 
-- **Action blue** (`primary`): Used for the primary capture action, active tools,
-  focus rings, and other state that needs immediate recognition.
-- **Action blue deep** (`primary-deep`): Used only for the pressed or hovered
-  primary action state.
+### Edges
 
-### Neutral
+- `hairline rgba(255,255,255,.07)` — default separators and resting borders.
+- `hairline-strong rgba(255,255,255,.14)` — floating layer borders and inputs.
 
-- **Cool workspace** (`neutral-bg`): The editor canvas and empty-state
-  background. It keeps attention on the screenshot without adding a warm or
-  blueprint-like surface.
-- **Paper surface** (`surface`): Top command bar, dock, dialogs, and flyouts.
-- **Soft control surface** (`surface-soft`): Secondary control groups, hover
-  states, and low-emphasis containers.
-- **Ink** (`text`): Primary labels and readable content.
-- **Quiet ink** (`muted`): Supporting labels, metadata, and secondary controls.
-- **Hairline border** (`border`): Structural separation around surfaces and
-  controls.
-- **Action wash** (`accent-soft`): Selected and focused states behind the
-  primary accent.
-- **Error red** (`danger`): Capture, persistence, and clipboard errors only.
+Depth is carried by luminance steps plus hairlines; large soft shadows are
+reserved for genuinely floating layers (dock, history, settings, notices).
 
-**The clear canvas rule.** The screenshot and its markup own the visual focus.
-Neutral space supports them and never becomes a decorative scene.
+### Signal colors
+
+- **Coral `#ff8f70`** — the single accent. Allowed only on: active tool states,
+  selection outlines, focus rings, toggle-on state, brand mark. Never a button
+  fill. Target under ~10% of any view.
+- **White pill `#fff` on ink text** — the primary action of any view (New
+  capture, Copy, Pick image file, Save settings). The only bright chrome
+  element; one per visible cluster.
+- **Green `#5fbf8f`** — saved-state dot only. **Red `#ff6b62`** — errors and
+  destructive affordances only.
 
 ## Typography
 
-**Display font:** Segoe UI Variable, with Segoe UI and system-ui fallbacks.
-
-**Body font:** Segoe UI Variable, with Segoe UI and system-ui fallbacks.
-
-**Label and mono font:** Segoe UI Variable for UI labels. The existing
-monospace stack remains appropriate for dimension readouts and keyboard hints.
-
-The character is familiar Windows typography with compact, confident labels.
-Weight and spacing create hierarchy. Decorative type treatments are
-unnecessary for an operate-first utility.
-
-### Hierarchy
-
-- **Display** (600, 22px, 1.2): Empty-state title and short surface titles.
-- **Title** (600, 14px, 1.2): Brand, capture names, and dialog headings.
-- **Body** (400, 14px, 1.5): Supporting instructions, notices, and readable
-  metadata.
-- **Label** (600, 12px, 1): Command buttons, dock labels, and compact controls.
-
-**The one-voice label rule.** Tool labels and command labels should be short,
-literal, and paired with a visible shortcut or state when that improves recall.
-
-## Layout
-
-The main editor is a full-height two-band shell: a 58px command bar followed by
-a flexible neutral stage. The screenshot is centered by the canvas and receives
-generous inset space. The annotation dock is detached from the canvas edges,
-centered along the bottom, and horizontally scrollable when the tool set exceeds
-the available width.
-
-The top bar follows a compact menu rhythm: brand, Undo, Redo, separator,
-capture/export commands, flexible breathing room, then History and Settings. It
-may scroll horizontally on small windows rather than forcing commands into a
-left or right sidebar. History is a top-right flyout, and settings and window
-selection are modal or popover surfaces.
-
-The capture overlay composes independently from the editor: full-screen
-captured image, dark tint, selection frame and dimensions, optional loupe, and a
-direct Cancel control. At narrow widths the editor dock and selection actions
-remain horizontally reachable without changing the screenshot-first composition.
-
-## Elevation and depth
-
-The system uses restrained ambient depth over a mostly flat tonal foundation.
-Borders establish structure. Soft shadows distinguish the detached dock,
-flyouts, dialogs, and notices from the workspace. Shadows never make the canvas
-feel like a physical desk.
-
-### Shadow vocabulary
-
-- **Dock lift** (`0 16px 38px rgba(32, 33, 36, 0.16)`): Separates the annotation
-  dock from the canvas.
-- **Surface lift** (`0 20px 54px rgba(32, 33, 36, 0.18)`): Separates history,
-  settings, and window-picker surfaces from the application.
-- **Control lift** (`0 10px 24px rgba(32, 33, 36, 0.08)`): Gives compact status
-  and zoom controls a small amount of separation.
-
-**The flat-by-default rule.** Resting surfaces are white or cool neutral. Depth
-appears only where a surface floats above the screenshot workspace.
+- **UI:** Inter (Google Fonts) with `font-feature-settings: "ss03"` and
+  -0.006em tracking; Segoe UI Variable fallback. Weights 400–500 for text,
+  600 for emphasis; hierarchy is expressed through three opacity tiers of
+  white (1 / .62 / .45), not heavier weights.
+- **Mono:** IBM Plex Mono / Consolas for measurement-like content only:
+  hotkey input, dimension chips, save-state metadata.
 
 ## Shapes
 
-Forms use gently rounded Windows utility geometry: 8px controls, 12px panels,
-and 18px for the detached dock or empty-state container. Borders are thin and
-cool rather than heavy. The brand mark is a small geometric outlined tile, and
-the capture selection is a crisp high-contrast rectangle.
+Radius grammar: 8px small controls (icon buttons, chips, keycaps), 12px all
+buttons and cards, 14px floating panels, 22px for the capsule dock. Buttons
+share one 12px radius regardless of role; role is expressed by fill only.
 
-## Components
+## Signature components
 
-### Buttons
+- **Capsule dock:** the bottom annotation toolbar is one continuous rounded
+  capsule with an inner top highlight, hairline dividers between tool groups,
+  hover lift (`translateY(-1px)`) and springy press (`scale(0.97)`).
+- **Keycap chips:** shortcuts render as small keycaps (inset bottom edge).
+- **Floating chips:** zoom, status, and selection bars are compact rounded
+  panels pinned inside the canvas, mirroring the dock's material.
 
-- **Shape:** Compact, gently rounded controls with an 8px radius and 34px
-  height in the top bar.
-- **Primary:** Action blue with white text for New capture and the first
-  empty-state action.
-- **Command:** Text-led, transparent at rest, with a cool soft-surface hover
-  state.
-- **Icon-only:** Reserved for Undo and Redo in the top bar, with an accessible
-  label and visible focus ring.
-- **Hover and focus:** Cool surface hover and a 3px blue-tinted outline for
-  keyboard focus.
+## Motion
 
-### Cards and containers
+Instant-feeling by default: transitions ≤160ms ease-out; presses compress;
+toggles may spring (`cubic-bezier(.34,1.56,.64,1)`); everything honors
+`prefers-reduced-motion`.
 
-- **Editor canvas:** Cool workspace background, no decorative texture,
-  screenshot-first.
-- **Empty state:** White, lightly bordered, centered container with restrained
-  ambient shadow.
-- **History, settings, and picker:** White flyout or modal with border, 12 to
-  16px corner treatment, and surface lift.
+## Do
 
-### Navigation
+- One button system everywhere: primary = white fill, secondary = hairline
+  ghost, quiet = text only — all at the shared 12px radius. Role is expressed
+  by fill, never by geometry.
+- Keep coral confined to state, selection, and focus — never button fills.
+- Express hierarchy with opacity tiers before weight.
+- Reserve mono for data, measurements, and paths.
 
-- **Top command bar:** 58px, white, text-led, horizontally reachable on narrow
-  windows.
-- **Secondary actions:** History and Settings stay out of the canvas as overlays
-  or flyouts.
-- **Capture surface:** A separate full-screen composition, visually related
-  through color and control language but not structurally merged with the
-  editor.
+## Don't
 
-### Annotation dock
-
-The signature component is a detached whiteboard-style dock. Tools use a compact
-icon, literal label, and single-key hint where available. The dock owns
-annotation selection, color, weight, fill, dash, and style controls. It is the
-only persistent tool surface in the editor.
-
-## Do's and don'ts
-
-### Do
-
-- Keep sharing and export commands visible and text-labeled in the top bar.
-- Keep Undo first and Redo second among top-bar controls.
-- Center the screenshot with neutral breathing room around it.
-- Use labeled tool buttons and intuitive Windows-friendly shortcuts.
-- Make capture selection, dimensions, and Cancel visually obvious without help
-  copy.
-- Use flyouts, dialogs, or popovers for history and settings instead of
-  persistent sidebars.
-
-### Don't
-
-- Add a warm desk, blueprint grid, or other decorative workspace surface behind
-  the screenshot.
-- Add icon-only export, sharing, save, or settings controls to the top bar.
-- Add persistent left or right sidebars to the editor.
-- Put instructional help strips in the capture overlay.
-- Let shadows, gradients, or chrome compete with the captured image.
+- No themes, costumes, gradients-as-decoration, or glass outside genuine
+  floating layers.
+- No icon-only export/save/settings commands in the top bar.
+- No colored borders above 1px, no zero-offset halos, no eyebrow labels.

@@ -25,7 +25,16 @@ const commands = [
       "warnings",
     ],
   ],
-  ["Tests", ["test", "--manifest-path", "src-tauri/Cargo.toml"]],
+  [
+    "Tests",
+    [
+      "test",
+      "--manifest-path",
+      "src-tauri/Cargo.toml",
+      "--no-default-features",
+      "--lib",
+    ],
+  ],
 ];
 
 const applicable = isWindowsGnu

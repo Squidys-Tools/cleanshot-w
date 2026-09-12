@@ -72,17 +72,12 @@ async function waitForSaved(page, count, timeout = 12000) {
   await page.waitForFunction(
     (expected) => {
       const el = document.querySelector(".cs-statusbar");
-      return el && el.textContent.includes(`${expected} markup${expected === 1 ? "" : "s"}`);
+      return !!el
+        && el.textContent.includes(`${expected} markup${expected === 1 ? "" : "s"}`)
+        && el.textContent.includes("Saved");
     },
     count,
     { timeout },
-  );
-}
-
-async function activeToolTitle(page) {
-  return page.evaluate(
-    () =>
-      document.querySelector(".cs-toolbar .tool-btn.active:not(:disabled)")?.getAttribute("title") ?? "",
   );
 }
 
@@ -191,7 +186,7 @@ try {
   await waitForSaved(page, 4);
   check("ungroup selected shapes (Ctrl+Shift+G)", true);
 
-  /* undo / redo via selection toolbar buttons */
+  /* undo / redo via topbar buttons */
   await page.click('button.command-icon[title^="Undo"]');
   await waitForSaved(page, 1);
   check("undo works", true);
@@ -199,7 +194,7 @@ try {
   await waitForSaved(page, 4);
   check("redo works", true);
 
-  /* align + flip + order + lock (count stays 4) */
+  /* align + flip + order + lock */
   await page.click('.cs-selection button[title^="Align"]');
   await page.click(".align-popover button.popover-item:has-text('Align left')");
   await page.waitForSelector(".align-popover", { state: "detached", timeout: 5000 });
@@ -211,54 +206,45 @@ try {
   await page.waitForSelector(".align-popover", { state: "detached", timeout: 5000 });
 
   await page.click('.cs-selection button[title^="Toggle lock"]');
-  await page.waitForTimeout(800);
-  check("flip/order/lock applied without errors", true);
+  await waitForSaved(page, 4);
+  check("flip/order/lock applied, doc still saved (4 markups)", true);
 
-  /* style controls */
-  await page.click('.cs-toolbar .swatch[title="green"]');
+  /* style controls in color popover */
+  await page.click('.cs-toolbar .color-more');
+  await page.waitForSelector('.color-popover.open', { timeout: 5000 });
+
+  await page.click('.color-popover .swatch[title="green"]');
   await page.waitForFunction(
-    () => document.querySelector('.cs-toolbar .swatch[title="green"]')?.classList.contains("active"),
+    () => document.querySelector('.color-popover .swatch[title="green"]')?.classList.contains("active"),
     { timeout: 5000 },
   );
   check("color swatch selects green", true);
 
-  await page.click('.cs-toolbar .seg-btn[title="Solid fill"]');
-  await page.click('.cs-toolbar .seg-btn[title="Dashed"]');
-  await page.click('.cs-toolbar .size-btn[title^="Size L"]');
+  await page.click('.color-popover .seg-btn[title="Dashed"]');
+  await page.click('.color-popover .size-btn[title^="Size L"]');
   await page.waitForFunction(
     () => {
-      const fill = document.querySelector('.cs-toolbar .seg-btn[title="Solid fill"]')?.classList.contains("active");
-      const dash = document.querySelector('.cs-toolbar .seg-btn[title="Dashed"]')?.classList.contains("active");
-      const size = document.querySelector('.cs-toolbar .size-btn[title^="Size L"]')?.classList.contains("active");
-      return fill && dash && size;
+      const dash = document.querySelector('.color-popover .seg-btn[title="Dashed"]')?.classList.contains("active");
+      const size = document.querySelector('.color-popover .size-btn[title^="Size L"]')?.classList.contains("active");
+      return dash && size;
     },
     { timeout: 5000 },
   );
-  check("fill/dash/size style buttons reflect state", true);
+  check("dash/size style buttons reflect state", true);
 
-  /* style popover: font, opacity, dark, snap, grid */
-  await page.click('.cs-toolbar button[title="More styles"]');
-  await page.waitForSelector(".style-popover", { timeout: 5000 });
-  await page.click('.style-popover .seg-btn[title="Mono"]');
-  await page.click('.style-popover .seg-btn[title="50%"]');
-  await page.click('.style-popover .cs-toggle:has-text("Dark") input');
-  await page.click('.style-popover .cs-toggle:has-text("Grid") input');
-  await page.click('.style-popover .cs-toggle:has-text("Snap") input');
+  /* opacity in color popover */
+  await page.click('.color-popover .seg-btn[title="50%"]');
   await page.waitForFunction(
-    () => {
-      const pop = document.querySelector(".style-popover");
-      if (!pop) return false;
-      const mono = pop.querySelector('.seg-btn[title="Mono"]')?.classList.contains("active");
-      const fifty = pop.querySelector('.seg-btn[title="50%"]')?.classList.contains("active");
-      const gridToggle = [...pop.querySelectorAll(".cs-toggle")].find((t) => t.textContent.includes("Grid"));
-      return mono && fifty && !!gridToggle?.querySelector("input")?.checked;
-    },
+    () => document.querySelector('.color-popover .seg-btn[title="50%"]')?.classList.contains("active"),
     { timeout: 5000 },
   );
-  check("style popover font/opacity/toggles work", true);
-  await page.click(".style-popover .popover-close");
-  await page.waitForSelector(".style-popover", { state: "detached", timeout: 5000 });
+  check("opacity button reflects state", true);
 
+  /* close color popover */
+  await page.click('.cs-toolbar .color-more');
+  await page.waitForSelector('.color-popover.open', { state: "detached", timeout: 5000 });
+
+  /* copy to clipboard */
   await page.click('nav.top-actions > button.copy-command');
   await page.waitForFunction(
     () => document.querySelector('nav.top-actions > button.copy-command')?.textContent?.includes("Copied"),
@@ -266,11 +252,13 @@ try {
   );
   check("flattened image copies to clipboard", true);
 
+  /* PNG download */
   const downloadPromise = page.waitForEvent("download", { timeout: 10000 });
   await page.click('nav.top-actions > button.save-command');
   const download = await downloadPromise;
   check("PNG export downloads with a safe filename", download.suggestedFilename().endsWith(".png"), download.suggestedFilename());
 
+  /* close and reload new capture */
   await page.click('.top-actions-secondary button.command-btn:has-text("Close")');
   await page.evaluate(async () => {
     const canvas = document.createElement("canvas");
@@ -316,7 +304,13 @@ try {
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.click('.top-actions-secondary button.command-btn:has-text("History")');
   await page.waitForSelector(".history-item", { timeout: 15000 });
-  await page.click(".history-item");
+  await page.evaluate(() => {
+    const item = [...document.querySelectorAll(".history-item")].find(
+      (el) => el.querySelector(".history-title")?.textContent === "test",
+    );
+    if (!(item instanceof HTMLElement)) throw new Error("Original capture is missing from history after reload");
+    item.click();
+  });
   await page.waitForSelector(".cs-tldraw .tl-container", { timeout: 15000 });
   await page.waitForFunction(
     () => document.querySelector(".cs-statusbar")?.textContent.includes("4 markups"),
@@ -324,35 +318,22 @@ try {
   );
   check("doc persisted across reload (4 markups)", true);
 
+  /* tool defaults persisted across reload (new-UI color popover) */
+  await page.click('.cs-toolbar .color-more');
+  await page.waitForSelector('.color-popover.open', { timeout: 5000 });
   await page.waitForFunction(
     () => {
-      const green = document.querySelector('.cs-toolbar .swatch[title="green"]')?.classList.contains("active");
-      const dashed = document.querySelector('.cs-toolbar .seg-btn[title="Dashed"]')?.classList.contains("active");
-      const large = document.querySelector('.cs-toolbar .size-btn[title^="Size L"]')?.classList.contains("active");
-      return green && dashed && large;
+      const green = document.querySelector('.color-popover .swatch[title="green"]')?.classList.contains("active");
+      const dashed = document.querySelector('.color-popover .seg-btn[title="Dashed"]')?.classList.contains("active");
+      const large = document.querySelector('.color-popover .size-btn[title^="Size L"]')?.classList.contains("active");
+      const fifty = document.querySelector('.color-popover .seg-btn[title="50%"]')?.classList.contains("active");
+      return green && dashed && large && fifty;
     },
     { timeout: 5000 },
   );
   check("tool defaults persisted across reload", true);
-
-  await page.click('.cs-toolbar button[title="More styles"]');
-  await page.waitForSelector(".style-popover", { timeout: 5000 });
-  await page.waitForFunction(
-    () => {
-      const pop = document.querySelector(".style-popover");
-      if (!pop) return false;
-      const mono = pop.querySelector('.seg-btn[title="Mono"]')?.classList.contains("active");
-      const fifty = pop.querySelector('.seg-btn[title="50%"]')?.classList.contains("active");
-      const toggles = [...pop.querySelectorAll(".cs-toggle")];
-      const snap = toggles.find((t) => t.textContent.includes("Snap"))?.querySelector("input")?.checked;
-      const grid = toggles.find((t) => t.textContent.includes("Grid"))?.querySelector("input")?.checked;
-      const dark = toggles.find((t) => t.textContent.includes("Dark"))?.querySelector("input")?.checked;
-      return mono && fifty && snap && grid && dark === false;
-    },
-    { timeout: 5000 },
-  );
-  check("advanced tool defaults persisted across reload", true);
-  await page.click(".style-popover .popover-close");
+  await page.click('.cs-toolbar .color-more');
+  await page.waitForSelector('.color-popover.open', { state: "detached", timeout: 5000 });
 
   await page.click('.top-actions-secondary button.command-btn:has-text("History")');
   const historyText = await page.evaluate(() => {
