@@ -5,6 +5,7 @@ import { uid } from "./types";
 import { host, setHost } from "./lib/bridge";
 import { nativeHost, readNativeClipboardImage } from "./lib/nativeHost";
 import { cropImage, loadImage, makeThumb } from "./lib/storage";
+import { normalizeCaptureTitle } from "./lib/history";
 import { downloadBlob, flattenToBlob, sanitizeFileName } from "./lib/export";
 import {
   blobToBase64,
@@ -27,6 +28,7 @@ import type { EditorController } from "./lib/tldrawDoc";
 import CaptureOverlay from "./components/CaptureOverlay";
 import Editor from "./components/Editor";
 import Dropzone from "./components/Dropzone";
+import HistoryRail from "./components/HistoryRail";
 import type { OcrStatus } from "./components/QuickAccess";
 import SettingsPopover from "./components/SettingsPopover";
 import WindowPicker from "./components/WindowPicker";
@@ -45,6 +47,8 @@ function defaultTitle(): string {
 function EditorApp() {
   const [rec, setRec] = useState<CaptureRecord | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [history, setHistory] = useState<CaptureRecord[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
   const [ocr, setOcr] = useState<OcrState>({ status: "idle" });
   const [copied, setCopied] = useState(false);
@@ -80,6 +84,14 @@ function EditorApp() {
   useEffect(() => {
     recRef.current = rec;
   }, [rec]);
+
+  const refreshHistory = useCallback(async () => {
+    setHistory(await host.listCaptures());
+  }, []);
+
+  useEffect(() => {
+    refreshHistory().catch((error: unknown) => setNotice(nativeErrorMessage(error, "Could not open the local library.")));
+  }, [refreshHistory]);
 
   const openCapture = useCallback((r: CaptureRecord) => {
     if (urlRef.current) URL.revokeObjectURL(urlRef.current);
@@ -135,13 +147,14 @@ function EditorApp() {
         };
         await host.saveCapture(r);
         openCapture(r);
+        await refreshHistory();
       } catch (e: unknown) {
         setNotice(`Could not load that image: ${nativeErrorMessage(e, "The image could not be loaded.")}`);
       } finally {
         setBusy(false);
       }
     },
-    [openCapture],
+    [openCapture, refreshHistory],
   );
 
   useEffect(() => {
@@ -279,9 +292,10 @@ function EditorApp() {
         saveTimers.current.delete(recordId);
         setSaveState("saved");
         retrySaveRef.current = null;
+        void refreshHistory();
       }
     },
-    [],
+    [refreshHistory],
   );
 
   const onAnnotationsChange = useCallback(
@@ -314,6 +328,7 @@ function EditorApp() {
     setOcr({ status: "idle" });
     setNotice(null);
     setExportOpen(false);
+    setShowHistory(false);
     setHistoryState({ canUndo: false, canRedo: false });
     setSaveState("saved");
     setSaveError(null);
@@ -324,6 +339,49 @@ function EditorApp() {
   const onHistoryState = useCallback((next: { canUndo: boolean; canRedo: boolean }) => {
     setHistoryState((current) => (current.canUndo === next.canUndo && current.canRedo === next.canRedo ? current : next));
   }, []);
+
+  const deleteCapture = useCallback(
+    async (id: string) => {
+      const s = saveTimers.current.get(id);
+      if (s) {
+        window.clearTimeout(s.timer);
+        saveTimers.current.delete(id);
+      }
+      try {
+        await host.deleteCapture(id);
+        await refreshHistory();
+        if (recRef.current?.id === id) closeCapture();
+      } catch (error: unknown) {
+        setNotice(nativeErrorMessage(error, "Could not delete that capture."));
+      }
+    },
+    [refreshHistory, closeCapture],
+  );
+
+  const renameCapture = useCallback(
+    async (id: string, title: string): Promise<boolean> => {
+      const nextTitle = normalizeCaptureTitle(title);
+      if (!nextTitle) {
+        setNotice("Capture titles cannot be empty.");
+        return false;
+      }
+      try {
+        const updated = await host.updateCaptureTitle(id, nextTitle);
+        if (!updated) {
+          setNotice("That capture is no longer in the local library.");
+          return false;
+        }
+        setRec((current) => (current && current.id === id ? { ...current, title: nextTitle, updatedAt: Date.now() } : current));
+        await refreshHistory();
+        setNotice(null);
+        return true;
+      } catch (error: unknown) {
+        setNotice(nativeErrorMessage(error, "Could not rename that capture."));
+        return false;
+      }
+    },
+    [refreshHistory],
+  );
 
   const copyImage = useCallback(async () => {
     if (!rec) return;
@@ -434,6 +492,7 @@ function EditorApp() {
       retrySaveRef.current = () => applyCroppedCapture(recordId, imageBlob, image, annotations);
       await host.saveCapture(next);
       openCapture(next);
+      await refreshHistory();
       setSaveState("saved");
       retrySaveRef.current = null;
     } catch (error: unknown) {
@@ -442,7 +501,7 @@ function EditorApp() {
       setSaveError(message);
       setNotice(message);
     }
-  }, [openCapture]);
+  }, [openCapture, refreshHistory]);
 
   const copyOcrText = useCallback(async () => {
     if (!ocr.text) return;
@@ -565,6 +624,9 @@ function EditorApp() {
         </nav>
         <div className="topbar-spacer" />
         <div className="top-actions top-actions-secondary">
+          <button className="command-btn" onClick={() => setShowHistory((s) => !s)}>
+            History {history.length > 0 ? `(${history.length})` : ""}
+          </button>
           {isTauriRuntime() && (
             <button className="command-btn" onClick={() => { setSettingsError(null); setSettingsOpen((open) => !open); }}>
               Settings
@@ -621,6 +683,7 @@ function EditorApp() {
                 onRegionModeChange={setRegionMode}
                 onCrop={applyCroppedCapture}
                 onOcrRegion={(rect) => void runOcrRegion(rect)}
+                onRename={renameCapture.bind(null, rec.id)}
               />
             )
           ) : (
@@ -634,6 +697,18 @@ function EditorApp() {
           )}
         </main>
       </div>
+
+      {showHistory && (
+        <div className="history-flyout open">
+          <HistoryRail
+            records={history}
+            currentId={rec?.id ?? null}
+            onOpen={(capture) => { openCapture(capture); setShowHistory(false); }}
+            onRename={renameCapture}
+            onDelete={deleteCapture}
+          />
+        </div>
+      )}
 
       {notice && <div className="topbar-notice" role="status">{notice}</div>}
 

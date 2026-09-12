@@ -15,6 +15,7 @@ type EditorProps = {
   onRegionModeChange: (mode: RegionMode | null) => void;
   onCrop: (recordId: string, imageBlob: Blob, image: { width: number; height: number }, annotations: TldrawState) => Promise<void>;
   onOcrRegion: (rect: { x: number; y: number; width: number; height: number }) => void;
+  onRename: (title: string) => Promise<boolean>;
 };
 
 function Editor({
@@ -30,6 +31,7 @@ function Editor({
   onRegionModeChange,
   onCrop,
   onOcrRegion,
+  onRename,
 }: EditorProps) {
   return (
     <div className="editor">
@@ -37,6 +39,7 @@ function Editor({
         imageUrl={imageUrl}
         imgW={doc.image.width}
         imgH={doc.image.height}
+        title={doc.title}
         initialDoc={doc.annotations}
         onChange={(annotations) => onChange(doc.id, annotations)}
         controllerRef={controllerRef}
@@ -48,6 +51,7 @@ function Editor({
         onRegionModeChange={onRegionModeChange}
         onCrop={(imageBlob, image, annotations) => onCrop(doc.id, imageBlob, image, annotations)}
         onOcrRegion={onOcrRegion}
+        onRename={onRename}
       />
     </div>
   );

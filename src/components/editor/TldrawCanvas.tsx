@@ -110,6 +110,7 @@ type TldrawCanvasProps = {
   imageUrl: string;
   imgW: number;
   imgH: number;
+  title: string;
   initialDoc: TldrawState;
   onChange: (doc: TldrawState) => void;
   controllerRef: { current: EditorController | null };
@@ -121,20 +122,26 @@ type TldrawCanvasProps = {
   onRegionModeChange: (mode: RegionMode | null) => void;
   onCrop: (imageBlob: Blob, image: { width: number; height: number }, annotations: TldrawState) => Promise<void>;
   onOcrRegion: (rect: Rect) => void;
+  onRename: (title: string) => Promise<boolean>;
 };
 
 export default function TldrawCanvas({
   imageUrl,
   imgW,
   imgH,
+  title,
   initialDoc,
   onChange,
   controllerRef,
   onHistoryState,
+  saveState,
+  saveError,
+  onRetrySave,
   regionMode,
   onRegionModeChange,
   onCrop,
   onOcrRegion,
+  onRename,
 }: TldrawCanvasProps) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -360,6 +367,7 @@ export default function TldrawCanvas({
           <Toolbar cropActive={regionMode === "crop"} onCrop={() => onRegionModeChange("crop")} />
           <SelectionBar />
           <ZoomControls imgW={imgW} imgH={imgH} />
+          <StatusBar title={title} imgW={imgW} imgH={imgH} saveState={saveState} saveError={saveError} onRetrySave={onRetrySave} onRename={onRename} />
         </div>
       </Tldraw>
     </div>
@@ -1138,6 +1146,111 @@ function ZoomControls({ imgW, imgH }: { imgW: number; imgH: number }) {
       <button className="icon-btn" title="Fit to window" onClick={() => frameImage(editor, imgW, imgH)}>
         Fit
       </button>
+    </div>
+  );
+}
+
+/* ------------------------------ StatusBar ---------------------------- */
+
+function StatusBar({
+  title,
+  imgW,
+  imgH,
+  saveState,
+  saveError,
+  onRetrySave,
+  onRename,
+}: {
+  title: string;
+  imgW: number;
+  imgH: number;
+  saveState: "saved" | "saving" | "error";
+  saveError?: string | null;
+  onRetrySave?: () => void;
+  onRename: (title: string) => Promise<boolean>;
+}) {
+  const editor = useEditor();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(title);
+  const [renaming, setRenaming] = useState(false);
+  const skipBlurRef = useRef(false);
+  const count = useValue(
+    "cs-count",
+    () => editor.getCurrentPageShapes().filter((s) => s.type !== "image" && s.parentId === editor.getCurrentPageId()).length,
+    [editor],
+  );
+
+  useEffect(() => {
+    if (!editing) setDraft(title);
+  }, [editing, title]);
+
+  const commitTitle = async () => {
+    if (renaming) return;
+    const nextTitle = draft.trim();
+    if (!nextTitle) {
+      setDraft(title);
+      setEditing(false);
+      return;
+    }
+    if (nextTitle === title) {
+      setEditing(false);
+      return;
+    }
+    setRenaming(true);
+    try {
+      if (await onRename(nextTitle)) setEditing(false);
+      else setDraft(title);
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  return (
+    <div className="cs-statusbar">
+      <div className="cs-title-slot">
+        {editing ? (
+          <input
+            className="cs-title-input"
+            value={draft}
+            maxLength={500}
+            autoFocus
+            aria-label="Capture title"
+            disabled={renaming}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void commitTitle();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                skipBlurRef.current = true;
+                setDraft(title);
+                setEditing(false);
+              }
+            }}
+            onBlur={() => {
+              if (skipBlurRef.current) {
+                skipBlurRef.current = false;
+                return;
+              }
+              void commitTitle();
+            }}
+          />
+        ) : (
+          <button className="cs-title" title="Rename capture" onClick={() => setEditing(true)}>
+            {title}
+          </button>
+        )}
+      </div>
+      <span className="cs-metadata">
+        {imgW} × {imgH} · {count} markup{count === 1 ? "" : "s"}
+      </span>
+      <span className={`cs-save-state ${saveState}`} title={saveError || undefined}>
+        <span className="cs-save-dot" aria-hidden="true" />
+        {saveState === "saving" ? "Saving…" : saveState === "error" ? "Save failed" : "Saved locally"}
+      </span>
+      {saveState === "error" && onRetrySave && <button className="cs-save-retry" onClick={onRetrySave}>Retry</button>}
     </div>
   );
 }

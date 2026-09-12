@@ -68,14 +68,15 @@ function check(name, ok, extra = "") {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${extra ? ` — ${extra}` : ""}`);
 }
 
-async function waitForSaved(page, _count, timeout = 12000) {
+async function waitForSaved(page, count, timeout = 12000) {
   await page.waitForFunction(
     (expected) => {
       const el = document.querySelector(".cs-statusbar");
-      if (!el) return true;
-      return el.textContent.includes(`${expected} markup${expected === 1 ? "" : "s"}`);
+      return !!el
+        && el.textContent.includes(`${expected} markup${expected === 1 ? "" : "s"}`)
+        && el.textContent.includes("Saved");
     },
-    _count,
+    count,
     { timeout },
   );
 }
@@ -124,11 +125,18 @@ try {
   await page.waitForSelector(".cs-toolbar", { timeout: 10000 });
   check("overlay toolbar shown", true);
 
+  await page.waitForFunction(
+    ({ w, h }) => document.querySelector(".cs-statusbar")?.textContent.includes(`${w} × ${h}`),
+    { w: W, h: H },
+    { timeout: 12000 },
+  );
+  check("background image size in status bar", true);
+
   /* counter (Step) */
   await page.click('button[title^="Step"]');
   await expectTool(page, "Step", "step/counter");
   await page.mouse.click(640, 400);
-  await page.waitForTimeout(800);
+  await waitForSaved(page, 1);
   check("counter created + autosaved", true);
 
   /* redact */
@@ -138,7 +146,7 @@ try {
   await page.mouse.down();
   await page.mouse.move(850, 500, { steps: 8 });
   await page.mouse.up();
-  await page.waitForTimeout(800);
+  await waitForSaved(page, 2);
   check("redact box created + autosaved", true);
 
   /* custom-tool keyboard shortcuts */
@@ -158,7 +166,7 @@ try {
   await page.mouse.down();
   await page.mouse.move(800, 520, { steps: 8 });
   await page.mouse.up();
-  await page.waitForTimeout(800);
+  await waitForSaved(page, 3);
   check("rectangle created + autosaved", true);
 
   await page.waitForSelector(".cs-selection", { timeout: 5000 });
@@ -166,24 +174,24 @@ try {
 
   /* duplicate via selection bar */
   await page.click('.cs-selection button[title^="Duplicate"]');
-  await page.waitForTimeout(800);
+  await waitForSaved(page, 4);
   check("duplicate via selection bar", true);
 
   /* group / ungroup via native shortcuts */
   await page.keyboard.press("Control+a");
   await page.keyboard.press("Control+g");
-  await page.waitForTimeout(800);
+  await waitForSaved(page, 1);
   check("group selected shapes (Ctrl+G)", true);
   await page.keyboard.press("Control+Shift+g");
-  await page.waitForTimeout(800);
+  await waitForSaved(page, 4);
   check("ungroup selected shapes (Ctrl+Shift+G)", true);
 
   /* undo / redo via topbar buttons */
   await page.click('button.command-icon[title^="Undo"]');
-  await page.waitForTimeout(800);
+  await waitForSaved(page, 1);
   check("undo works", true);
   await page.click('button.command-icon[title^="Redo"]');
-  await page.waitForTimeout(800);
+  await waitForSaved(page, 4);
   check("redo works", true);
 
   /* align + flip + order + lock */
@@ -198,8 +206,8 @@ try {
   await page.waitForSelector(".align-popover", { state: "detached", timeout: 5000 });
 
   await page.click('.cs-selection button[title^="Toggle lock"]');
-  await page.waitForTimeout(800);
-  check("flip/order/lock applied without errors", true);
+  await waitForSaved(page, 4);
+  check("flip/order/lock applied, doc still saved (4 markups)", true);
 
   /* style controls in color popover */
   await page.click('.cs-toolbar .color-more');
@@ -279,6 +287,60 @@ try {
     { timeout: 120000 },
   );
   check("OCR recognizes text from a screenshot", true);
+  await page.click('.top-actions-secondary button.command-btn:has-text("Close")');
+  await page.click('.top-actions-secondary button.command-btn:has-text("History")');
+  await page.waitForSelector(".history-item", { timeout: 5000 });
+  await page.evaluate(() => {
+    const item = [...document.querySelectorAll(".history-item")].find(
+      (el) => el.querySelector(".history-title")?.textContent === "test",
+    );
+    if (!(item instanceof HTMLElement)) throw new Error("Original capture is missing from history");
+    item.click();
+  });
+  await page.waitForSelector(".cs-tldraw .tl-container", { timeout: 15000 });
+
+  /* persistence across reload */
+  await page.waitForTimeout(1400);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.click('.top-actions-secondary button.command-btn:has-text("History")');
+  await page.waitForSelector(".history-item", { timeout: 15000 });
+  await page.evaluate(() => {
+    const item = [...document.querySelectorAll(".history-item")].find(
+      (el) => el.querySelector(".history-title")?.textContent === "test",
+    );
+    if (!(item instanceof HTMLElement)) throw new Error("Original capture is missing from history after reload");
+    item.click();
+  });
+  await page.waitForSelector(".cs-tldraw .tl-container", { timeout: 15000 });
+  await page.waitForFunction(
+    () => document.querySelector(".cs-statusbar")?.textContent.includes("4 markups"),
+    { timeout: 15000 },
+  );
+  check("doc persisted across reload (4 markups)", true);
+
+  /* tool defaults persisted across reload (new-UI color popover) */
+  await page.click('.cs-toolbar .color-more');
+  await page.waitForSelector('.color-popover.open', { timeout: 5000 });
+  await page.waitForFunction(
+    () => {
+      const green = document.querySelector('.color-popover .swatch[title="green"]')?.classList.contains("active");
+      const dashed = document.querySelector('.color-popover .seg-btn[title="Dashed"]')?.classList.contains("active");
+      const large = document.querySelector('.color-popover .size-btn[title^="Size L"]')?.classList.contains("active");
+      const fifty = document.querySelector('.color-popover .seg-btn[title="50%"]')?.classList.contains("active");
+      return green && dashed && large && fifty;
+    },
+    { timeout: 5000 },
+  );
+  check("tool defaults persisted across reload", true);
+  await page.click('.cs-toolbar .color-more');
+  await page.waitForSelector('.color-popover.open', { state: "detached", timeout: 5000 });
+
+  await page.click('.top-actions-secondary button.command-btn:has-text("History")');
+  const historyText = await page.evaluate(() => {
+    const item = [...document.querySelectorAll(".history-item")].find((el) => el.querySelector(".history-title")?.textContent === "test");
+    return item?.querySelector(".history-meta span")?.textContent ?? "";
+  });
+  check("history rail shows markup count", historyText.includes("4 marks"), historyText);
 
   const failed = results.filter((r) => !r.ok);
   console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
