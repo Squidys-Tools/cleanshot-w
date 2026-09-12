@@ -19,7 +19,10 @@ fn decode_png(bytes: &[u8]) -> Result<(usize, usize, Vec<u8>), String> {
     if reader.info().bit_depth != png::BitDepth::Eight {
         return Err("Only 8-bit PNG images can be copied to the clipboard.".to_string());
     }
-    let mut buffer = vec![0; reader.output_buffer_size()];
+    let buffer_size = reader
+        .output_buffer_size()
+        .ok_or_else(|| "Could not determine the PNG output buffer size.".to_string())?;
+    let mut buffer = vec![0; buffer_size];
     let info = reader
         .next_frame(&mut buffer)
         .map_err(|error| format!("Could not decode PNG data: {error}"))?;

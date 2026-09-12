@@ -448,7 +448,8 @@ fn platform_capture_window(_window_id: u64) -> Result<CaptureSurface, String> {
 mod windows_capture {
     use super::{CaptureSurface, WindowInfo};
     use std::ptr::null_mut;
-    use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
+    use windows_sys::core::BOOL;
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, RECT};
     use windows_sys::Win32::Graphics::Gdi::{
         BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
         GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT,
