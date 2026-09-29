@@ -1,9 +1,0 @@
-pre-commit:
-  parallel: true
-  commands:
-    rust-format:
-      glob: "src-tauri/**/*.rs"
-      run: bun run rust:format
-    lockfile-fresh:
-      glob: "package.json"
-      run: bun install --frozen-lockfile

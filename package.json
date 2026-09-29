@@ -13,8 +13,7 @@
     "rust:format": "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
     "rust:check": "node scripts/check-rust.mjs",
     "ocr:assets": "bun scripts/ocr-assets.mjs",
-    "tauri": "tauri",
-    "prepare": "lefthook install"
+    "tauri": "tauri"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
@@ -34,7 +33,6 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
-    "lefthook": "^2.1.12",
     "playwright": "^1.63.0",
     "typescript": "~7.0.2",
     "vite": "^8.3.0"
