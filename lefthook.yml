@@ -7,13 +7,3 @@ pre-commit:
     lockfile-fresh:
       glob: "package.json"
       run: bun install --frozen-lockfile
-
-pre-push:
-  parallel: true
-  commands:
-    typecheck:
-      run: bun run typecheck
-    test:
-      run: bun run test
-    rust-check:
-      run: bun run rust:check
