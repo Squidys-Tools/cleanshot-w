@@ -27,8 +27,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Changed
 
-- Upgraded TypeScript from `~5.8.3` to `~7.0.2` and added the direct
-  `bun tsc -b --noEmit` project check.
+- Upgraded TypeScript from `~5.8.3` to `~7.0.2` and added the
+  `bun run typecheck` project check.
 - Kept TypeScript 7 while fixing tldraw declaration resolution through the
   `resolvePackageJsonExports` compatibility setting.
 - Replaced the marketing-style "Capture Studio" mock with the working editor
@@ -45,6 +45,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   persisted library entries before using them as paths, rejecting invalid PNG
   payloads, preserving pin-window aspect ratios, and configuring NSIS for
   current-user installation without UAC.
+- Moved CI from Blacksmith runners to free GitHub-hosted runners; every
+  workflow now declares `ubuntu-24.04` or `windows-2025`.
+- Dropped the local pre-push hooks that duplicated CI, then removed Lefthook
+  entirely, including its devDependency, hook configuration, and the `prepare`
+  script.
 
 ### Fixed
 
