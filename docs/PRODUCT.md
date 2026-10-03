@@ -93,7 +93,7 @@ file exports.
 
 | Reference capability | Status | Current scope / follow-up |
 |---|---|---|
-| Crop tool with aspect ratio and edge snapping | Planned | The editor has selection and resize interactions, but no dedicated crop workflow. Add after the native release gate. |
+| Crop tool with aspect ratio and edge snapping | Partial | A crop flow exists: the toolbar's crop button opens a region overlay that crops the capture, drops annotations outside the selection, and repositions the rest. Aspect-ratio locking and edge snapping are not implemented. |
 | Arrow, rectangle, filled rectangle, ellipse, and line | Implemented | Available through the tldraw editor; arrow shape and fill/stroke preferences are persisted. |
 | Curved arrow styles | Partial | Curved and elbow arrow kinds are supported by the editor model; the reference product's exact four-style catalog is not a v1 promise. |
 | Pixelate and blur | Implemented | Both are editable annotation effects and are flattened on export. Secure/randomized pixelation is not currently promised. |
@@ -156,7 +156,7 @@ file exports.
 | Reference capability | Status | Current scope / follow-up |
 |---|---|---|
 | On-device text recognition and clipboard output | Implemented | Bundled tesseract.js assets run locally without a network connection. |
-| OCR on a selected region with word-level interaction | Partial | Word bounding-box support exists in the OCR layer, but the current action recognizes the capture image as a whole and does not provide a dedicated OCR-region selection workflow. |
+| OCR on a selected region with word-level interaction | Partial | The command menu offers "OCR selected region", which crops the dragged region before recognition. Word bounding boxes are returned by the OCR layer, but the result panel renders recognized text only, so per-word interaction is still missing. |
 
 ## History and settings
 
