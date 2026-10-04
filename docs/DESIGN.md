@@ -96,11 +96,12 @@ reserved for genuinely floating layers (dock, history, settings, notices).
 
 ## Shapes
 
-Radius grammar: 8px small controls (icon buttons, chips, keycaps) and the
-default command buttons, 12px cards plus the white-pill primary and Copy
-buttons, 14px floating panels, 22px for the capsule dock. Fill carries the
-button role; the larger 12px radius is reserved for the white-pill primary and
-Copy buttons.
+Radius grammar: 8px small controls (icon buttons, chips, keycaps), the default
+command buttons, and the quick-access bar's own buttons; 12px cards plus the
+command bar's white-pill primary and `copy-command` buttons; 14px floating
+panels; 22px for the capsule dock. The 12px radius is a variant of the command
+bar only, and the quick-access export controls stay on the 8px control radius.
+Fill carries the button role.
 
 ## Signature components
 
@@ -120,8 +121,9 @@ toggles may spring (`cubic-bezier(.34,1.56,.64,1)`); everything honors
 ## Do
 
 - One button system everywhere: primary = white fill, secondary = hairline
-  ghost, quiet = text only — role is expressed by fill, never by shape
-  language. The 12px radius is reserved for the white-pill primary.
+  ghost, quiet = text only. Role is expressed by fill, with radius as the single
+  geometric exception: the command bar's white-pill primary and `copy-command`
+  use 12px, everything else uses the 8px control radius.
 - Keep coral confined to state, selection, and focus — never button fills.
 - Express hierarchy with opacity tiers before weight.
 - Reserve mono for data, measurements, and paths.

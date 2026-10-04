@@ -43,14 +43,14 @@ The full automated suite was run locally on 2026-10-03 at commit `14ad5f1` on
 Windows 11. Every check passes:
 
 ```text
-bun test                18 pass, 0 fail (4 files, 44 assertions)
-bun tsc --noEmit        pass
-bun run build           pass (tsc && vite build)
-bun run smoke           31/31 checks passed
-cargo fmt --check      pass
-cargo clippy --all-targets --all-features -D warnings   pass
-cargo test              17 passed, 0 failed
-cargo check             pass
+bun test                                                  18 pass, 0 fail (4 files, 44 assertions)
+bun run typecheck                                         pass
+bun run build                                             pass (tsc && vite build)
+bun run smoke                                             31/31 checks passed
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check pass
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings   pass
+cargo test --manifest-path src-tauri/Cargo.toml           17 passed, 0 failed
+cargo check --manifest-path src-tauri/Cargo.toml          pass
 ```
 
 `main` was also green on CI for this commit. Note that CI runs only `cargo fmt`,
@@ -169,8 +169,8 @@ hardware.
 
 ### Test record
 
-Two runs are recorded. The first is the initial automated pass; the second is a
-retest of the release-gate fix.
+One run is recorded below. A retest is planned but has not happened yet, so the
+gate is not closed.
 
 #### Run 1 - automated pass
 
@@ -327,10 +327,10 @@ against a clipboard image.
 - [ ] **Copy image** pastes into Word, Slack, and PowerPoint with transparency
       preserved.
 - [ ] **Copy file** pastes as a PNG file into File Explorer and can be opened.
-- [x] **Copy text (OCR)** copies Unicode text without requiring network access.
-      Recognition itself passed: `OCR entire image` returned all five lines of a
-      synthetic test image from the bundled assets. The clipboard hand-off was
-      not exercised, so treat this as recognition-only coverage.
+- [ ] **Copy text (OCR)** copies Unicode text without requiring network access.
+      Recognition is proven: `OCR entire image` returned all five lines of a
+      synthetic test image from the bundled assets. The clipboard hand-off and
+      the offline path were not exercised, so this stays unchecked.
 - [ ] **Save PNG** produces a readable file with a safe filename.
 - [ ] Clipboard failures show a useful error and leave the editor usable.
 
@@ -339,12 +339,16 @@ against a clipboard image.
 The best-covered section of the gate. A clipboard image was pasted to create a
 capture, then the app was force-killed and relaunched to test persistence.
 
-- [x] A native capture appears in History after it is created. History showed
-      one entry with a decoded thumbnail.
-- [x] Closing and reopening the app restores the image and all annotations. After
+- [ ] A native capture appears in History after it is created. The capture used
+      for this run came from the clipboard, not from native capture, so this
+      stays unchecked. What was proven is the weaker half: a capture saved
+      through the editor appears in History with a decoded thumbnail.
+- [ ] Closing and reopening the app restores the image and all annotations. After
       a force-kill and relaunch, `index.json`, `image.png`, `thumbnail.png`, and
       `annotations.json` were all intact, and reopening the entry from History
-      put the editor back into its capture state.
+      put the editor back into its capture state. That proves the image
+      round-trips. It does not prove annotations restore, because the document
+      contained no markup to restore.
 - [ ] Annotation changes remain after restarting the app. The document round-trip
       is proven, but no markup could be added on this host because the canvas
       does not render (finding 1).
@@ -354,10 +358,11 @@ capture, then the app was force-killed and relaunched to test persistence.
 - [ ] History search filters titles case-insensitively and shows a useful empty
       state when there are no matches. The search field rendered but was not
       exercised.
-- [x] Clicking a title, saving with Enter or blur, and cancelling with Escape
-      all behave correctly. Clicking the title opened an inline editor showing
-      `Enter to save - Esc to cancel`. Only the click-to-edit half was observed;
-      committing and cancelling were not.
+- [ ] Clicking a title, saving with Enter or blur, and cancelling with Escape
+      all behave correctly. Only the first was observed: clicking the title
+      opened an inline editor showing `Enter to save - Esc to cancel`. Committing
+      with Enter or blur, and cancelling with Escape, were not exercised, so the
+      box stays unchecked.
 - [ ] Renamed titles persist after restarting the app and are used for PNG
       filenames where applicable.
 - [ ] Deleting the current capture closes it in the editor and removes it from

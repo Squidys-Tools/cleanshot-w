@@ -183,11 +183,16 @@ bun run rust:check
 
 `bun run rust:check` runs `cargo fmt --check`, Clippy with `-D warnings`, and
 `cargo test --no-default-features --lib`; there is no separate `cargo check`
-step. It skips the tests on a windows-gnu toolchain, because those harness
-executables lack the comctl32 v6 manifest Tauri embeds in the real binary and
-abort at load, so Rust tests stay on CI's msvc runner.
+step. That test scope is narrower than CI's, so a green local run is not
+equivalent coverage: `.github/workflows/rust.yml` runs a bare
+`cargo test --manifest-path src-tauri/Cargo.toml` across the default-feature
+package and all targets. Run the full CI command before trusting the test set.
 
-The GitHub Actions jobs mirror these checks:
+The local script also skips the tests on a windows-gnu toolchain, because those
+harness executables lack the comctl32 v6 manifest Tauri embeds in the real
+binary and abort at load, so Rust tests stay on CI's msvc runner.
+
+The GitHub Actions jobs cover more than this script, and do not all mirror it:
 
 - `.github/workflows/ci.yml` - Bun tests and frontend build
 - `.github/workflows/smoke.yml` - Playwright browser smoke test
