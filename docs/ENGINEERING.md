@@ -23,10 +23,10 @@ operations to Tauri commands. Keep UI code independent of storage and capture
 backends.
 
 TypeScript 7 uses `moduleResolution: "bundler"` with
-`resolvePackageJsonExports: false` in `tsconfig.json`. tldraw 5.3.1 ships its
-declaration files beside its `main` entry but does not publish a `types`
-condition in its package export map. The setting keeps the compiler on
-TypeScript 7 while allowing it to resolve those declarations.
+`resolvePackageJsonExports: false` in `tsconfig.json`. tldraw, declared as
+`^5.4.2`, ships its declaration files beside its `main` entry but does not
+publish a `types` condition in its package export map. The setting keeps the
+compiler on TypeScript 7 while allowing it to resolve those declarations.
 
 ## Runtime architecture
 
@@ -158,7 +158,7 @@ Frontend development and checks:
 ```sh
 bun run dev
 bun test
-bun tsc -b --noEmit
+bun run typecheck
 bun run build
 ```
 
@@ -178,17 +178,25 @@ Native development and checks run on Windows:
 ```sh
 bun run tauri dev
 bun run tauri build
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml
-cargo check --manifest-path src-tauri/Cargo.toml
+bun run rust:check
 ```
 
-The GitHub Actions jobs mirror these checks:
+`bun run rust:check` runs `cargo fmt --check`, Clippy with `-D warnings`, and
+`cargo test --no-default-features --lib`; there is no separate `cargo check`
+step. That test scope is narrower than CI's, so a green local run is not
+equivalent coverage: `.github/workflows/rust.yml` runs a bare
+`cargo test --manifest-path src-tauri/Cargo.toml` across the default-feature
+package and all targets. Run the full CI command before trusting the test set.
+
+The local script also skips the tests on a windows-gnu toolchain, because those
+harness executables lack the comctl32 v6 manifest Tauri embeds in the real
+binary and abort at load, so Rust tests stay on CI's msvc runner.
+
+The GitHub Actions jobs cover more than this script, and do not all mirror it:
 
 - `.github/workflows/ci.yml` - Bun tests and frontend build
 - `.github/workflows/smoke.yml` - Playwright browser smoke test
-- `.github/workflows/rust.yml` - Windows formatting, Clippy, tests, and check
+- `.github/workflows/rust.yml` - Windows formatting, Clippy, and tests
 - `.github/workflows/release.yml` - draft Windows release on `v*` tags
 
 ## Packaging and release

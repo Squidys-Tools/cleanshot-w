@@ -29,9 +29,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      # This action's version ref used to be the only thing Dependabot bumped,
+      # which let CI drift onto a toolchain the project never pins or tests: it
+      # proposed 1.120.0, which does not exist, and the job failed at setup with
+      # a 404 from static.rust-lang.org. Dependabot now ignores this action, so
+      # the version below is only ever changed deliberately.
+      #
+      # `toolchain` must be kept in step with `channel` in rust-toolchain.toml.
+      # If you would rather have a single source of truth, drop `toolchain` and
+      # let rustup resolve the toolchain file.
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@1.98.0
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: 1.98.0
           components: rustfmt, clippy
 
       - name: Cache Rust dependencies
