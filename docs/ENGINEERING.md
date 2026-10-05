@@ -169,9 +169,15 @@ so that is the reliable choice:
 VITE_TLDRAW_LICENSE_KEY=... bun run tauri build
 ```
 
-`bun run check:license` fails when no key is present. It runs in CI and in the
-release workflow, so a tag cannot publish an installer with a dead editor. Pass
-`--warn-only` to check without failing.
+`bun run check:license` fails when no key is present. It gates the release
+workflow, so a tag cannot publish an installer with a dead editor. In the CI
+workflow it runs with `--warn-only` and only reports, because that job runs on
+every push to main and a missing key is a licensing decision rather than a build
+regression. Pass `--warn-only` to check without failing anywhere else.
+
+The key comes from a repository secret. Add `VITE_TLDRAW_LICENSE_KEY` under
+Settings, Secrets and variables, Actions. Both workflows read
+`TLDRAW_LICENSE_KEY` and `VITE_TLDRAW_LICENSE_KEY`, so either name works.
 
 To confirm a packaged build is actually licensed, run the diagnostic harness and
 check that `.cs-ui` and at least one `<canvas>` exist once a capture is open:
@@ -266,7 +272,9 @@ binary and abort at load, so Rust tests stay on CI's msvc runner.
 
 The GitHub Actions jobs cover more than this script, and do not all mirror it:
 
-- `.github/workflows/ci.yml` - Bun tests and frontend build
+- `.github/workflows/ci.yml` - Bun tests, typecheck, frontend build, and a
+  non-blocking tldraw license report. Runs on pull requests that touch the
+  frontend, tests, or scripts, and on every push to main.
 - `.github/workflows/smoke.yml` - Playwright browser smoke test
 - `.github/workflows/rust.yml` - Windows formatting, Clippy, and tests
 - `.github/workflows/release.yml` - draft Windows release on `v*` tags
