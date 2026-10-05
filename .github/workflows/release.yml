@@ -28,6 +28,14 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # An unlicensed production build ships an editor that goes blank five
+      # seconds after a capture opens. Block the tag rather than publish it.
+      - name: Check tldraw license is configured
+        run: bun run check:license
+        env:
+          TLDRAW_LICENSE_KEY: ${{ secrets.TLDRAW_LICENSE_KEY }}
+          VITE_TLDRAW_LICENSE_KEY: ${{ secrets.VITE_TLDRAW_LICENSE_KEY }}
+
       - name: Build and publish installer
         uses: tauri-apps/tauri-action@v1
         env:

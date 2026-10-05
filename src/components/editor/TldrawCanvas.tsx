@@ -27,6 +27,7 @@ import {
 } from "./IconLibrary";
 import { dataUrlFromUrl, ensureBackgroundImage, getBackgroundImageAsset, serializeTldraw, type EditorController, type Exporter } from "../../lib/tldrawDoc";
 import { applyEditorPreferences, persistEditorPreferences, readEditorPreferences } from "../../lib/preferences";
+import { computeFitCamera } from "../../lib/fitCamera";
 import type { Rect, RegionMode, TldrawState } from "../../types";
 import { cropImage, loadImage } from "../../lib/storage";
 
@@ -170,7 +171,12 @@ export default function TldrawCanvas({
       // Keep the chosen tool active after each stroke; the user switches
       // tools deliberately, not after every action.
       ed.updateInstanceState({ isToolLocked: true });
-      void ensureBackgroundImage(ed, imageUrl, imgW, imgH);
+      /* Without this catch, a failure here (a revoked blob URL, a decode error)
+         was a silent unhandled rejection: the image shape simply never
+         appeared, which looks exactly like a blank canvas. */
+      void ensureBackgroundImage(ed, imageUrl, imgW, imgH).catch((error: unknown) => {
+        console.error("Could not place the capture image on the canvas.", error);
+      });
     },
     [imageUrl, imgW, imgH],
   );
@@ -389,6 +395,7 @@ function frameImage(ed: Editor, imgW: number, imgH: number): void {
   const M = 24; // breathing room between image and any UI
   let insetT = M;
   let insetB = M;
+  let warned = false;
   // Measure real chrome (topbar, dock, zoom controls) so the image can
   // never touch it, whatever the window size.
   document.querySelectorAll<HTMLElement>("[data-chrome]").forEach((el) => {
@@ -401,29 +408,35 @@ function frameImage(ed: Editor, imgW: number, imgH: number): void {
       insetB = Math.max(insetB, window.innerHeight - r.top + M);
     }
   });
-  const availW = Math.max(64, window.innerWidth - 2 * M);
-  const availH = Math.max(64, window.innerHeight - insetT - insetB);
-
   // Frame the image shape's real page bounds so placement is correct even if
   // the shape is not at the page origin.
   const img = ed.getCurrentPageShapes().find((s) => s.type === "image");
   const b = img ? ed.getShapePageBounds(img.id) : null;
-  const bw = b?.width ?? imgW;
-  const bh = b?.height ?? imgH;
-  const zoom = Math.min(Math.max(Math.min(availW / bw, availH / bh), 0.05), 8);
 
-  // Desired on-screen top-left of the image in window coordinates, then
-  // solve the camera that puts it there. tldraw maps page points to screen
-  // points as screen = (page + camera) * zoom + screenBounds.xy, so
-  // camera = (target - screenBounds.xy) / zoom - page.
-  const sb = ed.getViewportScreenBounds();
-  const tx = M + (availW - bw * zoom) / 2;
-  const ty = insetT + (availH - bh * zoom) / 2;
-  ed.setCamera({
-    x: (tx - sb.x) / zoom - (b?.x ?? 0),
-    y: (ty - sb.y) / zoom - (b?.y ?? 0),
-    z: zoom,
+  /* All camera arithmetic lives in computeFitCamera, which refuses to return a
+     non-finite camera. That matters more than it looks: tldraw 5.5.0 throws on
+     a non-finite setCamera where 5.4.x silently coerced it to 0, so an
+     unguarded value would turn a misframed canvas into a hard editor crash. */
+  const camera = computeFitCamera({
+    viewport: { width: window.innerWidth, height: window.innerHeight },
+    insets: { top: insetT, bottom: insetB },
+    margin: M,
+    bounds: { x: b?.x ?? 0, y: b?.y ?? 0, width: b?.width ?? 0, height: b?.height ?? 0 },
+    screenBounds: ed.getViewportScreenBounds(),
+    fallbackSize: { width: imgW, height: imgH },
   });
+
+  if (!camera) {
+    /* Almost always a hidden or not-yet-laid-out window. Leave the camera
+       alone rather than guessing; the rAF loop reframes once geometry settles. */
+    if (!warned) {
+      warned = true;
+      console.warn("Skipping camera fit: viewport or image bounds are not measurable yet.");
+    }
+    return;
+  }
+  warned = false;
+  ed.setCamera(camera);
 }
 
 function runAction(editor: Editor, fn: () => void): void {

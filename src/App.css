@@ -4016,3 +4016,64 @@ kbd {
     transform: translateY(-6px) scale(0.98);
   }
 }
+
+/* ── Editor crash fallback ───────────────────────────────────── */
+/* Shown when the tldraw subtree throws. It has to be legible on its
+   own: in a packaged build there are no devtools, so this text is often
+   the only evidence of what went wrong. */
+
+.editor-crash {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+  z-index: 500;
+}
+
+.editor-crash-card {
+  max-width: 460px;
+  padding: 20px 22px;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-float);
+  box-shadow: var(--shadow-float);
+}
+
+.editor-crash-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.editor-crash-body {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted, var(--text));
+}
+
+/* The message itself. Monospace and wrapped so a long stack-derived
+   string cannot push the card off-screen. */
+.editor-crash-detail {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  max-height: 140px;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.editor-crash-actions {
+  display: flex;
+  justify-content: flex-end;
+}

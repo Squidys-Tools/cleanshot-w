@@ -132,6 +132,72 @@ These behaviors need a real Windows run. The browser cannot validate DPI,
 WebView2 asset loading, GDI output, tray lifecycle, clipboard interoperability,
 or protected-content behavior.
 
+## tldraw licensing
+
+The editor requires a tldraw license key. This is not optional and not a
+formality: **a production build without a key renders a blank editor.**
+
+Five seconds after `<Tldraw>` mounts, `LicenseProvider` in `@tldraw/editor`
+checks the license state. If it is `unlicensed-production` or `expired`, it
+discards the editor and renders an invisible placeholder:
+
+```js
+function shouldHideEditorAfterDelay(licenseState) {
+  return licenseState === "expired" || licenseState === "unlicensed-production";
+}
+```
+
+The visible effect is that the canvas, the annotation dock, and the status bar
+all disappear while the rest of the app keeps working. No exception is thrown.
+The console shows only a styled banner.
+
+Three properties of this gate make it easy to ship by accident:
+
+- **Dev builds are exempt.** `LicenseManager.getIsDevelopment()` treats loopback
+  and `*.localhost` hosts as development unless `process.env.NODE_ENV ===
+  "production"`, so `bun run dev` and the browser smoke suite report
+  `unlicensed` and render normally. The packaged app serves from
+  `http://tauri.localhost/`, where `NODE_ENV` is inlined as `production`.
+- **It is delayed by five seconds**, so a quick look after opening a capture can
+  show a working editor.
+- **Nothing fails loudly.** The build succeeds and every browser check passes.
+
+Set the key in the build environment. Vite inlines `VITE_`-prefixed variables,
+so that is the reliable choice:
+
+```sh
+VITE_TLDRAW_LICENSE_KEY=... bun run tauri build
+```
+
+`bun run check:license` fails when no key is present. It runs in CI and in the
+release workflow, so a tag cannot publish an installer with a dead editor. Pass
+`--warn-only` to check without failing.
+
+To confirm a packaged build is actually licensed, run the diagnostic harness and
+check that `.cs-ui` and at least one `<canvas>` exist once a capture is open:
+
+```sh
+bun run diagnose:packaged -- --exe "src-tauri\target\release\cleanshot-w.exe"
+```
+
+## Diagnosing a packaged build
+
+Release builds ship without devtools, so a packaged-only fault cannot be
+inspected from the outside. `scripts/diagnose-packaged.mjs` re-enables the
+WebView2 DevTools Protocol for the packaged process, captures console output and
+uncaught exceptions, then measures the real geometry of the editor subtree.
+
+```sh
+bun run diagnose:packaged -- --exe "src-tauri\target\release\cleanshot-w.exe" \
+  --open-capture "<history entry title>" --out report.json
+```
+
+It prints the ancestor chain of `.cs-tldraw` with a `ZERO-SIZED` marker, the
+computed style of the tldraw nodes, backing-store size against painted size for
+every canvas, and `devicePixelRatio`. Use it before theorising about a
+Windows-only rendering fault. This is how release-gate Finding 1 was attributed
+in minutes rather than a second manual gate pass.
+
 ## OCR and packaged assets
 
 The browser OCR worker, core files, and `eng.traineddata` are bundled under
@@ -144,6 +210,12 @@ bun run ocr:assets
 OCR runs on demand rather than for every capture. Packaged builds must be tested
 with network access disabled so the app cannot accidentally depend on a remote
 worker or language file. Native OCR remains an M3 evaluation item.
+
+The remote Google Fonts stylesheet that `index.html` used to load has been
+removed for the same reason. It was render-blocking, so a packaged build on an
+offline or restricted machine stalled first paint and made text metrics depend
+on the network. Inter is still used when the OS provides it; the stack in
+`App.css` falls through to Segoe UI otherwise.
 
 ## Local development and verification
 

@@ -10,6 +10,8 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke-tldraw.mjs",
+    "diagnose:packaged": "node scripts/diagnose-packaged.mjs",
+    "check:license": "node scripts/check-tldraw-license.mjs",
     "rust:format": "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
     "rust:check": "node scripts/check-rust.mjs",
     "ocr:assets": "bun scripts/ocr-assets.mjs",

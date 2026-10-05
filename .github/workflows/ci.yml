@@ -34,3 +34,9 @@ jobs:
 
       - name: Build frontend
         run: bun run build
+
+      # A production build with no tldraw license key renders a blank editor
+      # five seconds after a capture opens. Nothing in the browser suites can
+      # see it, because dev builds are exempt. Fail here instead.
+      - name: Check tldraw license is configured
+        run: bun run check:license

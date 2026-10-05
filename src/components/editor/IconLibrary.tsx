@@ -221,12 +221,26 @@ export function getIconComponent(library: IconLibraryId, name: string): Componen
 
 const LIB_EVENT = "cs-icon-lib-change";
 
-export function readIconLib(): IconLibraryId {
-  return (localStorage.getItem("cs-icon-lib") as IconLibraryId) || "svg";
+/* Storage access can throw, not just return null. A packaged WebView2 build
+   can hit a SecurityError here when the profile cannot provide localStorage.
+   That read happens in a useState initializer inside the tldraw subtree, so an
+   unguarded throw took down the canvas, the dock, and the status bar together
+   while the rest of the app kept running. Guard it exactly the way
+   readEditorPreferences in src/lib/preferences.ts guards the same access. */
+export function readIconLib(storage: Storage = window.localStorage): IconLibraryId {
+  try {
+    return (storage.getItem("cs-icon-lib") as IconLibraryId) || "svg";
+  } catch {
+    return "svg";
+  }
 }
 
 function writeIconLib(lib: IconLibraryId) {
-  localStorage.setItem("cs-icon-lib", lib);
+  try {
+    localStorage.setItem("cs-icon-lib", lib);
+  } catch {
+    /* Selection still applies for this session; it just will not persist. */
+  }
   window.dispatchEvent(new CustomEvent(LIB_EVENT, { detail: lib }));
 }
 

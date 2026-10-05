@@ -53,9 +53,33 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
+- Attributed the release-gate editor failure recorded in
+  [the roadmap](ROADMAP.md): tldraw hides the whole editor five seconds after
+  mount when the license state is `unlicensed-production`, which blanked the
+  canvas, annotation dock, and status bar in packaged builds while development
+  builds stayed healthy. `bun run check:license` now fails the build in CI and in
+  the release workflow when `VITE_TLDRAW_LICENSE_KEY` is absent, so an installer
+  with a dead editor cannot be published.
+- Guarded the icon-library preference read against a `localStorage` access that
+  throws. It ran inside a `useState` initializer in the editor subtree, where an
+  exception blanks the editor with no useful message.
+- Stopped the camera fit from computing a non-finite camera when the viewport or
+  image bounds are not measurable. tldraw 5.5.0 throws on a non-finite
+  `setCamera` where 5.4.x silently coerced it, so this was a latent crash.
+- Surfaced failures placing the capture image on the canvas instead of dropping
+  them as an unhandled rejection, which looked identical to a blank canvas.
+- Removed the render-blocking Google Fonts stylesheet. Packaged builds must work
+  with the network disabled, and remote text metrics made layout depend on it.
 - Prevented drawing and selection interactions from dropping or becoming stuck
   when the pointer leaves the viewport. Pointer capture, an `e.buttons` guard,
   and pointer-cancel handling keep subsequent interactions usable.
+
+### Changed
+
+- The browser smoke suite now asserts that the editor overlay and a tldraw
+  canvas element actually exist, and runs at `deviceScaleFactor: 1.25` to match
+  the scaling of the acceptance host. It previously asserted DOM text only, so a
+  container with no children passed.
 
 ## [0.1.0] - initial scaffold
 

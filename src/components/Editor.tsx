@@ -1,6 +1,7 @@
 import type { CaptureDoc, RegionMode, TldrawState } from "../types";
 import type { EditorController } from "../lib/tldrawDoc";
 import TldrawCanvas from "./editor/TldrawCanvas";
+import EditorErrorBoundary from "./editor/EditorErrorBoundary";
 
 type EditorProps = {
   doc: CaptureDoc;
@@ -35,24 +36,30 @@ function Editor({
 }: EditorProps) {
   return (
     <div className="editor">
-      <TldrawCanvas
-        imageUrl={imageUrl}
-        imgW={doc.image.width}
-        imgH={doc.image.height}
-        title={doc.title}
-        initialDoc={doc.annotations}
-        onChange={(annotations) => onChange(doc.id, annotations)}
-        controllerRef={controllerRef}
-        onHistoryState={onHistoryState}
-        saveState={saveState}
-        saveError={saveError}
-        onRetrySave={onRetrySave}
-        regionMode={regionMode}
-        onRegionModeChange={onRegionModeChange}
-        onCrop={(imageBlob, image, annotations) => onCrop(doc.id, imageBlob, image, annotations)}
-        onOcrRegion={onOcrRegion}
-        onRename={onRename}
-      />
+      {/* tldraw contains its own render errors, so a throw inside the editor
+          subtree used to surface as a silent blank canvas with the rest of the
+          app still running. This states the failure instead. Keyed on the
+          capture so switching captures clears a previous failure. */}
+      <EditorErrorBoundary resetKey={doc.id}>
+        <TldrawCanvas
+          imageUrl={imageUrl}
+          imgW={doc.image.width}
+          imgH={doc.image.height}
+          title={doc.title}
+          initialDoc={doc.annotations}
+          onChange={(annotations) => onChange(doc.id, annotations)}
+          controllerRef={controllerRef}
+          onHistoryState={onHistoryState}
+          saveState={saveState}
+          saveError={saveError}
+          onRetrySave={onRetrySave}
+          regionMode={regionMode}
+          onRegionModeChange={onRegionModeChange}
+          onCrop={(imageBlob, image, annotations) => onCrop(doc.id, imageBlob, image, annotations)}
+          onOcrRegion={onOcrRegion}
+          onRename={onRename}
+        />
+      </EditorErrorBoundary>
     </div>
   );
 }

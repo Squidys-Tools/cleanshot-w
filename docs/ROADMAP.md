@@ -16,7 +16,7 @@ Completed changes live in [the changelog](CHANGELOG.md).
 | M0 - baseline | Done | The Tauri foundation and browser editor are in place. |
 | M1 - web editor | Done | Intake, annotation, OCR, export, local history, and tests work. |
 | M2 - native shell | Implementation complete | Windows capture, tray, hotkeys, disk history, clipboard, pinning, and hardening are implemented. |
-| M2 release gate | In progress, blocked | First automated pass recorded on 2026-10-03. Packaging, install, settings, startup, library persistence, and packaged OCR pass. The editor canvas does not render in the packaged Windows build on the test host, and the capture modes remain untested. Not shippable. |
+| M2 release gate | In progress, blocked | First automated pass recorded on 2026-10-03. Packaging, install, settings, startup, library persistence, and packaged OCR pass. Finding 1 is resolved: tldraw hides the editor when unlicensed, so the canvas failure was a licensing gate, not a rendering fault. A license key is now required by CI and the release workflow. The capture modes remain untested. Not shippable. |
 | M3 - polish and scale | Next | Scrolling capture beta, native OCR evaluation, broader search, and the first public release. |
 
 ## What works
@@ -69,14 +69,15 @@ replace the Windows acceptance checks below.
 
 ## Immediate order of work
 
-1. **Diagnose the editor canvas rendering failure** recorded in the test record
-   below. It is the only finding that blocks the release on its own, because the
-   editor is the product. Reproduce it on real hardware to separate a WebView2
-   or GPU problem on the test host from a defect in the packaged build.
-2. Run the capture-mode, DPI, clipboard, and pin checklists that this pass could
-   not reach. They need a real desktop with a system tray, and mixed-DPI
+1. **Buy a tldraw license and set `VITE_TLDRAW_LICENSE_KEY`.** This is the only
+   finding that blocks the release on its own, because the editor is the
+   product. Root cause is recorded and confirmed below. Nothing else unblocks
+   the editor.
+2. Run the capture-mode, DPI, clipboard, and pin checklists that the first pass
+   could not reach. They need a real desktop with a system tray, and mixed-DPI
    monitors.
-3. Fix release-gate issues and record the evidence in the test record below.
+3. Fix remaining release-gate issues and record the evidence in the test record
+   below.
 4. Start M3 with scrolling capture behind an explicit beta flow, once the gate
    above is clear.
 5. Package the first public release once the native shell and M3 release scope
@@ -212,11 +213,79 @@ and "background image size in status bar", so the editor works in headless
 Chromium. **This must be reproduced on real hardware before the release
 decision can be trusted.**
 
-#### Run 2 - retest after the canvas fix
+#### Finding 1 root cause - tldraw hides the editor when unlicensed
+
+**Resolved.** Finding 1 was never a rendering, GPU, DPI, or WebView2 fault. It
+is tldraw's license gate.
+
+`LicenseProvider` in `@tldraw/editor` hides the editor five seconds after it
+mounts when the license state is `unlicensed-production` or `expired`:
+
+```js
+function shouldHideEditorAfterDelay(licenseState) {
+  return licenseState === "expired" || licenseState === "unlicensed-production";
+}
+const LICENSE_TIMEOUT = 5e3;
+// ...after LICENSE_TIMEOUT, renders <LicenseGate/>, which is
+// <div data-testid="tl-license-expired" style="display:none"></div>
+```
+
+Everything inside `<Tldraw>` is replaced by that invisible div, which is exactly
+why the canvas, the annotation dock, and the status bar vanished together while
+the command bar, popovers, history flyout, and OCR panel outside the subtree kept
+working. Nothing throws. The only console output is a styled banner.
+
+Why every earlier check missed it:
+
+- `LicenseManager.getIsDevelopment()` treats loopback and `*.localhost` hosts as
+  development unless `process.env.NODE_ENV === "production"`. The dev server and
+  the headless-Chromium smoke suite therefore report `unlicensed`, not
+  `unlicensed-production`, and render the editor normally. The packaged app
+  serves from `http://tauri.localhost/`, where `NODE_ENV` is inlined as
+  `production`, so it takes the hidden path.
+- The failure is delayed by five seconds, so a fast look after opening a capture
+  can see a working editor.
+- No test asserted that anything was painted. The smoke suite checked DOM text,
+  so a container with no children passed.
+
+Confirmation, from `scripts/diagnose-packaged.mjs` against the packaged build of
+`dd27da8` with a capture open:
+
+```text
+cs-tldraw            1180x706   visible, opacity 1
+tl-container         1180x706   visible, opacity 1
+tl-container HTML    <div data-testid="tl-license-expired" style="display: none;"></div>
+                     <div class="tl-portal-host"></div>
+cs-ui                absent
+canvas elements      0
+uncaught exceptions  none
+webgl2               available
+```
+
+The `.tl-container` element is full size and healthy. It simply has no children,
+because the license gate replaced them.
+
+**The fix is a license key, not a code change.** Set `VITE_TLDRAW_LICENSE_KEY`
+in the build environment. `bun run check:license` now fails the build when it is
+absent, in CI and in the release workflow, so this cannot ship silently again.
+
+Also fixed while diagnosing, each verified independently:
+
+- `readIconLib` read `localStorage` without a guard inside a `useState`
+  initializer in the tldraw subtree. Not this bug, but the same failure shape if
+  storage is unavailable.
+- `index.html` shipped a render-blocking Google Fonts stylesheet, which
+  contradicts the offline requirement in [Engineering](ENGINEERING.md).
+- `frameImage` computed a camera with no finite checks. tldraw 5.5.0 throws on a
+  non-finite `setCamera` where 5.4.x coerces it, so this was a latent crash.
+
+#### Run 2 - retest after the license fix
 
 - **Tester:**
 - **Date:**
 - **Result:** not run yet
+
+Blocked on a license key. Every remaining gate item still needs real hardware.
 
 Record the exact failing step and a screenshot or short screen recording for
 each failure. Do not attach captured personal or confidential screen contents to
@@ -453,8 +522,12 @@ Run these against the packaged release artifact, not only the Vite dev server.
 - **Windows matrix:** BLOCKED - capture modes, DPI matrix, clipboard
   interoperability, and pin lifecycle were not exercised
 - **Known limitations:**
-  - The editor canvas, annotation dock, and status bar do not render in the
-    packaged Windows build on the run 1 host. Blocking, and not yet attributed.
+  - The editor canvas, annotation dock, and status bar did not render in the
+    packaged Windows build on the run 1 host. Attributed after the fact to the
+    tldraw license gate, which hides the editor five seconds after mount when
+    unlicensed in a production build. A license key is now required by CI.
+  - tldraw also logs an "unlicensed" banner and applies a watermark. Buying a
+    license resolves both. tldraw's free terms cover non-commercial use only.
   - The WebView2 runtime opens outbound TLS connections to
     `edge.microsoft.com` and a Cloudflare address at content load. Nothing in
     the app depends on them, but the app is not network-silent, which sits

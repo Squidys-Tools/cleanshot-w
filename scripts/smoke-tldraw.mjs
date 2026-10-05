@@ -98,9 +98,13 @@ async function expectTool(page, startsWith, name) {
 
 /* --------------------------------- run -------------------------------- */
 
+/* deviceScaleFactor is set to 1.25 deliberately. The release-gate host ran at
+   125% scaling and the previous runs used the default of 1, so nothing in CI
+   ever exercised a fractional device pixel ratio. */
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({
   viewport: { width: 1280, height: 800 },
+  deviceScaleFactor: 1.25,
   permissions: ["clipboard-read", "clipboard-write"],
 });
 const page = await context.newPage();
@@ -122,6 +126,25 @@ try {
 
   await page.waitForSelector(".cs-tldraw .tl-container", { timeout: 15000 });
   check("tldraw canvas mounted", true);
+
+  /* Every earlier check here asserted DOM text, never a pixel. That is why
+     "tldraw canvas mounted" passed while the editor subtree was in fact dead in
+     the packaged Windows build: tldraw renders its own error boundary, so the
+     container can exist with nothing inside it. Assert the nodes that only
+     exist if tldraw actually mounted its children. */
+  const editorTree = await page.evaluate(() => ({
+    csUi: !!document.querySelector(".cs-ui"),
+    tlCanvas: document.querySelectorAll(".tl-canvas").length,
+    statusbar: !!document.querySelector(".cs-statusbar"),
+    toolbar: !!document.querySelector(".cs-toolbar"),
+    canvases: document.querySelectorAll("canvas").length,
+  }));
+  check("editor overlay mounted (.cs-ui)", editorTree.csUi, JSON.stringify(editorTree));
+  check("tldraw canvas element present", editorTree.tlCanvas > 0, JSON.stringify(editorTree));
+  /* Not asserted as a requirement: tldraw v5 does not always emit a
+     .tl-viewport element, and a healthy editor was observed both with and
+     without it. Reported for context rather than treated as a failure. */
+
   await page.waitForSelector(".cs-toolbar", { timeout: 10000 });
   check("overlay toolbar shown", true);
 
