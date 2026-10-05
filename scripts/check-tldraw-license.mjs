@@ -57,7 +57,9 @@ const message = [
 ].join("\n");
 
 if (warnOnly) {
-  console.warn(message);
+  /* One line, so a routine PR run does not look like a failure. The long
+     explanation belongs in the blocking path, where someone has to act. */
+  console.warn("[license] no tldraw license key configured; see docs/ENGINEERING.md");
   process.exit(0);
 }
 
