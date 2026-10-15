@@ -114,17 +114,30 @@ impl Render for Overlay {
                 cx.listener(|this, ev: &MouseUpEvent, window, cx| {
                     if let Some(start) = this.drag_start {
                         let end = ev.position;
-                        // ev.position is window-relative; add the window's
-                        // global origin (the virtual screen origin, which can
-                        // be negative on multi-monitor setups) to get the
-                        // screen coordinates a real capture would use.
+                        // ev.position is window-relative, in logical px. Add
+                        // the window's global logical origin (the virtual
+                        // screen origin, which can be negative on
+                        // multi-monitor setups) to get global logical
+                        // coordinates. GDI capture works in physical px:
+                        // multiply by the scale factor of the monitor under
+                        // the rect (see SPIKE-NOTES.md).
                         let origin = window.bounds().origin;
+                        let scale = window.scale_factor();
+                        let (x, y) = (origin.x + start.x.min(end.x), origin.y + start.y.min(end.y));
+                        let (w, h) = ((start.x - end.x).abs(), (start.y - end.y).abs());
                         println!(
-                            "selection: x={} y={} w={} h={}",
-                            f32::from(origin.x + start.x.min(end.x)) as i32,
-                            f32::from(origin.y + start.y.min(end.y)) as i32,
-                            f32::from((start.x - end.x).abs()) as i32,
-                            f32::from((start.y - end.y).abs()) as i32
+                            "selection (logical): x={} y={} w={} h={}",
+                            f32::from(x) as i32,
+                            f32::from(y) as i32,
+                            f32::from(w) as i32,
+                            f32::from(h) as i32
+                        );
+                        println!(
+                            "selection (physical, x{scale}): x={} y={} w={} h={}",
+                            (f32::from(x) * scale) as i32,
+                            (f32::from(y) * scale) as i32,
+                            (f32::from(w) * scale) as i32,
+                            (f32::from(h) * scale) as i32
                         );
                     }
                     cx.quit();
@@ -138,10 +151,15 @@ fn main() {
         cx.bind_keys([KeyBinding::new("escape", CancelSelection, None)]);
 
         let screen = virtual_screen_bounds(cx);
-        println!("virtual screen: {screen:?}");
+        println!("virtual screen (logical): {screen:?}");
         for display in cx.displays() {
             println!("display {:#?}: {:#?}", display.id(), display.bounds());
         }
+        #[cfg(windows)]
+        println!(
+            "virtual screen (physical, GetSystemMetrics): {:?}",
+            gpui_overlay_spike::win32::raw_virtual_screen_metrics()
+        );
 
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(screen)),

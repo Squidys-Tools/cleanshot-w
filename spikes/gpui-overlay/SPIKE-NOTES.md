@@ -46,24 +46,75 @@ weekly snapshots of Zed `main` (`zed@93d7456`, published 2026-10-12).**
 | --- | --- |
 | Transparent windows | `WindowBackgroundAppearance::Transparent` on `WindowOptions.window_background`. Upstream fixed per-pixel transparency on Windows (zed PR #26645); gpui-pre 0.3.9 includes it. |
 | Borderless + always-on-top on Windows | `WindowKind::PopUp` maps to `WS_EX_TOOLWINDOW | WS_EX_TOPMOST`, style `0` in `gpui-pre-windows/src/window.rs:492` — frameless, topmost, no taskbar entry. Exactly the overlay/pin shape. |
-| Multi-monitor geometry | `cx.displays()` → `PlatformDisplay::bounds()` gives per-monitor bounds; the spike unions them into a virtual screen, then cross-checks against raw `GetSystemMetrics(SM_XVIRTUALSCREEN / SM_YVIRTUALSCREEN / SM_CXVIRTUALSCREEN / SM_CYVIRTUALSCREEN)` (same approach as `src-tauri/src/capture.rs:557`) and takes the larger span. Raw metrics come from `windows-sys` behind `cfg(windows)`. |
+| Multi-monitor geometry | `cx.displays()` → `PlatformDisplay::bounds()` gives per-monitor bounds in **logical** px; the spike unions them into a logical virtual screen for the window. Raw `GetSystemMetrics(SM_XVIRTUALSCREEN / …)` (same calls as `src-tauri/src/capture.rs:557`) return **physical** px and are logged separately for comparison — see "Coordinate units under DPI scaling" below. |
 | Rubber-band painting | `canvas()` element + `window.paint_quad(quad(...))` for the translucent fill and `PathBuilder::stroke(2px)` → `window.paint_path(...)` for the border — the same primitives as gpui's `painting` example. Redraw via `cx.notify()` on `on_mouse_move`. |
 | Selection coords | Mouse events give window-relative positions; the spike adds the window's global origin (the virtual-screen origin, which can be negative on multi-monitor setups) before logging, so the rect is what a real capture would use. |
 | Keyboard (Esc) | `actions!` + `cx.bind_keys([KeyBinding::new("escape", ..., None)])` + `div().key_context(...).track_focus(...)` + `window.focus(...)`. Requires the window to hold focus; works with `focus: true`. |
-| Pin image | `image` crate decode → RGBA8 → `image::Frame::new(rgba)` → `RenderImage::new(vec![frame])` → `img(Arc<RenderImage>)`. The img element converts RGBA→BGRA itself. |
+| Pin image | `image` crate decode → RGBA8 → **swizzle RGBA→BGRA** (`pixel.swap(0, 2)`) → `image::Frame::new` → `RenderImage::new(vec![frame])` → `img(Arc<RenderImage>)`. The swizzle is mandatory: see "RenderImage is BGRA" below. |
 | Frameless drag | `Window::start_window_move()` is implemented for X11/Wayland but is a **no-op on Windows** (default trait impl). Windows path uses the classic trick behind `cfg(windows)`: `ReleaseCapture()` then `PostMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0)`. HWND obtained through gpui's `HasWindowHandle` impl (`RawWindowHandle::Win32`). |
 | Click-through | Raw Win32 via `windows-sys`: `SetWindowLongPtrW(GWL_EXSTYLE)` with `WS_EX_TRANSPARENT | WS_EX_LAYERED`. GPUI has no API for this. On Linux x11 the same toggle empties the X11 input shape region via `x11rb` (checked via `cookie.check()` so the request is actually flushed), so the toggle is testable in the dev loop too. This is **mouse** pass-through: the window keeps keyboard focus until the user clicks another window, which is deliberate — it's what lets you press `t` again to undo the toggle. |
 | Opacity | `div().opacity(f32)` re-rendered from state; `+`/`-`/`=` bound as actions. |
 
+## RenderImage is BGRA — swizzle decoded pixels (fixed on hardware)
+
+The first hardware run showed a red↔blue channel swap: warm orange lanterns
+rendered blue in the pin window. Root cause, with the code path:
+
+- `RenderImage`'s buffer is documented and used as **BGRA** ("A cached and
+  processed image, in BGRA format", `gpui/src/assets.rs`). GPUI's own decode
+  path swizzles: `decode_static_image_from_decoder` in
+  `gpui/src/platform.rs:3240` decodes to RGBA8 and then runs
+  `pixel.swap(0, 2)` over every 4-byte pixel before building `Frame::new` →
+  `RenderImage` (GIF and WebP paths in `gpui/src/elements/img.rs` do the same).
+- The Windows renderer uploads those bytes into a
+  `DXGI_FORMAT_B8G8R8A8_UNORM` texture (`gpui-pre-windows/src/directx_atlas.rs:185`,
+  render target likewise `directx_renderer.rs:27`), so RGBA bytes in a
+  `RenderImage` render with red and blue exchanged.
+- Our first `load_png` handed the `image` crate's raw RGBA8 output straight to
+  `RenderImage`, skipping the swizzle. On a BGRA renderer that's exactly
+  orange↔blue. The fix mirrors GPUI's own swizzle in `load_png`
+  (`spikes/gpui-overlay/src/bin/pin.rs`).
+
+The spike never caught this on Linux because the dev loop never rendered
+(cargo check/build only); it surfaced on the first real Windows run.
+
+## Coordinate units under DPI scaling (verified on hardware at 150%)
+
+Hardware data point: one 1920×1200-physical display at 150% scaling. GPUI
+reported display bounds 1280×800 (logical), raw `GetSystemMetrics` reported
+1920×1200 (physical). The units split:
+
+- **GPUI `Pixels` are logical px everywhere**: `PlatformDisplay::bounds()`
+  (Windows impl divides physical monitor rects by the monitor's scale factor,
+  `gpui-pre-windows/src/display.rs`), `WindowOptions::window_bounds`, and
+  mouse-event positions (`MouseDownEvent::position` etc., window-relative).
+- **Win32 is physical px**: `GetSystemMetrics(SM_*VIRTUALSCREEN)` and GDI
+  (`BitBlt` capture, `CreateCompatibleBitmap`) — the process is per-monitor-v2
+  DPI-aware, so real physical values come through (no 96-DPI virtualization).
+- **Conversion: `physical = logical × scale_factor`**, where `scale_factor`
+  is `window.scale_factor()` (1.5 at 150%) for the window's monitor. For
+  mixed-DPI multi-monitor, a rect spanning several monitors must be converted
+  per monitor: map the logical rect to each `PlatformDisplay`, use *that*
+  display's scale factor, and intersect in physical px.
+
+Consequence for the port's capture path: the overlay selection arrives in
+global **logical** px; before calling GDI, convert to physical px per monitor.
+The first version of this spike got this wrong in a subtle way: it unioned
+GPUI's logical display bounds with the raw **physical** virtual screen and
+took the larger, which at 150% produced a 1920×1200 *logical* overlay window —
+1.5× the actual screen. The union is now logical-only (for the window), and
+`spike-overlay` logs both unit systems side by side at startup and prints the
+selection rect in both (`selection (logical): …` / `selection (physical, x1.5): …`)
+so the conversion is directly observable on hardware.
+
 ## Known limitations and risks
 
-- **Nothing here has run on real Windows yet.** The GitHub Actions workflow
-  (`.github/workflows/spike-win-build.yml`) builds both exes on `windows-2025`
-  and uploads them as the `gpui-spike-windows` artifact on every push; running
-  those on actual hardware is the remaining test. The Windows-specific code
-  (PopUp styles, `WM_NCLBUTTONDOWN` drag, `WS_EX_TRANSPARENT` toggle, raw
-  virtual-screen metrics) was written against the vendored `gpui-pre-windows`
-  source but never executed.
+- **Remaining hardware unknowns**: the first Windows run (single 150% display)
+  verified both spikes end to end — overlay selection, cancel, global rect
+  logging, pin drag, opacity, click-through — and this is a GO. Not yet
+  exercised on hardware: multi-monitor arrangements, mixed-DPI conversions
+  (the per-monitor logic above is implemented and logged but only single-scale
+  was run), and the NVIDIA alpha path below.
 - **Click-through + DirectX is the known fragile spot.** `WS_EX_LAYERED` on a
   DirectX-swapchain window is exactly the configuration implicated in the
   NVIDIA + DirectComposition alpha-zeroing bug (zed issue #55654). If a

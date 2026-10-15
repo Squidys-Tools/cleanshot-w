@@ -148,12 +148,22 @@ fn main() {
 
 fn load_png(path: &str) -> Result<(Arc<RenderImage>, gpui::Size<gpui::Pixels>), String> {
     let path = PathBuf::from(path);
-    let rgba = image::ImageReader::open(&path)
+    let mut rgba = image::ImageReader::open(&path)
         .map_err(|e| format!("could not open {}: {e}", path.display()))?
         .decode()
         .map_err(|e| format!("could not decode {}: {e}", path.display()))?
         .into_rgba8();
     let (width, height) = rgba.dimensions();
+
+    // `RenderImage` buffers are BGRA (the doc on the struct says so, and
+    // gpui's own PNG/GIF/WebP decode paths swizzle RGBA→BGRA in
+    // `gpui/src/elements/img.rs` before constructing one). The Windows
+    // renderer uploads them into a `DXGI_FORMAT_B8G8R8A8_UNORM` texture
+    // (`directx_atlas.rs`), so handing it raw RGBA bytes swaps red and blue.
+    for [r, _, b, _] in rgba.as_chunks_mut::<4>().0 {
+        std::mem::swap(r, b);
+    }
+
     let frame = image::Frame::new(rgba);
     let render_image = Arc::new(RenderImage::new(vec![frame]));
     Ok((render_image, size(px(width as f32), px(height as f32))))

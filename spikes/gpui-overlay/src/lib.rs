@@ -15,9 +15,11 @@ pub fn make_bounds(x: i32, y: i32, w: i32, h: i32) -> Bounds<Pixels> {
     }
 }
 
-/// The union of every connected display's bounds, in global screen
-/// coordinates — the GPUI equivalent of the virtual-screen metrics
-/// `GetSystemMetrics(SM_XVIRTUALSCREEN…)` produces in `src-tauri/src/capture.rs`.
+/// The union of every connected display's bounds, in global **logical**
+/// screen coordinates — GPUI works in logical px everywhere (display bounds,
+/// window bounds, mouse events), so this is what spans a window across all
+/// monitors. The physical virtual screen is `logical × scale_factor` per
+/// monitor; see `SPIKE-NOTES.md` ("Coordinate units under DPI scaling").
 pub fn virtual_screen_bounds(cx: &App) -> Bounds<Pixels> {
     let mut origin_x = i32::MAX;
     let mut origin_y = i32::MAX;
@@ -37,20 +39,6 @@ pub fn virtual_screen_bounds(cx: &App) -> Bounds<Pixels> {
         origin_y = origin_y.min(y);
         max_right = max_right.max(x + w);
         max_bottom = max_bottom.max(y + h);
-    }
-
-    // GPUI's display enumeration can disagree with the raw virtual screen on
-    // Windows (DPI-mixed arrangements, hidden monitors). Cross-check against
-    // raw Win32 and prefer whichever spans more, mirroring capture.rs.
-    #[cfg(windows)]
-    {
-        let (rx, ry, rw, rh) = win32::raw_virtual_screen_metrics();
-        if rw > max_right - origin_x || rh > max_bottom - origin_y {
-            origin_x = origin_x.min(rx);
-            origin_y = origin_y.min(ry);
-            max_right = max_right.max(rx + rw);
-            max_bottom = max_bottom.max(ry + rh);
-        }
     }
 
     if origin_x == i32::MAX || max_right <= origin_x {
