@@ -102,6 +102,7 @@ pub fn begin_drag(window: &Window) {
 
 #[cfg(windows)]
 pub mod win32 {
+    use gpui::Window;
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     use windows_sys::Win32::Foundation::HWND;
     use windows_sys::Win32::UI::WindowsAndMessaging as winmsg;
