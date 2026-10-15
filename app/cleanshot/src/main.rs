@@ -7,6 +7,7 @@
 
 mod capture;
 mod clipboard;
+mod editor;
 mod flow;
 mod hotkey;
 mod library;

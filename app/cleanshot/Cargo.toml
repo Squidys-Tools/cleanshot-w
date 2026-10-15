@@ -15,6 +15,8 @@ dirs = "7"
 arboard = "3"
 crossbeam-channel = "0.5"
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "async-std"] }
+tiny-skia = "0.11"
+fontdue = "0.9"
 
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
 x11rb = { version = "0.13", features = ["shape"] }
