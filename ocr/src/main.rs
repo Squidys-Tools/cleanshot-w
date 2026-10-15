@@ -72,11 +72,7 @@ fn run() -> Result<(), Box<dyn Error>> {
 }
 
 fn parse_arguments() -> Result<Arguments, Box<dyn Error>> {
-    let mut engine = if cfg!(windows) {
-        "winrt".to_owned()
-    } else {
-        "tesseract".to_owned()
-    };
+    let mut engine = "tesseract".to_owned();
     let mut language = None;
     let mut tessdata_dir = None;
     let mut image_path = None;
@@ -136,7 +132,7 @@ fn confidence_label(confidence: Option<f32>) -> String {
 
 fn usage() -> &'static str {
     "Usage: cleanshot-ocr [--engine winrt|tesseract] [--language CODE] [--tessdata-dir DIR] IMAGE\n\
-     Default engine: Windows.Media.Ocr on Windows, Tesseract elsewhere.\n\
+     Default engine: Tesseract. On Windows, use --engine winrt for comparison.\n\
      Tesseract language uses traineddata codes (for example, eng); WinRT uses Windows language tags (for example, en-US)."
 }
 

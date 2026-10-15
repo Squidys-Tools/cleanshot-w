@@ -1,19 +1,18 @@
 # OCR engine evaluation
 
-## Candidates and recommendation
+## Verdict
 
-The app should adopt **Windows.Media.Ocr** on Windows. It is already part of
-Windows, returns recognized text and per-word rectangles, and avoids shipping a
-second OCR runtime plus language data. The API does not expose confidence
-scores, so the CLI reports that limitation rather than inventing a value.
-Tesseract remains the working cross-platform fallback and evaluation baseline;
-its word-level confidence is available through TSV output.
+**Decision (2026-10-15): Adopt Tesseract as the port's OCR engine.** Its speed
+and word-level confidence scores win; the one-character error on the settings
+fixture is acceptable. Windows.Media.Ocr remains in the evaluation crate as a
+Windows-only comparison; it was exact on these fixtures but does not expose
+confidence scores.
 
-`cleanshot-ocr` defaults to Windows.Media.Ocr on Windows and Tesseract on other
-platforms. Pass `--engine winrt` or `--engine tesseract` to select explicitly.
-The Windows CI workflow runs both engines on the same generated PNG fixtures,
-prints character/word error rates and per-process elapsed time, and uploads the
-report with both CLI builds and the English fallback model.
+`cleanshot-ocr` defaults to Tesseract on every platform. On Windows, pass
+`--engine winrt` to run the comparison. The Windows CI workflow runs both
+engines on the same generated PNG fixtures, prints character/word error rates
+and per-process elapsed time, and uploads the report with both CLI builds and
+the English fallback model.
 
 ## Samples and measurements
 
@@ -48,10 +47,9 @@ than latency distributions or steady-state measurements.
 
 On these three synthetic samples, WinRT was exact after whitespace
 normalization; Tesseract made one character error on `DPI-aware`. Tesseract was
-faster in this single run and supplied confidence, while WinRT uses the
-Windows-installed OCR runtime and language resources. That tradeoff supports
-WinRT as the Windows default and Tesseract as the cross-platform fallback; the
-sample set is too small to claim general accuracy superiority.
+faster in this single run and supplied confidence. The decision is to accept
+that fixture error in favor of speed and confidence; the sample set is too
+small to make a general accuracy claim.
 
 The Linux Tesseract CLI release binary measured **560,440 bytes**. On Windows,
 the WinRT-only CLI measured **260,096 bytes**, while the combined
