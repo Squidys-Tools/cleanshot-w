@@ -9,7 +9,7 @@
 
 use tiny_skia::{Color, Pixmap, PremultipliedColorU8, Stroke};
 
-use super::model::{COUNTER_DIAMETER, Document, Rect, Shape};
+use super::model::{Document, Shape};
 
 /// Draws text into a tiny-skia pixmap. `paint` places the text block's
 /// top-left at (x, y) and returns the laid-out height; `measure` returns
@@ -46,15 +46,13 @@ impl SystemTextPainter {
             })
             .or_else(|| {
                 // Last resort: any font the system font directories offer.
-                font_files_from_dirs()
-                    .into_iter()
-                    .find_map(|path| {
-                        let bytes = std::fs::read(&path).ok()?;
-                        fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).ok()
-                    })
+                font_files_from_dirs().into_iter().find_map(|path| {
+                    let bytes = std::fs::read(&path).ok()?;
+                    fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).ok()
+                })
             });
         if font.is_none() {
-            eprintln!("cleanshot-w: no system font found; text shapes will not flatten");
+            eprintln!("Snipsy: no system font found; text shapes will not flatten");
         }
         SystemTextPainter { font }
     }
@@ -62,6 +60,10 @@ impl SystemTextPainter {
     /// Line height for a font size (1.3 line gap, matching the canvas view).
     fn line_height(font_px: f32) -> f32 {
         font_px * 1.3
+    }
+
+    fn is_available(&self) -> bool {
+        self.font.is_some()
     }
 }
 
@@ -74,7 +76,10 @@ fn font_files_from_dirs() -> Vec<std::path::PathBuf> {
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "ttf" || ext == "otf") {
+            if path
+                .extension()
+                .is_some_and(|ext| ext == "ttf" || ext == "otf")
+            {
                 found.push(path);
             }
         }
@@ -112,7 +117,10 @@ impl TextPainter for SystemTextPainter {
 
     fn measure(&self, text: &str, font_px: f32) -> (f32, f32) {
         let Some(font) = &self.font else {
-            return (0.0, Self::line_height(font_px) * text.split('\n').count() as f32);
+            return (
+                0.0,
+                Self::line_height(font_px) * text.split('\n').count() as f32,
+            );
         };
         let mut width = 0.0f32;
         for line in text.split('\n') {
@@ -129,7 +137,14 @@ impl TextPainter for SystemTextPainter {
 
 /// Alpha-over blend one glyph bitmap (8-bit coverage per pixel, `glyph_width`
 /// wide) with its top-left at (x, y).
-fn blit_glyph(pixmap: &mut Pixmap, bitmap: &[u8], glyph_width: usize, x: f32, y: f32, color: Color) {
+fn blit_glyph(
+    pixmap: &mut Pixmap,
+    bitmap: &[u8],
+    glyph_width: usize,
+    x: f32,
+    y: f32,
+    color: Color,
+) {
     let width = pixmap.width() as i32;
     let height = pixmap.height() as i32;
     let data = pixmap.data_mut();
@@ -150,7 +165,12 @@ fn blit_glyph(pixmap: &mut Pixmap, bitmap: &[u8], glyph_width: usize, x: f32, y:
         }
         let alpha = coverage as u32 * base_a / 255;
         let offset = ((py * width + px) * 4) as usize;
-        let dst = [data[offset] as u32, data[offset + 1] as u32, data[offset + 2] as u32, data[offset + 3] as u32];
+        let dst = [
+            data[offset] as u32,
+            data[offset + 1] as u32,
+            data[offset + 2] as u32,
+            data[offset + 3] as u32,
+        ];
         let inv = 255 - alpha;
         data[offset] = ((base_r * alpha + dst[0] * inv) / 255) as u8;
         data[offset + 1] = ((base_g * alpha + dst[1] * inv) / 255) as u8;
@@ -161,7 +181,11 @@ fn blit_glyph(pixmap: &mut Pixmap, bitmap: &[u8], glyph_width: usize, x: f32, y:
 
 /// Flatten the document over `image_rgba` (RGBA8, document image size) and
 /// return the composed raster.
-pub fn flatten(document: &Document, image_rgba: &[u8], painter: &dyn TextPainter) -> Result<Pixmap, String> {
+pub fn flatten(
+    document: &Document,
+    image_rgba: &[u8],
+    painter: &dyn TextPainter,
+) -> Result<Pixmap, String> {
     let width = document.image_width;
     let height = document.image_height;
     if (image_rgba.len()) != (width as usize * height as usize * 4) {
@@ -174,7 +198,11 @@ pub fn flatten(document: &Document, image_rgba: &[u8], painter: &dyn TextPainter
     }
     let mut pixmap = Pixmap::new(width, height).ok_or("The image is too large to rasterize.")?;
     // The capture is the opaque background.
-    for (pixel, chunk) in pixmap.pixels_mut().iter_mut().zip(image_rgba.chunks_exact(4)) {
+    let (rgba_pixels, remainder) = image_rgba.as_chunks::<4>();
+    if !remainder.is_empty() {
+        return Err("The image buffer is not RGBA-aligned.".to_string());
+    }
+    for (pixel, chunk) in pixmap.pixels_mut().iter_mut().zip(rgba_pixels) {
         let color = PremultipliedColorU8::from_rgba(chunk[0], chunk[1], chunk[2], chunk[3])
             .ok_or("The image buffer holds an invalid pixel.")?;
         *pixel = color;
@@ -187,7 +215,16 @@ pub fn flatten(document: &Document, image_rgba: &[u8], painter: &dyn TextPainter
 
 /// Flatten and encode straight to PNG bytes.
 pub fn flatten_to_png(document: &Document, image_rgba: &[u8]) -> Result<Vec<u8>, String> {
-    let pixmap = flatten(document, image_rgba, &SystemTextPainter::new())?;
+    let painter = SystemTextPainter::new();
+    if !painter.is_available()
+        && document
+            .shapes
+            .iter()
+            .any(|shape| matches!(shape, Shape::Text(_) | Shape::Counter(_)))
+    {
+        return Err("No supported system font was found, so text cannot be flattened.".to_string());
+    }
+    let pixmap = flatten(document, image_rgba, &painter)?;
     pixmap
         .encode_png()
         .map_err(|error| format!("Could not encode the flattened PNG: {error}"))
@@ -217,54 +254,116 @@ fn draw_shape(pixmap: &mut Pixmap, shape: &Shape, painter: &dyn TextPainter) {
                 (rect.x + rect.w, rect.y + rect.h),
                 (rect.x, rect.y + rect.h),
             ]) {
-                pixmap.stroke_path(&path, &paint, &stroke_of(rect.stroke_width), tiny_skia::Transform::default(), None);
+                pixmap.stroke_path(
+                    &path,
+                    &paint,
+                    &stroke_of(rect.stroke_width),
+                    tiny_skia::Transform::default(),
+                    None,
+                );
             }
         }
         Shape::Ellipse(ellipse) => {
             let paint = paint(parse_color(&ellipse.color));
             if let Some(path) = ellipse_path(ellipse.x, ellipse.y, ellipse.w, ellipse.h) {
-                pixmap.stroke_path(&path, &paint, &stroke_of(ellipse.stroke_width), tiny_skia::Transform::default(), None);
+                pixmap.stroke_path(
+                    &path,
+                    &paint,
+                    &stroke_of(ellipse.stroke_width),
+                    tiny_skia::Transform::default(),
+                    None,
+                );
             }
         }
         Shape::Arrow(arrow) => {
             let paint = paint(parse_color(&arrow.color));
             let head_size = (arrow.stroke_width * 4.0).max(12.0);
             if let Some(line) = open_polyline(&[(arrow.x1, arrow.y1), (arrow.x2, arrow.y2)]) {
-                pixmap.stroke_path(&line, &paint, &stroke_of(arrow.stroke_width), tiny_skia::Transform::default(), None);
+                pixmap.stroke_path(
+                    &line,
+                    &paint,
+                    &stroke_of(arrow.stroke_width),
+                    tiny_skia::Transform::default(),
+                    None,
+                );
             }
             if let Some(head) = closed_polyline(&arrow.head_triangle(head_size)) {
-                pixmap.fill_path(&head, &paint, tiny_skia::FillRule::Winding, tiny_skia::Transform::default(), None);
+                pixmap.fill_path(
+                    &head,
+                    &paint,
+                    tiny_skia::FillRule::Winding,
+                    tiny_skia::Transform::default(),
+                    None,
+                );
             }
         }
         Shape::Pen(pen) => {
             if pen.points.len() >= 2 {
                 let paint = paint(parse_color(&pen.color));
                 if let Some(path) = open_polyline(&pen.points) {
-                    pixmap.stroke_path(&path, &paint, &stroke_of(pen.stroke_width), tiny_skia::Transform::default(), None);
+                    pixmap.stroke_path(
+                        &path,
+                        &paint,
+                        &stroke_of(pen.stroke_width),
+                        tiny_skia::Transform::default(),
+                        None,
+                    );
                 }
             }
         }
         Shape::Text(text) => {
             let color = parse_color(&text.color);
-            painter.paint(pixmap, &text.text, text.x, text.y, text.size.max(1.0), color);
+            painter.paint(
+                pixmap,
+                &text.text,
+                text.x,
+                text.y,
+                text.size.max(1.0),
+                color,
+            );
         }
         Shape::Counter(counter) => {
             let white = paint(Color::WHITE);
             let color = parse_color(&counter.color);
-            let cx = counter.x + COUNTER_DIAMETER / 2.0;
-            let cy = counter.y + COUNTER_DIAMETER / 2.0;
-            let radius = COUNTER_DIAMETER / 2.0;
-            if let Some(badge) = ellipse_path(cx - radius, cy - radius, radius * 2.0, radius * 2.0) {
-                pixmap.fill_path(&badge, &paint(color), tiny_skia::FillRule::Winding, tiny_skia::Transform::default(), None);
+            let cx = counter.x + counter.diameter / 2.0;
+            let cy = counter.y + counter.diameter / 2.0;
+            let radius = counter.diameter / 2.0;
+            if let Some(badge) = ellipse_path(cx - radius, cy - radius, radius * 2.0, radius * 2.0)
+            {
+                pixmap.fill_path(
+                    &badge,
+                    &paint(color),
+                    tiny_skia::FillRule::Winding,
+                    tiny_skia::Transform::default(),
+                    None,
+                );
             }
             // White ring so the badge reads on any background, then the digit.
-            if let Some(ring) = ellipse_path(cx - radius + 2.0, cy - radius + 2.0, (radius - 2.0) * 2.0, (radius - 2.0) * 2.0) {
-                pixmap.stroke_path(&ring, &white, &stroke_of(2.0), tiny_skia::Transform::default(), None);
+            if let Some(ring) = ellipse_path(
+                cx - radius + 2.0,
+                cy - radius + 2.0,
+                (radius - 2.0) * 2.0,
+                (radius - 2.0) * 2.0,
+            ) {
+                pixmap.stroke_path(
+                    &ring,
+                    &white,
+                    &stroke_of(2.0),
+                    tiny_skia::Transform::default(),
+                    None,
+                );
             }
             let label = counter.n.to_string();
-            let digit_height = COUNTER_DIAMETER * 0.55;
+            let digit_height = counter.diameter * 0.55;
             let (digit_width, digit_box_height) = painter.measure(&label, digit_height);
-            painter.paint(pixmap, &label, cx - digit_width / 2.0, cy - digit_box_height / 2.0, digit_height, Color::WHITE);
+            painter.paint(
+                pixmap,
+                &label,
+                cx - digit_width / 2.0,
+                cy - digit_box_height / 2.0,
+                digit_height,
+                Color::WHITE,
+            );
         }
     }
 }
@@ -279,7 +378,13 @@ fn parse_color(hex: &str) -> Color {
             .map(|channel| channel as f32 / 255.0)
             .unwrap_or(0.0)
     };
-    Color::from_rgba(value(&bytes[1..3]), value(&bytes[3..5]), value(&bytes[5..7]), 1.0).unwrap_or(Color::BLACK)
+    Color::from_rgba(
+        value(&bytes[1..3]),
+        value(&bytes[3..5]),
+        value(&bytes[5..7]),
+        1.0,
+    )
+    .unwrap_or(Color::BLACK)
 }
 
 fn closed_polyline(points: &[(f32, f32)]) -> Option<tiny_skia::Path> {
@@ -329,8 +434,10 @@ fn ellipse_path(x: f32, y: f32, w: f32, h: f32) -> Option<tiny_skia::Path> {
 /// `font_px/2` wide and `font_px` tall, drawn as a solid block. Geometry and
 /// blending tests use this; the fontdue painter needs a real font file and
 /// would make tests machine-dependent.
+#[cfg(test)]
 pub struct BlockTextPainter;
 
+#[cfg(test)]
 impl TextPainter for BlockTextPainter {
     fn paint(&self, pixmap: &mut Pixmap, text: &str, x: f32, y: f32, font_px: f32, color: Color) {
         for (line_index, line) in text.split('\n').enumerate() {
@@ -340,11 +447,17 @@ impl TextPainter for BlockTextPainter {
                 let advance = font_px / 2.0;
                 let width = (advance * 0.8).max(1.0);
                 let height = (font_px * 0.7).max(1.0);
-                if ch != ' ' {
-                    if let Some(rect) = tiny_skia::Rect::from_xywh(cursor, line_y, width, height) {
+                if ch != ' '
+                    && let Some(rect) = tiny_skia::Rect::from_xywh(cursor, line_y, width, height)
+                {
                     let path = tiny_skia::PathBuilder::from_rect(rect);
-                    pixmap.fill_path(&path, &paint(color), tiny_skia::FillRule::Winding, tiny_skia::Transform::default(), None);
-                }
+                    pixmap.fill_path(
+                        &path,
+                        &paint(color),
+                        tiny_skia::FillRule::Winding,
+                        tiny_skia::Transform::default(),
+                        None,
+                    );
                 }
                 cursor += advance;
             }
@@ -364,7 +477,8 @@ impl TextPainter for BlockTextPainter {
 mod tests {
     use super::*;
     use crate::editor::model::{
-        ArrowShape, CounterShape, Document, EllipseShape, PenShape, RectShape, TextShape,
+        ArrowShape, COUNTER_DIAMETER, CounterShape, Document, EllipseShape, PenShape, Rect,
+        RectShape, TextShape,
     };
 
     fn solid_image(width: u32, height: u32) -> Vec<u8> {
@@ -390,7 +504,7 @@ mod tests {
         // A non-white background must still be the background after flattening
         // an empty document.
         let mut image = vec![255u8; 8 * 8 * 4];
-        for chunk in image.chunks_exact_mut(4) {
+        for chunk in image.as_chunks_mut::<4>().0 {
             chunk.copy_from_slice(&[10, 20, 30, 255]);
         }
         let document = Document::new(8, 8);
@@ -437,7 +551,10 @@ mod tests {
         }));
         let pixmap = flatten(&document, &solid_image(100, 100), &BlockTextPainter).unwrap();
         let vertex = pixmap.pixel(50, 10).unwrap(); // top vertex on the stroke
-        assert!(vertex.green() > 200, "stroke should be green, got {vertex:?}");
+        assert!(
+            vertex.green() > 200,
+            "stroke should be green, got {vertex:?}"
+        );
         let center = pixmap.pixel(50, 50).unwrap();
         assert_eq!(center.green(), 255, "unfilled center stays background");
     }
@@ -456,7 +573,10 @@ mod tests {
         }));
         let pixmap = flatten(&document, &solid_image(100, 100), &BlockTextPainter).unwrap();
         let mid_line = pixmap.pixel(35, 50).unwrap();
-        assert!(mid_line.blue() > 200, "line body should be blue, got {mid_line:?}");
+        assert!(
+            mid_line.blue() > 200,
+            "line body should be blue, got {mid_line:?}"
+        );
         // The head tip overshoots x2 by 40% of the head size (head = 16 → tip ≈ 66.4).
         let tip = pixmap.pixel(66, 50).unwrap();
         assert!(tip.blue() > 200, "head tip should be blue, got {tip:?}");
@@ -473,7 +593,10 @@ mod tests {
         }));
         let pixmap = flatten(&document, &solid_image(100, 100), &BlockTextPainter).unwrap();
         let midpoint = pixmap.pixel(50, 50).unwrap();
-        assert!(midpoint.red() < 100, "pen stroke should be dark, got {midpoint:?}");
+        assert!(
+            midpoint.red() < 100,
+            "pen stroke should be dark, got {midpoint:?}"
+        );
         let off_stroke = pixmap.pixel(50, 20).unwrap();
         assert_eq!(off_stroke.red(), 255, "off the polyline stays background");
     }
@@ -489,17 +612,27 @@ mod tests {
             y: 20.0,
             n: 7,
             color: "#e03131".to_string(),
+            diameter: COUNTER_DIAMETER,
         }));
         let pixmap = flatten(&document, &image, &BlockTextPainter).unwrap();
         let cx = 20.0 + COUNTER_DIAMETER / 2.0;
         let badge_left = pixmap.pixel(26, cx as u32).unwrap();
-        assert!(badge_left.red() > 150 && badge_left.green() < 120, "badge should be red, got {badge_left:?}");
+        assert!(
+            badge_left.red() > 150 && badge_left.green() < 120,
+            "badge should be red, got {badge_left:?}"
+        );
         // The digit block (BlockTextPainter, white) covers the badge center.
         let center = pixmap.pixel(cx as u32, cx as u32).unwrap();
-        assert!(center.red() > 200 && center.green() > 200, "digit should be white on the badge, got {center:?}");
+        assert!(
+            center.red() > 200 && center.green() > 200,
+            "digit should be white on the badge, got {center:?}"
+        );
         // The white ring sits just inside the badge edge.
         let ring = pixmap.pixel(cx as u32, 22).unwrap(); // the 2px band is centered at radius 14
-        assert!(ring.red() > 200 && ring.green() > 200, "ring should be white, got {ring:?}");
+        assert!(
+            ring.red() > 200 && ring.green() > 200,
+            "ring should be white, got {ring:?}"
+        );
     }
 
     #[test]
@@ -517,7 +650,10 @@ mod tests {
         // BlockTextPainter draws each char as a block at font_px/2 advance:
         // 'h' block covers x ≈ 10..18, y ≈ 13..27.
         let block = pixmap.pixel(12, 18).unwrap();
-        assert!(block.blue() > 200, "text block should be blue, got {block:?}");
+        assert!(
+            block.blue() > 200,
+            "text block should be blue, got {block:?}"
+        );
         let after = pixmap.pixel(30, 18).unwrap();
         assert_eq!(after.blue(), 255, "beyond the text stays background");
     }
@@ -543,7 +679,10 @@ mod tests {
         }));
         let pixmap = flatten(&document, &solid_image(100, 100), &BlockTextPainter).unwrap();
         let pixel = pixmap.pixel(50, 44).unwrap();
-        assert!(pixel.green() > 200, "the pen (later) must win, got {pixel:?}");
+        assert!(
+            pixel.green() > 200,
+            "the pen (later) must win, got {pixel:?}"
+        );
     }
 
     #[test]

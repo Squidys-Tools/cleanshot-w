@@ -246,6 +246,59 @@ pub fn delete_capture(id: &str) -> Result<(), String> {
     write_index(&root, &entries)
 }
 
+/// Path of the editor's annotation document for one capture. The document
+/// is created lazily by the editor on first save.
+pub fn annotations_path(id: &str) -> Result<PathBuf, String> {
+    validate_id(id)?;
+    Ok(capture_dir(&library_root()?, id).join("annotations.json"))
+}
+
+/// Load the annotation document for a capture, if it has one. Entries from
+/// the old Tauri app (or any foreign format) have no version-1 document and
+/// return None — the editor opens them as un-annotated images.
+pub fn read_annotations(id: &str) -> Result<Option<crate::editor::model::Document>, String> {
+    let path = annotations_path(id)?;
+    match fs::read(&path) {
+        Ok(bytes) => match crate::editor::model::Document::from_bytes(&bytes) {
+            Ok(document) => Ok(Some(document)),
+            Err(error) => {
+                eprintln!("Snipsy: ignoring non-editor annotations for capture {id}: {error}");
+                Ok(None)
+            }
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("Could not read the annotation document: {error}")),
+    }
+}
+
+/// Save an annotation document at the path the editor was opened with.
+pub fn write_annotations_idempotent(
+    document: &crate::editor::model::Document,
+    path: &Path,
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create the capture folder: {error}"))?;
+    }
+    let bytes = document.to_bytes()?;
+    write_atomic(path, &bytes)
+}
+
+/// Replace a capture's image (after an in-editor crop) and update the index.
+pub fn replace_image(id: &str, png: &[u8], width: u32, height: u32) -> Result<(), String> {
+    validate_id(id)?;
+    validate_size(&ImageSize { width, height })?;
+    let root = library_root()?;
+    let mut entries = read_index(&root)?;
+    let Some(entry) = entries.iter_mut().find(|entry| entry.id == id) else {
+        return Err("No such capture in the library.".to_string());
+    };
+    write_atomic(&capture_dir(&root, id).join("image.png"), png)?;
+    entry.image = ImageSize { width, height };
+    entry.updated_at = now_millis();
+    write_index(&root, &entries)
+}
+
 fn generate_id() -> String {
     static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     format!(

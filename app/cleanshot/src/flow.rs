@@ -1,9 +1,9 @@
 //! The capture flow wiring the pieces together: hotkey/tray → full-screen
-//! GDI capture → overlay selection → crop → library → pin window.
+//! GDI capture → overlay selection → crop → library → editor window.
 
 use gpui::{App, Bounds, Global, Pixels, Point, Window};
 
-use crate::{capture, library, overlay, pin, platform, settings::current_settings};
+use crate::{capture, editor, library, overlay, pin, platform, settings::current_settings};
 
 #[derive(Default)]
 pub struct AppState {
@@ -21,6 +21,7 @@ pub struct AppState {
 pub struct LastCapture {
     pub png: Vec<u8>,
     pub title: String,
+    pub id: Option<String>,
 }
 
 pub struct PendingCapture {
@@ -69,7 +70,7 @@ pub fn cancel_capture(window: &mut Window, cx: &mut App) {
 }
 
 /// Selection finished: convert the logical rect to physical Win32 pixels,
-/// crop, save to the library, and pin the result.
+/// crop, save to the library, and open the editor.
 pub fn complete_selection(window: &mut Window, cx: &mut App, selection: Bounds<Pixels>) {
     let scale = window.scale_factor();
     let pending = cx.global_mut::<AppState>().pending.take();
@@ -87,26 +88,38 @@ pub fn complete_selection(window: &mut Window, cx: &mut App, selection: Bounds<P
             let cropped = pending.surface.crop(x, y, w, h)?;
             let png = capture::encode_png(cropped.width, cropped.height, &cropped.rgba)?;
             let title = format!("Capture {}", library::now_millis());
-            let saved_title =
-                match library::save_capture(&png, cropped.width, cropped.height, &title) {
-                    Ok(metadata) => metadata.title,
-                    Err(error) => {
-                        eprintln!("Snipsy: could not save the capture: {error}");
-                        title.clone()
-                    }
-                };
+            let saved = match library::save_capture(&png, cropped.width, cropped.height, &title) {
+                Ok(metadata) => Some(metadata),
+                Err(error) => {
+                    eprintln!("Snipsy: could not save the capture: {error}");
+                    None
+                }
+            };
+            let saved_title = saved
+                .as_ref()
+                .map(|metadata| metadata.title.clone())
+                .unwrap_or_else(|| title.clone());
             cx.global_mut::<AppState>().last = Some(LastCapture {
                 png: png.clone(),
                 title: saved_title.clone(),
+                id: saved.as_ref().map(|metadata| metadata.id.clone()),
             });
-            pin::open_for_capture(
+            let (doc, doc_path) = saved.as_ref().map_or((None, None), |metadata| {
+                let doc = library::read_annotations(&metadata.id).unwrap_or_else(|error| {
+                    eprintln!("Snipsy: {error}");
+                    None
+                });
+                let path = library::annotations_path(&metadata.id).ok();
+                (doc, path)
+            });
+            editor::window::open(
                 cx,
-                png,
-                &saved_title,
-                cropped.width,
-                cropped.height,
-                scale,
-                pending.gpui_virtual_origin,
+                editor::window::EditorSource {
+                    png,
+                    title: saved_title,
+                    doc,
+                    doc_path,
+                },
             )
         },
     );
@@ -116,11 +129,16 @@ pub fn complete_selection(window: &mut Window, cx: &mut App, selection: Bounds<P
     window.remove_window();
 }
 
-/// Tray "Open": re-pin the most recent capture.
+/// Tray "Open": open the most recent capture in the editor.
 #[cfg_attr(not(windows), allow(dead_code))] // dispatched from the tray
 pub fn open_last_capture(cx: &mut App) {
     if let Some(last) = cx.global::<AppState>().last.clone() {
-        return open_pin_from_png(cx, last.png, &last.title);
+        let png = last
+            .id
+            .as_deref()
+            .and_then(|id| library::read_image_png(id).ok())
+            .unwrap_or(last.png);
+        return open_editor_capture(cx, last.id.as_deref(), png, last.title);
     }
 
     let latest = match library::list_captures() {
@@ -135,7 +153,7 @@ pub fn open_last_capture(cx: &mut App) {
         }
     };
     match library::read_image_png(&latest.id) {
-        Ok(png) => open_pin_from_png(cx, png, &latest.title),
+        Ok(png) => open_editor_capture(cx, Some(&latest.id), png, latest.title),
         Err(error) => eprintln!("Snipsy: {error}"),
     }
 }
@@ -144,12 +162,12 @@ pub fn show_window_picker(cx: &mut App) {
     let windows = match capture::list_windows() {
         Ok(windows) => windows,
         Err(error) => {
-            eprintln!("cleanshot-w: could not list windows: {error}");
+            eprintln!("Snipsy: could not list windows: {error}");
             return;
         }
     };
     if let Err(error) = crate::window_picker::open(cx, windows) {
-        eprintln!("cleanshot-w: {error}");
+        eprintln!("Snipsy: {error}");
     }
 }
 
@@ -158,7 +176,7 @@ pub fn capture_window(window: &mut Window, cx: &mut App, id: u64, title: String)
     let picker_was_visible = platform::win32::set_visible(window, false);
     #[cfg(windows)]
     if !picker_was_visible {
-        eprintln!("cleanshot-w: could not hide the window picker before capture");
+        eprintln!("Snipsy: could not hide the window picker before capture");
         return;
     }
     let (surface, scale) = match capture::capture_window(id, current_settings().include_cursor) {
@@ -168,7 +186,7 @@ pub fn capture_window(window: &mut Window, cx: &mut App, id: u64, title: String)
             if picker_was_visible {
                 platform::win32::set_visible(window, true);
             }
-            eprintln!("cleanshot-w: window capture failed: {error}");
+            eprintln!("Snipsy: window capture failed: {error}");
             return;
         }
     };
@@ -179,21 +197,23 @@ pub fn capture_window(window: &mut Window, cx: &mut App, id: u64, title: String)
             if picker_was_visible {
                 platform::win32::set_visible(window, true);
             }
-            eprintln!("cleanshot-w: {error}");
+            eprintln!("Snipsy: {error}");
             return;
         }
     };
     let title = format!("Window: {}", title.chars().take(480).collect::<String>());
-    let saved_title = match library::save_capture(&png, surface.width, surface.height, &title) {
-        Ok(metadata) => metadata.title,
-        Err(error) => {
-            eprintln!("cleanshot-w: could not save the window capture: {error}");
-            title.clone()
-        }
-    };
+    let (saved_title, saved_id) =
+        match library::save_capture(&png, surface.width, surface.height, &title) {
+            Ok(metadata) => (metadata.title, Some(metadata.id)),
+            Err(error) => {
+                eprintln!("Snipsy: could not save the window capture: {error}");
+                (title.clone(), None)
+            }
+        };
     cx.global_mut::<AppState>().last = Some(LastCapture {
         png: png.clone(),
         title: saved_title.clone(),
+        id: saved_id,
     });
     window.remove_window();
     if let Err(error) = pin::open_for_capture(
@@ -205,7 +225,29 @@ pub fn capture_window(window: &mut Window, cx: &mut App, id: u64, title: String)
         scale,
         platform::gpui_virtual_screen_bounds(cx).origin,
     ) {
-        eprintln!("cleanshot-w: {error}");
+        eprintln!("Snipsy: {error}");
+    }
+}
+
+fn open_editor_capture(cx: &mut App, id: Option<&str>, png: Vec<u8>, title: String) {
+    let doc = id.and_then(|id| match library::read_annotations(id) {
+        Ok(doc) => doc,
+        Err(error) => {
+            eprintln!("Snipsy: {error}");
+            None
+        }
+    });
+    let doc_path = id.and_then(|id| library::annotations_path(id).ok());
+    if let Err(error) = editor::window::open(
+        cx,
+        editor::window::EditorSource {
+            png,
+            title,
+            doc,
+            doc_path,
+        },
+    ) {
+        eprintln!("Snipsy: {error}");
     }
 }
 
@@ -259,10 +301,10 @@ pub fn handle_menu_event(cx: &mut App, id: &str) {
         "open-last" => open_last_capture(cx),
         "toggle-autostart" => match crate::settings::toggle_autostart() {
             Ok(enabled) => eprintln!(
-                "cleanshot-w: launch at startup {}",
+                "Snipsy: launch at startup {}",
                 if enabled { "enabled" } else { "disabled" }
             ),
-            Err(error) => eprintln!("cleanshot-w: {error}"),
+            Err(error) => eprintln!("Snipsy: {error}"),
         },
         "quit" => cx.quit(),
         _ => {}

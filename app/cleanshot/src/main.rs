@@ -1,9 +1,8 @@
-//! Snipsy — pure-native GPUI Windows app (phase 1).
+//! Snipsy — pure-native GPUI Windows app.
 //!
 //! Boots to tray, registers the global capture hotkey, and runs the core
 //! capture loop end to end: full-screen GDI snapshot → rubber-band overlay →
-//! region crop → library → pin window, with clipboard copy and save-dialog.
-//! The editor is a later phase; `flow::AppState` is the extension point.
+//! region crop → library → editor window, with clipboard copy and save-dialog.
 
 mod capture;
 mod clipboard;
@@ -31,7 +30,7 @@ fn main() {
     }
 
     if let Err(error) = settings::sync_autostart() {
-        eprintln!("cleanshot-w: could not sync launch-at-startup setting: {error}");
+        eprintln!("Snipsy: could not sync launch-at-startup setting: {error}");
     }
 
     let args: Vec<String> = std::env::args().collect();
@@ -59,7 +58,8 @@ fn main() {
             overlay::keybindings()
                 .into_iter()
                 .chain(pin::keybindings())
-                .chain(window_picker::keybindings()),
+                .chain(window_picker::keybindings())
+                .chain(editor::window::keybindings()),
         );
 
         // Tray menu → app actions.

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 pub const DOCUMENT_VERSION: u32 = 1;
 
 /// The per-shape color palette, in the old app's order.
-pub const PALETTE: [ &str; 8] = [
+pub const PALETTE: [&str; 8] = [
     "#e03131", // red
     "#f08c00", // orange
     "#f8d12c", // yellow
@@ -33,10 +33,19 @@ pub const DEFAULT_TEXT_SIZE: f32 = 24.0;
 /// Counter badge diameter in image pixels.
 pub const COUNTER_DIAMETER: f32 = 32.0;
 
+fn default_counter_diameter() -> f32 {
+    COUNTER_DIAMETER
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
     pub version: u32,
+    /// The capture-library id whose `image.png` this annotation document
+    /// edits. None is allowed for transient/test documents, but persisted
+    /// library documents always set it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_id: Option<String>,
     pub image_width: u32,
     pub image_height: u32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -48,6 +57,7 @@ impl Document {
     pub fn new(image_width: u32, image_height: u32) -> Self {
         Document {
             version: DOCUMENT_VERSION,
+            image_id: None,
             image_width,
             image_height,
             shapes: Vec::new(),
@@ -79,6 +89,18 @@ impl Document {
         }
         if self.image_width == 0 || self.image_height == 0 {
             return Err("The annotation image size is invalid.".to_string());
+        }
+        if self.shapes.len() > 10_000 {
+            return Err("The annotation document has too many shapes.".to_string());
+        }
+        if let Some(image_id) = &self.image_id
+            && (image_id.is_empty()
+                || image_id.len() > 128
+                || !image_id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'))
+        {
+            return Err("The annotation image reference is invalid.".to_string());
         }
         let mut ids = std::collections::HashSet::new();
         for shape in &self.shapes {
@@ -292,6 +314,8 @@ pub struct CounterShape {
     /// The number this badge displays, 1-based.
     pub n: u64,
     pub color: String,
+    #[serde(default = "default_counter_diameter")]
+    pub diameter: f32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -339,25 +363,25 @@ impl Shape {
                     max_x = max_x.max(*x);
                     max_y = max_y.max(*y);
                 }
-                Rect::new(min_x, min_y, (max_x - min_x).max(1.0), (max_y - min_y).max(1.0))
+                Rect::new(
+                    min_x,
+                    min_y,
+                    (max_x - min_x).max(1.0),
+                    (max_y - min_y).max(1.0),
+                )
             }
-        Shape::Text(text) => {
-            // No font metrics at model level: estimate the rendered block
-            // from character counts (0.6 em per char, 1.3 line height).
-            let lines = text.text.split('\n').count().max(1) as f32;
-            let width = text
-                .text
-                .split('\n')
-                .map(|line| line.chars().count() as f32 * text.size * 0.6)
-                .fold(0.0f32, f32::max);
-            Rect::new(text.x, text.y, width.max(1.0), text.size * 1.3 * lines)
-        }
-            Shape::Counter(shape) => Rect::new(
-                shape.x,
-                shape.y,
-                COUNTER_DIAMETER,
-                COUNTER_DIAMETER,
-            ),
+            Shape::Text(text) => {
+                // No font metrics at model level: estimate the rendered block
+                // from character counts (0.6 em per char, 1.3 line height).
+                let lines = text.text.split('\n').count().max(1) as f32;
+                let width = text
+                    .text
+                    .split('\n')
+                    .map(|line| line.chars().count() as f32 * text.size * 0.6)
+                    .fold(0.0f32, f32::max);
+                Rect::new(text.x, text.y, width.max(1.0), text.size * 1.3 * lines)
+            }
+            Shape::Counter(shape) => Rect::new(shape.x, shape.y, shape.diameter, shape.diameter),
         }
     }
 
@@ -396,8 +420,8 @@ impl Shape {
     }
 
     /// Resize by scaling the shape's geometry from its current bounds onto
-    /// `target`. Shapes without meaningful scaling (text: font size is not
-    /// stretched; counter: fixed diameter) translate only.
+    /// `target`. Text scales by height; counter badges retain their circular
+    /// shape and scale by the smaller axis.
     pub fn scale_to(&mut self, target: &Rect) {
         let original = self.bounds();
         let sx = if original.w > f32::EPSILON {
@@ -438,14 +462,12 @@ impl Shape {
             Shape::Text(shape) => {
                 shape.x = target.x;
                 shape.y = target.y;
+                shape.size = (shape.size * sy).max(1.0);
             }
             Shape::Counter(shape) => {
-                // Keep the badge centered on its original center.
-                let center_x = original.x + original.w / 2.0;
-                let center_y = original.y + original.h / 2.0;
-                let radius = COUNTER_DIAMETER / 2.0;
-                shape.x = center_x + (center_x - shape.x) * sx - radius;
-                shape.y = center_y + (center_y - shape.y) * sy - radius;
+                shape.x = target.x;
+                shape.y = target.y;
+                shape.diameter = (shape.diameter * sx.min(sy)).max(8.0);
             }
         }
     }
@@ -454,16 +476,61 @@ impl Shape {
         if self.id().is_empty() || self.id().len() > 64 {
             return Err("The shape id is invalid.".to_string());
         }
-        let color = match self {
-            Shape::Rectangle(shape) => &shape.color,
-            Shape::Ellipse(shape) => &shape.color,
-            Shape::Arrow(shape) => &shape.color,
-            Shape::Pen(shape) => &shape.color,
-            Shape::Text(shape) => &shape.color,
-            Shape::Counter(shape) => &shape.color,
+        let (color, geometry_valid) = match self {
+            Shape::Rectangle(shape) => (
+                &shape.color,
+                finite(&[shape.x, shape.y, shape.w, shape.h, shape.stroke_width])
+                    && shape.w >= 0.0
+                    && shape.h >= 0.0
+                    && valid_stroke(shape.stroke_width),
+            ),
+            Shape::Ellipse(shape) => (
+                &shape.color,
+                finite(&[shape.x, shape.y, shape.w, shape.h, shape.stroke_width])
+                    && shape.w >= 0.0
+                    && shape.h >= 0.0
+                    && valid_stroke(shape.stroke_width),
+            ),
+            Shape::Arrow(shape) => (
+                &shape.color,
+                finite(&[shape.x1, shape.y1, shape.x2, shape.y2, shape.stroke_width])
+                    && valid_stroke(shape.stroke_width),
+            ),
+            Shape::Pen(shape) => (
+                &shape.color,
+                shape.points.len() >= 2
+                    && shape.points.len() <= 100_000
+                    && shape.points.iter().all(|point| finite(&[point.0, point.1]))
+                    && valid_stroke(shape.stroke_width),
+            ),
+            Shape::Text(shape) => (
+                &shape.color,
+                finite(&[shape.x, shape.y, shape.size])
+                    && shape.size > 0.0
+                    && shape.size <= 100_000.0
+                    && shape.text.len() <= 1_000_000,
+            ),
+            Shape::Counter(shape) => (
+                &shape.color,
+                finite(&[shape.x, shape.y, shape.diameter])
+                    && shape.diameter >= 8.0
+                    && shape.diameter <= 100_000.0
+                    && shape.n > 0,
+            ),
         };
+        if !geometry_valid {
+            return Err(format!("The geometry for shape {} is invalid.", self.id()));
+        }
         validate_color(color)
     }
+}
+
+fn finite(values: &[f32]) -> bool {
+    values.iter().all(|value| value.is_finite())
+}
+
+fn valid_stroke(width: f32) -> bool {
+    width > 0.0 && width <= 100_000.0
 }
 
 fn validate_color(color: &str) -> Result<(), String> {
@@ -495,7 +562,9 @@ mod tests {
 
     fn sample_document() -> Document {
         let mut document = Document::new(800, 600);
-        document.shapes.push(rect_shape("a", 10.0, 10.0, 100.0, 50.0));
+        document
+            .shapes
+            .push(rect_shape("a", 10.0, 10.0, 100.0, 50.0));
         document.shapes.push(Shape::Arrow(ArrowShape {
             id: "b".to_string(),
             x1: 200.0,
@@ -516,7 +585,8 @@ mod tests {
 
     #[test]
     fn document_round_trips_through_json() {
-        let document = sample_document();
+        let mut document = sample_document();
+        document.image_id = Some("capture-42".to_string());
         let bytes = document.to_bytes().unwrap();
         let parsed = Document::from_bytes(&bytes).unwrap();
         assert_eq!(parsed, document);
@@ -560,6 +630,21 @@ mod tests {
     }
 
     #[test]
+    fn invalid_shape_geometry_is_rejected_at_parse_time() {
+        let bytes = br##"{
+            "version": 1,
+            "imageId": "capture-1",
+            "imageWidth": 100,
+            "imageHeight": 100,
+            "shapes": [
+                {"type": "rectangle", "id": "r", "x": 0, "y": 0, "w": -10, "h": 10,
+                 "color": "#e03131", "strokeWidth": 4}
+            ]
+        }"##;
+        assert!(Document::from_bytes(bytes).is_err());
+    }
+
+    #[test]
     fn duplicate_shape_ids_are_rejected() {
         let mut document = Document::new(100, 100);
         document.shapes.push(rect_shape("a", 0.0, 0.0, 10.0, 10.0));
@@ -572,7 +657,10 @@ mod tests {
         let mut document = sample_document();
         assert!(document.bring_forward(0));
         assert_eq!(document.shapes[1].id(), "a");
-        assert!(!document.bring_forward(document.shapes.len() - 1), "topmost cannot go forward");
+        assert!(
+            !document.bring_forward(document.shapes.len() - 1),
+            "topmost cannot go forward"
+        );
         assert!(document.send_backward(1));
         assert_eq!(document.shapes[0].id(), "a");
         assert!(!document.send_backward(0), "bottom cannot go back");
@@ -582,7 +670,14 @@ mod tests {
     fn delete_removes_only_the_target_shape() {
         let mut document = sample_document();
         assert!(document.delete(&"b".to_string()));
-        assert_eq!(document.shapes.iter().map(|s| s.id().as_str()).collect::<Vec<_>>(), ["a", "c"]);
+        assert_eq!(
+            document
+                .shapes
+                .iter()
+                .map(|s| s.id().as_str())
+                .collect::<Vec<_>>(),
+            ["a", "c"]
+        );
         assert!(!document.delete(&"b".to_string()));
     }
 
@@ -596,6 +691,7 @@ mod tests {
             y: 0.0,
             n: 3,
             color: "#e03131".to_string(),
+            diameter: COUNTER_DIAMETER,
         }));
         assert_eq!(document.next_counter_number(), 4);
     }
@@ -623,7 +719,9 @@ mod tests {
     fn crop_touching_only_an_edge_counts_as_outside() {
         // The old app deletes shapes whose bounds merely touch the crop edge.
         let mut document = Document::new(200, 200);
-        document.shapes.push(rect_shape("edge", 100.0, 50.0, 50.0, 50.0));
+        document
+            .shapes
+            .push(rect_shape("edge", 100.0, 50.0, 50.0, 50.0));
         document.crop(&Rect::new(0.0, 0.0, 100.0, 100.0));
         assert!(document.shapes.is_empty());
     }
@@ -653,6 +751,41 @@ mod tests {
     }
 
     #[test]
+    fn resizing_text_and_counters_scales_their_visible_geometry() {
+        let mut text = Shape::Text(TextShape {
+            id: "t".to_string(),
+            x: 10.0,
+            y: 10.0,
+            text: "text".to_string(),
+            size: 20.0,
+            color: "#1a1a1a".to_string(),
+        });
+        text.scale_to(&Rect::new(20.0, 30.0, 100.0, 52.0));
+        match text {
+            Shape::Text(text) => {
+                assert_eq!((text.x, text.y, text.size), (20.0, 30.0, 40.0));
+            }
+            other => panic!("expected text, got {other:?}"),
+        }
+
+        let mut counter = Shape::Counter(CounterShape {
+            id: "counter".to_string(),
+            x: 10.0,
+            y: 10.0,
+            n: 1,
+            color: "#e03131".to_string(),
+            diameter: 32.0,
+        });
+        counter.scale_to(&Rect::new(20.0, 30.0, 64.0, 48.0));
+        match counter {
+            Shape::Counter(counter) => {
+                assert_eq!((counter.x, counter.y, counter.diameter), (20.0, 30.0, 48.0));
+            }
+            other => panic!("expected counter, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn arrow_head_points_back_along_the_line() {
         let arrow = ArrowShape {
             id: "arrow".to_string(),
@@ -668,7 +801,10 @@ mod tests {
         assert!(head[0].0 > 100.0);
         assert_eq!(head[1].0, 100.0);
         assert_eq!(head[2].0, 100.0);
-        assert!((head[1].1 - head[2].1).abs() >= 19.0, "base spans the head size");
+        assert!(
+            (head[1].1 - head[2].1).abs() >= 19.0,
+            "base spans the head size"
+        );
     }
 
     #[test]

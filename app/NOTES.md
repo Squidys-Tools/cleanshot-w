@@ -1,18 +1,22 @@
-# Snipsy GPUI app — phase 1 notes
+# Snipsy GPUI app — phase 2 notes
 
-Phase 1 vertical slice of the Tauri → pure-native GPUI port: tray shell,
-global hotkey, capture overlay, GDI region capture, capture library, pin
-window, clipboard copy, save dialog. The editor, OCR, window capture,
-autostart, and preferences UI are later phases.
+Phase 1 added the tray shell, global hotkey, capture overlay, GDI region
+capture, library, and pin window. Phase 2 adds the native annotation editor:
+image-space document model, shapes, undo/redo, crop, and full-resolution
+flatten/export. OCR, blur/pixelate/redact, window capture, autostart, icon
+library, and preferences remain later phases.
 
-Branches off `gpui-overlay-spike` (PR #35); the spike's overlay/pin/window
-code was copied (not imported) into this app tree. Nothing outside `app/`
-and the new workflow was changed.
+The stack is `gpui-overlay-spike` (PR #35) → `gpui-port-1` (PR #36) →
+`gpui-editor`. The spike's overlay/pin/window code was copied (not imported)
+into this app tree. The phase-2 changes stay in `app/` and the Windows build
+workflow.
 
 ## Layout
 
-`app/` is its own Cargo workspace with one binary crate, `cleanshot-w`
-(`app/target/release/cleanshot-w.exe`):
+`app/` is its own Cargo workspace with two binaries: `cleanshot-w`
+(`app/target/release/cleanshot-w.exe`) and `cleanshot-editor`
+(`app/target/release/cleanshot-editor.exe`, a standalone image-path test
+entry point for the same editor window):
 
 | Module | Ported from | Notes |
 | --- | --- | --- |
@@ -25,6 +29,10 @@ and the new workflow was changed.
 | `clipboard.rs` | `src-tauri/src/clipboard.rs` | arboard image copy (RGBA in, platform format handled by arboard). |
 | `save_dialog.rs` | — | `rfd` file dialog replaces the Tauri anchor-download hack. |
 | `tray.rs` | — | `tray-icon` directly (what Tauri's tray plugin wraps). Windows-only until the Linux loop has a use for it; `--capture` / `--pin <file>` drive the flow there. |
+| `editor/model.rs` | new | Version-1 JSON document; shape geometry is in original image pixels and the document carries its capture id. Old tldraw `annotations.json` files are not parsed; those captures open un-annotated. |
+| `editor/history.rs` / `hit_test.rs` | new | Snapshot undo/redo with interaction stopping points, hit-testing, and resize handles. Crop snapshots include the base image so crop undo restores pixels. |
+| `editor/flatten.rs` | new | tiny-skia CPU rasterization at original image dimensions, with fontdue text; save and clipboard use the flattened PNG. |
+| `editor/window.rs` | new | GPUI canvas, zoom/pan, selection, shape tools, text editing, crop, palette/width controls, and export actions. |
 
 ## The two hardware bugs, fixed at the source
 
@@ -70,48 +78,43 @@ Hotkey or tray "New capture" → full-virtual-screen GDI snapshot *before*
 the overlay opens (so the overlay scrim never lands in the PNG, same order
 as the Tauri app) → overlay rubber-band selection (logical px) → convert to
 physical, crop, encode PNG → save into the library (atomic index update) →
-pin window shows the capture → `ctrl+c` copies as image, `ctrl+s` opens a
-save dialog, Esc closes, `+`/`-` opacity, `t` click-through, drag to move.
+open the editor. Tray "Open last" reloads the latest library image and its
+version-1 document. The editor stores `annotations.json` alongside
+`image.png`; crop replaces the library image and repositions/intersects shapes.
+`Ctrl+S` saves a full-resolution flattened PNG; `Ctrl+C` copies that flattened
+image. The standalone `cleanshot-editor <image.png>` binary opens a transient
+image without library persistence.
 
 ## Verified vs not
 
-Verified on Linux x11: `cargo build` (full link), `cargo fmt --check`,
-`cargo clippy --all-targets -- -D warnings`, `cargo test` (20 tests:
-selection validation, crop, PNG round-trip, DPI conversion, swizzle,
-settings shortcut validation and hotkey parsing, library validation).
-Windows-only code paths
-(`cfg(windows)`: tray, RegisterHotKey thread, GDI capture, single-instance
-mutex) do not compile on Linux and were written against the vendored
-gpui-pre-windows source and the Tauri app's proven capture code. The
-`windows-2025` CI job runs Clippy, unit tests, and the release build, but
-**runtime behavior on Windows hardware is not yet verified** — that is what
-the artifact is for.
-In particular unverified-on-hardware: the color fix (logic verified against
-gpui-pre source), the exact DPI conversion at 150% (unit-tested, not run),
-tray menu event delivery through GPUI's message loop, and `WM_HOTKEY`
-delivery from the hotkey thread.
+Phase 1 passes Linux validation: formatting, strict Clippy, all-target checks,
+20 unit tests, and a release build. The Windows GNU-target check and Clippy
+also pass. The `windows-2025` CI job runs Clippy, unit tests, and release builds
+for both binaries. Phase 1 was verified on Windows hardware at 150% scaling.
+
+The Linux cloud desktop did not display a GPUI window, so the editor UI and
+export still need a Windows hardware run.
 
 ## How to run on Windows
 
 Download the `cleanshot-w-app-windows` artifact (Actions → "App Windows
 build" → your commit → Artifacts) and run `cleanshot-w.exe`. It lives in the
-tray; the hotkey (default `ctrl+shift+4`, read from
-`%LOCALAPPDATA%/Snipsy/settings.json`) starts a capture. If the Snipsy
-directory does not exist but `%LOCALAPPDATA%/CleanShotW` does, the first
-launch renames that legacy directory to `Snipsy`, keeping settings and
-capture-library data together; an existing `Snipsy` directory always wins.
-A second launch
-exits (single-instance mutex).
+tray, and the hotkey (default `ctrl+shift+4`, read from
+`%LOCALAPPDATA%/Snipsy/settings.json`) starts a capture. If `Snipsy` does not
+exist but `%LOCALAPPDATA%/CleanShotW` does, the first launch migrates the old
+settings and capture library; an existing `Snipsy` directory wins. A second
+launch exits (single-instance mutex), and a successful capture opens the
+editor. To test it separately, run `cleanshot-editor.exe <image.png>`.
 
-## Extension points for phase 2+
+## Extension points for phase 3+
 
-- `flow::AppState` is the app-wide state root; the editor window plugs in
-  next to the pin window.
-- `library.rs` annotations support is already in the index format; the
-  editor writes them.
+- `editor/model.rs` is independent of GPUI and stores only app-owned
+  version-1 documents; no tldraw migration is attempted.
+- `editor/flatten.rs` is CPU-only so export remains independent of display
+  zoom and GPU readback.
 - `capture.rs` keeps the full-screen-then-crop shape, so a future
   "window capture" path can hand a different `CaptureSurface` to the same
-  crop/library/pin pipeline. Cursor drawing is ported and driven by the
+  crop/library/editor pipeline. Cursor drawing is ported and driven by the
   `includeCursor` setting.
 - Hotkey settings are read at startup; re-registration on settings change
   slots into `hotkey.rs`.

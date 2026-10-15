@@ -37,3 +37,7 @@ windows-sys = { version = "0.61", features = [
 [[bin]]
 name = "cleanshot-w"
 path = "src/main.rs"
+
+[[bin]]
+name = "cleanshot-editor"
+path = "src/editor_main.rs"

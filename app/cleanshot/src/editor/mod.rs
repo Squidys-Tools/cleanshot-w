@@ -2,7 +2,7 @@
 //! CPU flatten, and the GPUI editor window.
 
 pub mod flatten;
-pub mod hit_test;
 pub mod history;
+pub mod hit_test;
 pub mod model;
 pub mod window;

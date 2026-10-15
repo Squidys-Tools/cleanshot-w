@@ -3,11 +3,7 @@
 //! image pixels) a stroke may be from the cursor and still count — the editor
 //! passes `screen_tolerance / zoom` so the physical tolerance is constant.
 
-use super::model::{ArrowShape, COUNTER_DIAMETER, Document, PenShape, Rect, Shape};
-
-/// How far (in image pixels) a shape's stroke may be from the cursor and
-/// still be hit, at minimum — combined with the stroke's own width.
-const BASE_TOLERANCE: f32 = 4.0;
+use super::model::{Document, PenShape, Rect, Shape};
 
 /// One of the 8 resize handles on a selected shape's bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,7 +72,7 @@ impl Handle {
 /// Which shape (index into `document.shapes`) is under the point, if any.
 /// Topmost shape wins — the document draws later shapes on top.
 pub fn hit_test(document: &Document, px: f32, py: f32, tolerance: f32) -> Option<usize> {
-    let tolerance = tolerance.max(BASE_TOLERANCE);
+    let tolerance = tolerance.max(0.0);
     document
         .shapes
         .iter()
@@ -88,9 +84,13 @@ pub fn hit_test(document: &Document, px: f32, py: f32, tolerance: f32) -> Option
 
 fn shape_contains(shape: &Shape, px: f32, py: f32, tolerance: f32) -> bool {
     match shape {
-        Shape::Rectangle(rect) => {
-            stroke_contains_rect(rect.x, rect.y, rect.w, rect.h, px, py, rect.stroke_width, tolerance)
-        }
+        Shape::Rectangle(rect) => stroke_contains_rect(
+            Rect::new(rect.x, rect.y, rect.w, rect.h),
+            px,
+            py,
+            rect.stroke_width,
+            tolerance,
+        ),
         Shape::Ellipse(ellipse) => {
             // Distance from the ellipse edge: normalize both the point and a
             // tolerance ring into the unit circle and compare radii.
@@ -127,9 +127,9 @@ fn shape_contains(shape: &Shape, px: f32, py: f32, tolerance: f32) -> bool {
             bounds.contains(px, py) || distance_to_rect_edge(&bounds, px, py) <= tolerance
         }
         Shape::Counter(counter) => {
-            let cx = counter.x + COUNTER_DIAMETER / 2.0;
-            let cy = counter.y + COUNTER_DIAMETER / 2.0;
-            let r = COUNTER_DIAMETER / 2.0;
+            let cx = counter.x + counter.diameter / 2.0;
+            let cy = counter.y + counter.diameter / 2.0;
+            let r = counter.diameter / 2.0;
             let dx = px - cx;
             let dy = py - cy;
             (dx * dx + dy * dy).sqrt() <= r + tolerance
@@ -139,7 +139,8 @@ fn shape_contains(shape: &Shape, px: f32, py: f32, tolerance: f32) -> bool {
 
 /// Stroke hit for a rectangle: near the border, or inside when the stroke is
 /// thick enough to cover the middle (small shapes).
-fn stroke_contains_rect(x: f32, y: f32, w: f32, h: f32, px: f32, py: f32, stroke: f32, tolerance: f32) -> bool {
+fn stroke_contains_rect(rect: Rect, px: f32, py: f32, stroke: f32, tolerance: f32) -> bool {
+    let Rect { x, y, w, h } = rect;
     let outer = tolerance + stroke / 2.0;
     let near_x = px >= x - outer && px <= x + w + outer;
     let near_y = py >= y - outer && py <= y + h + outer;
@@ -155,10 +156,10 @@ fn pen_contains(pen: &PenShape, px: f32, py: f32, tolerance: f32) -> bool {
     if pen.points.len() < 2 {
         return false;
     }
-    pen.points
-        .windows(2)
-        .any(|pair| distance_to_segment(px, py, pair[0].0, pair[0].1, pair[1].0, pair[1].1)
-            <= pen.stroke_width / 2.0 + tolerance)
+    pen.points.windows(2).any(|pair| {
+        distance_to_segment(px, py, pair[0].0, pair[0].1, pair[1].0, pair[1].1)
+            <= pen.stroke_width / 2.0 + tolerance
+    })
 }
 
 /// Distance from (px, py) to the closest point of the segment (x1, y1)-(x2, y2).
@@ -220,7 +221,7 @@ pub fn handle_at(bounds: &Rect, px: f32, py: f32, handle_size: f32) -> Option<Ha
 mod tests {
     use super::*;
     use crate::editor::model::{
-        CounterShape, Document, EllipseShape, RectShape, TextShape,
+        ArrowShape, COUNTER_DIAMETER, CounterShape, Document, EllipseShape, RectShape, TextShape,
     };
 
     fn document_with(shape: Shape) -> Document {
@@ -244,10 +245,33 @@ mod tests {
     #[test]
     fn rectangle_border_hits_but_interior_misses() {
         let document = document_with(rect(100.0, 100.0, 200.0, 100.0, 4.0));
-        assert_eq!(hit_test(&document, 100.0, 150.0, 4.0), Some(0), "left border");
-        assert_eq!(hit_test(&document, 300.0, 150.0, 4.0), Some(0), "right border");
-        assert_eq!(hit_test(&document, 200.0, 100.0, 4.0), Some(0), "top border");
-        assert_eq!(hit_test(&document, 200.0, 150.0, 4.0), None, "middle is a miss");
+        assert_eq!(
+            hit_test(&document, 100.0, 150.0, 4.0),
+            Some(0),
+            "left border"
+        );
+        assert_eq!(
+            hit_test(&document, 300.0, 150.0, 4.0),
+            Some(0),
+            "right border"
+        );
+        assert_eq!(
+            hit_test(&document, 200.0, 100.0, 4.0),
+            Some(0),
+            "top border"
+        );
+        assert_eq!(
+            hit_test(&document, 200.0, 150.0, 4.0),
+            None,
+            "middle is a miss"
+        );
+    }
+
+    #[test]
+    fn hit_tolerance_can_shrink_with_zoom() {
+        let document = document_with(rect(100.0, 100.0, 200.0, 100.0, 4.0));
+        assert_eq!(hit_test(&document, 95.0, 150.0, 4.0), Some(0));
+        assert_eq!(hit_test(&document, 95.0, 150.0, 0.25), None);
     }
 
     #[test]
@@ -268,8 +292,16 @@ mod tests {
             stroke_width: 4.0,
         });
         let document = document_with(shape);
-        assert_eq!(hit_test(&document, 300.0, 150.0, 4.0), Some(0), "right vertex");
-        assert_eq!(hit_test(&document, 200.0, 100.0, 4.0), Some(0), "top vertex");
+        assert_eq!(
+            hit_test(&document, 300.0, 150.0, 4.0),
+            Some(0),
+            "right vertex"
+        );
+        assert_eq!(
+            hit_test(&document, 200.0, 100.0, 4.0),
+            Some(0),
+            "top vertex"
+        );
         assert_eq!(hit_test(&document, 200.0, 150.0, 4.0), None, "center");
     }
 
@@ -304,7 +336,11 @@ mod tests {
         });
         let document = document_with(shape);
         assert_eq!(hit_test(&document, 150.0, 0.0, 4.0), Some(0), "mid-line");
-        assert_eq!(hit_test(&document, 290.0, 0.0, 4.0), Some(0), "near the head");
+        assert_eq!(
+            hit_test(&document, 290.0, 0.0, 4.0),
+            Some(0),
+            "near the head"
+        );
         assert_eq!(hit_test(&document, 150.0, 30.0, 4.0), None, "off the line");
     }
 
@@ -357,23 +393,51 @@ mod tests {
             y: 100.0,
             n: 1,
             color: "#e03131".to_string(),
+            diameter: COUNTER_DIAMETER,
         });
         let document = document_with(shape);
         let cx = 100.0 + COUNTER_DIAMETER / 2.0;
-        assert_eq!(hit_test(&document, cx, 100.0 + COUNTER_DIAMETER, 4.0), Some(0));
-        assert_eq!(hit_test(&document, cx + COUNTER_DIAMETER, 100.0 + COUNTER_DIAMETER, 4.0), None);
+        assert_eq!(
+            hit_test(&document, cx, 100.0 + COUNTER_DIAMETER, 4.0),
+            Some(0)
+        );
+        assert_eq!(
+            hit_test(
+                &document,
+                cx + COUNTER_DIAMETER,
+                100.0 + COUNTER_DIAMETER,
+                4.0
+            ),
+            None
+        );
     }
 
     #[test]
     fn handles_map_to_the_right_corners() {
         let bounds = Rect::new(100.0, 100.0, 100.0, 50.0);
         let size = 12.0;
-        assert_eq!(handle_at(&bounds, 100.0, 100.0, size), Some(Handle::NorthWest));
-        assert_eq!(handle_at(&bounds, 200.0, 100.0, size), Some(Handle::NorthEast));
-        assert_eq!(handle_at(&bounds, 200.0, 150.0, size), Some(Handle::SouthEast));
-        assert_eq!(handle_at(&bounds, 100.0, 150.0, size), Some(Handle::SouthWest));
+        assert_eq!(
+            handle_at(&bounds, 100.0, 100.0, size),
+            Some(Handle::NorthWest)
+        );
+        assert_eq!(
+            handle_at(&bounds, 200.0, 100.0, size),
+            Some(Handle::NorthEast)
+        );
+        assert_eq!(
+            handle_at(&bounds, 200.0, 150.0, size),
+            Some(Handle::SouthEast)
+        );
+        assert_eq!(
+            handle_at(&bounds, 100.0, 150.0, size),
+            Some(Handle::SouthWest)
+        );
         assert_eq!(handle_at(&bounds, 150.0, 100.0, size), Some(Handle::North));
-        assert_eq!(handle_at(&bounds, 150.0, 175.0, size), None, "outside the bounds");
+        assert_eq!(
+            handle_at(&bounds, 150.0, 175.0, size),
+            None,
+            "outside the bounds"
+        );
     }
 
     #[test]
@@ -386,7 +450,11 @@ mod tests {
         assert_eq!(flipped, Rect::new(20.0, 30.0, 180.0, 120.0));
 
         let edge = Handle::East.resize_bounds(&bounds, 160.0, 999.0);
-        assert_eq!(edge, Rect::new(100.0, 100.0, 60.0, 50.0), "vertical edges ignore the y move");
+        assert_eq!(
+            edge,
+            Rect::new(100.0, 100.0, 60.0, 50.0),
+            "vertical edges ignore the y move"
+        );
     }
 
     #[test]

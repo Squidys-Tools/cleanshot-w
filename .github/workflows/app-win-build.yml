@@ -1,6 +1,5 @@
-# Phase 1 of the GPUI port: the app itself. Builds the `app/` workspace on
-# windows-2025 and uploads the exe so it can be run on real Windows hardware
-# (the team has no Windows dev machine attached).
+# Builds the native tray app and standalone editor on windows-2025 and uploads
+# both executables for hardware validation.
 name: App Windows build
 
 on:
@@ -89,12 +88,14 @@ jobs:
       - name: Run tests
         run: cargo test --manifest-path app/Cargo.toml --all-targets
 
-      - name: Build app
-        run: cargo build --release --manifest-path app/Cargo.toml
+      - name: Build native app and editor
+        run: cargo build --release --bins --manifest-path app/Cargo.toml
 
       - name: Upload app exe
         uses: actions/upload-artifact@v4
         with:
           name: cleanshot-w-app-windows
-          path: app/target/release/cleanshot-w.exe
+          path: |
+            app/target/release/cleanshot-w.exe
+            app/target/release/cleanshot-editor.exe
           if-no-files-found: error
