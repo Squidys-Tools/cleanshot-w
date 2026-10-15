@@ -184,7 +184,12 @@ fn x11_click_through(window: &Window, enabled: bool) -> bool {
     if enabled {
         // An empty input region makes every pixel pass clicks through.
         conn.shape_rectangles(SO::SET, SK::INPUT, ClipOrdering::UNSORTED, xid, 0, 0, &[])
-            .is_ok()
+            .ok()
+            // check() flushes the buffered request and inspects the server's
+            // verdict; without it the queued change can be lost when the
+            // connection drops.
+            .and_then(|cookie| cookie.check().ok())
+            .is_some()
     } else {
         // Restore the input region to the full window geometry.
         let geometry = match conn.get_geometry(xid) {
@@ -208,6 +213,8 @@ fn x11_click_through(window: &Window, enabled: bool) -> bool {
                 height: geometry.height,
             }],
         )
-        .is_ok()
+        .ok()
+        .and_then(|cookie| cookie.check().ok())
+        .is_some()
     }
 }

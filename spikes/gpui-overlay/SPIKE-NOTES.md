@@ -9,10 +9,14 @@ GPUI. Two binaries prove the two hardest window types the app needs:
   Escape cancels.
 - **`spike-pin`** (Spike B): a frameless, always-on-top window that displays a
   PNG from the command line. Drag to move, `+`/`-` (or `=`) to change opacity,
-  `t` toggles full click-through, Escape or `q` quits.
+  `t` toggles click-through, Escape or `q` quits.
 
 The existing Tauri app (`src-tauri/`) is untouched; `spikes/gpui-overlay` is its
 own Cargo workspace.
+
+> Note: the CI workflow's `push` trigger is path-filtered, so artifacts build
+> for pushes touching `spikes/gpui-overlay/**` or the workflow file (and for
+> PRs touching them); unrelated pushes don't re-upload an artifact.
 
 ## Which pin worked, and why
 
@@ -44,11 +48,11 @@ weekly snapshots of Zed `main` (`zed@93d7456`, published 2026-10-12).**
 | Borderless + always-on-top on Windows | `WindowKind::PopUp` maps to `WS_EX_TOOLWINDOW | WS_EX_TOPMOST`, style `0` in `gpui-pre-windows/src/window.rs:492` — frameless, topmost, no taskbar entry. Exactly the overlay/pin shape. |
 | Multi-monitor geometry | `cx.displays()` → `PlatformDisplay::bounds()` gives per-monitor bounds; the spike unions them into a virtual screen, then cross-checks against raw `GetSystemMetrics(SM_XVIRTUALSCREEN / SM_YVIRTUALSCREEN / SM_CXVIRTUALSCREEN / SM_CYVIRTUALSCREEN)` (same approach as `src-tauri/src/capture.rs:557`) and takes the larger span. Raw metrics come from `windows-sys` behind `cfg(windows)`. |
 | Rubber-band painting | `canvas()` element + `window.paint_quad(quad(...))` for the translucent fill and `PathBuilder::stroke(2px)` → `window.paint_path(...)` for the border — the same primitives as gpui's `painting` example. Redraw via `cx.notify()` on `on_mouse_move`. |
-| Selection coords | Mouse events give window-relative positions; since the overlay window's origin is the virtual-screen origin, the logged rect is already global. |
+| Selection coords | Mouse events give window-relative positions; the spike adds the window's global origin (the virtual-screen origin, which can be negative on multi-monitor setups) before logging, so the rect is what a real capture would use. |
 | Keyboard (Esc) | `actions!` + `cx.bind_keys([KeyBinding::new("escape", ..., None)])` + `div().key_context(...).track_focus(...)` + `window.focus(...)`. Requires the window to hold focus; works with `focus: true`. |
 | Pin image | `image` crate decode → RGBA8 → `image::Frame::new(rgba)` → `RenderImage::new(vec![frame])` → `img(Arc<RenderImage>)`. The img element converts RGBA→BGRA itself. |
 | Frameless drag | `Window::start_window_move()` is implemented for X11/Wayland but is a **no-op on Windows** (default trait impl). Windows path uses the classic trick behind `cfg(windows)`: `ReleaseCapture()` then `PostMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0)`. HWND obtained through gpui's `HasWindowHandle` impl (`RawWindowHandle::Win32`). |
-| Click-through | Raw Win32 via `windows-sys`: `SetWindowLongPtrW(GWL_EXSTYLE)` with `WS_EX_TRANSPARENT | WS_EX_LAYERED`. GPUI has no API for this. On Linux x11 the same toggle empties the X11 input shape region via `x11rb` (SO::SET / SK::INPUT), so the toggle is testable in the dev loop too. |
+| Click-through | Raw Win32 via `windows-sys`: `SetWindowLongPtrW(GWL_EXSTYLE)` with `WS_EX_TRANSPARENT | WS_EX_LAYERED`. GPUI has no API for this. On Linux x11 the same toggle empties the X11 input shape region via `x11rb` (checked via `cookie.check()` so the request is actually flushed), so the toggle is testable in the dev loop too. This is **mouse** pass-through: the window keeps keyboard focus until the user clicks another window, which is deliberate — it's what lets you press `t` again to undo the toggle. |
 | Opacity | `div().opacity(f32)` re-rendered from state; `+`/`-`/`=` bound as actions. |
 
 ## Known limitations and risks
@@ -78,8 +82,10 @@ weekly snapshots of Zed `main` (`zed@93d7456`, published 2026-10-12).**
   but mixed-DPI rect math is only verified by inspection.
 - `spike-pin` decodes the PNG fully into memory at startup; no progressive
   loading, which is fine for a spike (pins are screenshots).
-- `gpui-pre` re-publishes weekly and snapshots can break APIs; pin the exact
-  `0.3.9` until the port starts, then bump deliberately.
+- `gpui-pre` re-publishes weekly and snapshots can break APIs; both crates are
+  pinned to the exact `=0.3.9` requirement (plus a committed `Cargo.lock`) so a
+  lockfile refresh can't silently bump onto a breaking snapshot. Bump
+  deliberately when the port starts.
 
 ## How to run on Windows
 

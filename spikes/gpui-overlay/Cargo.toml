@@ -7,9 +7,9 @@ publish = false
 [workspace]
 
 [dependencies]
-gpui-pre = "0.3.9"
+gpui-pre = "=0.3.9"
 raw-window-handle = "0.6"
-gpui-pre-platform = "0.3.9"
+gpui-pre-platform = "=0.3.9"
 image = "0.25"
 
 [target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]

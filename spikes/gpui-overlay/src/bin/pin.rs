@@ -51,7 +51,9 @@ impl Render for PinWindow {
                 this.click_through = !this.click_through;
                 let applied = set_click_through(window, this.click_through);
                 println!(
-                    "click-through: {} (applied: {})",
+                    "click-through: {} (applied: {}) — mouse now passes through; \
+                     keyboard stays with this window until you click another one, \
+                     which is what lets you press t again to undo",
                     this.click_through, applied
                 );
                 let _ = cx;

@@ -111,16 +111,18 @@ impl Render for Overlay {
             }))
             .on_mouse_up(
                 MouseButton::Left,
-                cx.listener(|this, ev: &MouseUpEvent, _, cx| {
+                cx.listener(|this, ev: &MouseUpEvent, window, cx| {
                     if let Some(start) = this.drag_start {
                         let end = ev.position;
-                        // ev.position is window-relative; the overlay window's
-                        // origin is the virtual screen origin, so this is
-                        // already the global rect a real capture would use.
+                        // ev.position is window-relative; add the window's
+                        // global origin (the virtual screen origin, which can
+                        // be negative on multi-monitor setups) to get the
+                        // screen coordinates a real capture would use.
+                        let origin = window.bounds().origin;
                         println!(
                             "selection: x={} y={} w={} h={}",
-                            f32::from(start.x.min(end.x)) as i32,
-                            f32::from(start.y.min(end.y)) as i32,
+                            f32::from(origin.x + start.x.min(end.x)) as i32,
+                            f32::from(origin.y + start.y.min(end.y)) as i32,
                             f32::from((start.x - end.x).abs()) as i32,
                             f32::from((start.y - end.y).abs()) as i32
                         );
