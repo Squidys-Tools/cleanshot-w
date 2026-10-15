@@ -58,6 +58,13 @@ jobs:
       - name: Check compile
         run: cargo check --manifest-path app/Cargo.toml
 
+      - name: Cross-check the Windows cfg code (mingw, check only)
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          sudo apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64
+          cargo check --manifest-path app/Cargo.toml --target x86_64-pc-windows-gnu
+          cargo clippy --manifest-path app/Cargo.toml --target x86_64-pc-windows-gnu --all-targets -- -D warnings
+
   windows-build:
     name: Windows build
     runs-on: windows-2025

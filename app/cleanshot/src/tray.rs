@@ -22,7 +22,7 @@ pub fn create() -> Result<Tray, String> {
     let new_capture = MenuItem::with_id(NEW_CAPTURE_ID, "New capture", true, None);
     let open_last = MenuItem::with_id(OPEN_LAST_ID, "Open last capture", true, None);
     let quit = MenuItem::with_id(QUIT_ID, "Quit", true, None);
-    let mut menu = Menu::new();
+    let menu = Menu::new();
     menu.append_items(&[&new_capture, &open_last, &quit])
         .map_err(|error| format!("Could not build the tray menu: {error}"))?;
 

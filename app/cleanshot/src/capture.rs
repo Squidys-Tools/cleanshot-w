@@ -156,7 +156,6 @@ pub fn capture_surface(include_cursor: bool) -> Result<CaptureSurface, String> {
 mod windows_capture {
     use super::CaptureSurface;
     use std::ptr::null_mut;
-    use windows_sys::Win32::Foundation::{LPARAM, RECT};
     use windows_sys::Win32::Graphics::Gdi::{
         BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CAPTUREBLT, CreateCompatibleBitmap,
         CreateCompatibleDC, DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetDIBits, HBITMAP, HDC,

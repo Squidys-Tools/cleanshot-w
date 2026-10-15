@@ -17,8 +17,6 @@ mod save_dialog;
 mod settings;
 #[cfg(windows)]
 mod tray;
-#[cfg(windows)]
-mod tray;
 
 fn main() {
     capture::configure_dpi_awareness();

@@ -163,19 +163,6 @@ pub mod win32 {
         }
     }
 
-    /// Returns (x, y, width, height) of the virtual screen in physical
-    /// pixels, mirroring `src-tauri/src/capture.rs`.
-    pub fn raw_virtual_screen_metrics() -> (i32, i32, i32, i32) {
-        unsafe {
-            (
-                winmsg::GetSystemMetrics(winmsg::SM_XVIRTUALSCREEN),
-                winmsg::GetSystemMetrics(winmsg::SM_YVIRTUALSCREEN),
-                winmsg::GetSystemMetrics(winmsg::SM_CXVIRTUALSCREEN),
-                winmsg::GetSystemMetrics(winmsg::SM_CYVIRTUALSCREEN),
-            )
-        }
-    }
-
     /// WS_EX_TRANSPARENT + WS_EX_LAYERED makes the window invisible to hit
     /// testing. Note: pairing WS_EX_LAYERED with a DirectX swapchain window is
     /// the historically fragile part on NVIDIA + DirectComposition (zed issue

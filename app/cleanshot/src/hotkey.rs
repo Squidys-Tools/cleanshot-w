@@ -11,6 +11,9 @@
 
 use crossbeam_channel::Receiver;
 
+#[cfg(windows)]
+use crate::settings::current_settings;
+
 pub struct HotkeyEvents {
     pub receiver: Receiver<()>,
 }
