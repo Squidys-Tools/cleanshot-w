@@ -1,0 +1,86 @@
+# Phase 1 of the GPUI port: the app itself. Builds the `app/` workspace on
+# windows-2025 and uploads the exe so it can be run on real Windows hardware
+# (the team has no Windows dev machine attached).
+name: App Windows build
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - ".github/workflows/app-win-build.yml"
+  push:
+    paths:
+      - "app/**"
+      - ".github/workflows/app-win-build.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-check:
+    # Keeps the Linux x11 dev loop honest: the app must keep compiling and
+    # linting clean off-Windows too.
+    name: Linux check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install GPUI Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libxkbcommon-dev libwayland-dev
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "app -> target"
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path app/Cargo.toml -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --manifest-path app/Cargo.toml --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test --manifest-path app/Cargo.toml
+
+      - name: Check compile
+        run: cargo check --manifest-path app/Cargo.toml
+
+  windows-build:
+    name: Windows build
+    runs-on: windows-2025
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "app -> target"
+
+      - name: Build app
+        run: cargo build --release --manifest-path app/Cargo.toml
+
+      - name: Upload app exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleanshot-w-app-windows
+          path: app/target/release/cleanshot-w.exe
+          if-no-files-found: error
