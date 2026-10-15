@@ -33,9 +33,9 @@ available until that Windows job runs.
 
 | Sample | Tesseract exact | CER | WER | Confidence | Elapsed |
 | --- | --- | ---: | ---: | ---: | ---: |
-| `clean-lines.png` | Yes | 0.0% | 0.0% | 93% | 480 ms |
-| `settings-text.png` | No (`DPI` → `DPl`) | 2.4% | 14.3% | 94% | 377 ms |
-| `low-contrast.png` | Yes | 0.0% | 0.0% | 95% | 349 ms |
+| `clean-lines.png` | Yes | 0.0% | 0.0% | 93% | 290 ms |
+| `settings-text.png` | No (`DPI` → `DPl`) | 2.4% | 14.3% | 94% | 237 ms |
+| `low-contrast.png` | Yes | 0.0% | 0.0% | 95% | 185 ms |
 
 The Linux Tesseract CLI release binary measured **560,440 bytes** on this
 runner. The Windows workflow measures the combined CLI against a separate
