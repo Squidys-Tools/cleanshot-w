@@ -1,0 +1,11 @@
+clean-lines.png
+CleanShot W OCR sample.
+Save 1 PNG.
+
+settings-text.png
+Window 2: Settings
+Scale 150% | DPI-aware.
+
+low-contrast.png
+Capture at 08:42
+Status: READY

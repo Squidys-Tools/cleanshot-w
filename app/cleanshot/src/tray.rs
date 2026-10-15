@@ -10,6 +10,8 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 
 pub const NEW_CAPTURE_ID: &str = "new-capture";
 pub const OPEN_LAST_ID: &str = "open-last";
+pub const CAPTURE_WINDOW_ID: &str = "capture-window";
+pub const TOGGLE_AUTOSTART_ID: &str = "toggle-autostart";
 pub const QUIT_ID: &str = "quit";
 const APP_NAME: &str = "Snipsy";
 
@@ -22,12 +24,23 @@ pub struct Tray {
 pub fn create() -> Result<Tray, String> {
     let brand = MenuItem::with_id("snipsy-title", APP_NAME, false, None);
     let new_capture = MenuItem::with_id(NEW_CAPTURE_ID, "New capture", true, None);
+    let capture_window = MenuItem::with_id(CAPTURE_WINDOW_ID, "Capture a window", true, None);
+    let toggle_autostart =
+        MenuItem::with_id(TOGGLE_AUTOSTART_ID, "Toggle launch at startup", true, None);
     let open_last = MenuItem::with_id(OPEN_LAST_ID, "Open Snipsy", true, None);
     let quit = MenuItem::with_id(QUIT_ID, "Quit", true, None);
     let separator = PredefinedMenuItem::separator();
     let menu = Menu::new();
-    menu.append_items(&[&brand, &separator, &new_capture, &open_last, &quit])
-        .map_err(|error| format!("Could not build the tray menu: {error}"))?;
+    menu.append_items(&[
+        &brand,
+        &separator,
+        &new_capture,
+        &capture_window,
+        &open_last,
+        &toggle_autostart,
+        &quit,
+    ])
+    .map_err(|error| format!("Could not build the tray menu: {error}"))?;
 
     let icon = tray_icon::Icon::from_rgba(app_icon_rgba(32, 32), 32, 32)
         .map_err(|error| format!("Could not build the tray icon: {error}"))?;

@@ -1,0 +1,143 @@
+name: OCR evaluation crate
+
+on:
+  pull_request:
+    paths:
+      - "ocr/**"
+      - ".github/workflows/ocr-eval.yml"
+  push:
+    paths:
+      - "ocr/**"
+      - ".github/workflows/ocr-eval.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ocr-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-check:
+    name: Linux Tesseract check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Tesseract build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang libleptonica-dev libtesseract-dev tesseract-ocr-eng
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "ocr -> target"
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path ocr/Cargo.toml -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --manifest-path ocr/Cargo.toml --all-targets -- -D warnings
+
+      - name: Run unit tests
+        run: cargo test --manifest-path ocr/Cargo.toml
+
+      - name: Build CLI and evaluate generated samples
+        run: |
+          cargo build --release --manifest-path ocr/Cargo.toml
+          python3 ocr/scripts/evaluate_samples.py --binary ocr/target/release/cleanshot-ocr
+          stat -c 'Linux CLI binary size: %s bytes' ocr/target/release/cleanshot-ocr
+
+      - name: Cross-check Windows.Media.Ocr cfg code
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          cargo check --manifest-path ocr/Cargo.toml --target x86_64-pc-windows-gnu --no-default-features
+
+  windows-build:
+    name: Windows CLI build and artifact
+    runs-on: windows-2025
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "ocr -> target"
+
+      - name: Install Tesseract through vcpkg
+        shell: pwsh
+        run: |
+          $vcpkgRoot = Join-Path $env:RUNNER_TEMP "vcpkg"
+          git clone --depth 1 https://github.com/microsoft/vcpkg.git $vcpkgRoot
+          & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & (Join-Path $vcpkgRoot "vcpkg.exe") install tesseract:x64-windows-static
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKGRS_TRIPLET=x64-windows-static" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build Windows OCR CLIs
+        shell: pwsh
+        run: |
+          cargo build --release --manifest-path ocr/Cargo.toml --no-default-features
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item "ocr/target/release/cleanshot-ocr.exe" "ocr/target/release/cleanshot-ocr-winrt-only.exe"
+          cargo build --release --manifest-path ocr/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Stage CLI and English fallback data
+        shell: pwsh
+        run: |
+          $stage = "ocr/dist"
+          New-Item -ItemType Directory -Force -Path "$stage/tessdata" | Out-Null
+          Copy-Item "ocr/target/release/cleanshot-ocr.exe" $stage
+          Copy-Item "ocr/target/release/cleanshot-ocr-winrt-only.exe" $stage
+          Invoke-WebRequest `
+            -Uri "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/eng.traineddata" `
+            -OutFile "$stage/tessdata/eng.traineddata"
+          $exeBytes = (Get-Item "$stage/cleanshot-ocr.exe").Length
+          $winrtBytes = (Get-Item "$stage/cleanshot-ocr-winrt-only.exe").Length
+          $modelBytes = (Get-Item "$stage/tessdata/eng.traineddata").Length
+          "Windows CLI binary size: $exeBytes bytes" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "WinRT-only CLI binary size: $winrtBytes bytes" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "Tesseract binding binary-size delta: $($exeBytes - $winrtBytes) bytes" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          "English Tesseract traineddata: $modelBytes bytes" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Set up Python for OCR sample evaluation
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Compare both engines on Windows sample images
+        shell: pwsh
+        run: |
+          $report = "ocr/dist/evaluation-windows.txt"
+          "Windows.Media.Ocr" | Out-File -FilePath $report
+          python ocr/scripts/evaluate_samples.py --binary ocr/target/release/cleanshot-ocr.exe --engine winrt --language en-US | Tee-Object -FilePath $report -Append
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "`nTesseract" | Tee-Object -FilePath $report -Append
+          python ocr/scripts/evaluate_samples.py --binary ocr/target/release/cleanshot-ocr.exe --engine tesseract --language eng --tessdata-dir ocr/dist/tessdata | Tee-Object -FilePath $report -Append
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Content $report | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Upload Windows CLI artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cleanshot-ocr-windows
+          path: ocr/dist/
+          if-no-files-found: error

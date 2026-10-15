@@ -39,6 +39,16 @@ pub struct CaptureSurface {
     pub origin_y: i32,
 }
 
+#[derive(Clone, Debug)]
+pub struct WindowInfo {
+    pub id: u64,
+    pub title: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
 impl CaptureSurface {
     /// Crop a physical rect (global coordinates) out of the surface,
     /// returning the cropped RGBA and the cropped surface's global origin.
@@ -159,18 +169,171 @@ pub fn capture_surface(include_cursor: bool) -> Result<CaptureSurface, String> {
 }
 
 #[cfg(windows)]
+pub fn list_windows() -> Result<Vec<WindowInfo>, String> {
+    windows_capture::list_windows()
+}
+
+#[cfg(not(windows))]
+pub fn list_windows() -> Result<Vec<WindowInfo>, String> {
+    Err("Window capture is only available in the Windows app.".to_string())
+}
+
+#[cfg(windows)]
+pub fn capture_window(
+    window_id: u64,
+    include_cursor: bool,
+) -> Result<(CaptureSurface, f32), String> {
+    windows_capture::capture_window(window_id, include_cursor)
+}
+
+#[cfg(not(windows))]
+pub fn capture_window(
+    _window_id: u64,
+    _include_cursor: bool,
+) -> Result<(CaptureSurface, f32), String> {
+    Err("Window capture is only available in the Windows app.".to_string())
+}
+
+#[cfg(windows)]
 mod windows_capture {
-    use super::CaptureSurface;
+    use super::{CaptureSurface, WindowInfo};
     use std::ptr::null_mut;
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, RECT};
     use windows_sys::Win32::Graphics::Gdi::{
         BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CAPTUREBLT, CreateCompatibleBitmap,
         CreateCompatibleDC, DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetDIBits, HBITMAP, HDC,
         HGDIOBJ, ReleaseDC, SRCCOPY, SelectObject,
     };
+    use windows_sys::Win32::Storage::Xps::PrintWindow;
+    use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CURSORINFO, DI_NORMAL, DrawIconEx, GetCursorInfo, GetIconInfo, GetSystemMetrics, ICONINFO,
-        SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+        CURSORINFO, DI_NORMAL, DrawIconEx, EnumWindows, GetCursorInfo, GetIconInfo,
+        GetSystemMetrics, GetWindowRect, GetWindowTextLengthW, GetWindowTextW, ICONINFO, IsWindow,
+        IsWindowVisible, PW_RENDERFULLCONTENT, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
+        SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
     };
+
+    pub(super) fn list_windows() -> Result<Vec<WindowInfo>, String> {
+        let mut windows = Vec::new();
+        let result = unsafe { EnumWindows(Some(enum_window), &mut windows as *mut _ as LPARAM) };
+        if result == 0 {
+            return Err(last_error("Windows could not enumerate windows"));
+        }
+        Ok(windows)
+    }
+
+    pub(super) fn capture_window(
+        window_id: u64,
+        include_cursor: bool,
+    ) -> Result<(CaptureSurface, f32), String> {
+        let hwnd = window_id as usize as HWND;
+        if hwnd.is_null() || unsafe { IsWindow(hwnd) } == 0 {
+            return Err("The selected window no longer exists.".to_string());
+        }
+        let mut rect: RECT = unsafe { std::mem::zeroed() };
+        if unsafe { GetWindowRect(hwnd, &mut rect) } == 0 {
+            return Err(last_error(
+                "Windows could not read the selected window bounds",
+            ));
+        }
+        let width = rect.right - rect.left;
+        let height = rect.bottom - rect.top;
+        if width <= 0 || height <= 0 {
+            return Err("The selected window has no visible area.".to_string());
+        }
+        let width = u32::try_from(width).map_err(|_| "The selected window is too large.")?;
+        let height = u32::try_from(height).map_err(|_| "The selected window is too large.")?;
+        let width_i32 = i32::try_from(width).map_err(|_| "The selected window is too large.")?;
+        let height_i32 = i32::try_from(height).map_err(|_| "The selected window is too large.")?;
+        let screen_dc = unsafe { GetDC(null_mut()) };
+        if screen_dc.is_null() {
+            return Err(last_error("Could not access the Windows screen"));
+        }
+        let memory_dc = unsafe { CreateCompatibleDC(screen_dc) };
+        if memory_dc.is_null() {
+            unsafe { ReleaseDC(null_mut(), screen_dc) };
+            return Err(last_error("Could not create a Windows capture buffer"));
+        }
+        let bitmap = unsafe { CreateCompatibleBitmap(screen_dc, width_i32, height_i32) };
+        if bitmap.is_null() {
+            unsafe {
+                DeleteDC(memory_dc);
+                ReleaseDC(null_mut(), screen_dc);
+            }
+            return Err(last_error("Could not allocate a Windows capture bitmap"));
+        }
+        let previous = unsafe { SelectObject(memory_dc, bitmap as _) };
+        let printed = unsafe { PrintWindow(hwnd, memory_dc, PW_RENDERFULLCONTENT) };
+        let copied = if printed == 0 {
+            unsafe {
+                BitBlt(
+                    memory_dc,
+                    0,
+                    0,
+                    width_i32,
+                    height_i32,
+                    screen_dc,
+                    rect.left,
+                    rect.top,
+                    SRCCOPY | CAPTUREBLT,
+                )
+            }
+        } else {
+            1
+        };
+        if copied == 0 {
+            cleanup(screen_dc, memory_dc, bitmap, previous);
+            return Err(last_error("Windows could not capture the selected window"));
+        }
+        if include_cursor {
+            draw_cursor(memory_dc, rect.left, rect.top, width, height);
+        }
+        let rgba = read_bitmap(memory_dc, bitmap, width, height);
+        cleanup(screen_dc, memory_dc, bitmap, previous);
+        let scale_factor = (unsafe { GetDpiForWindow(hwnd) } as f32 / 96.0).max(1.0);
+        Ok((
+            CaptureSurface {
+                rgba: rgba?,
+                width,
+                height,
+                origin_x: rect.left,
+                origin_y: rect.top,
+            },
+            scale_factor,
+        ))
+    }
+
+    unsafe extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> windows_sys::core::BOOL {
+        if unsafe { IsWindowVisible(hwnd) } == 0 {
+            return 1;
+        }
+        let length = unsafe { GetWindowTextLengthW(hwnd) };
+        if length <= 0 {
+            return 1;
+        }
+        let mut title = vec![0u16; length as usize + 1];
+        let written = unsafe { GetWindowTextW(hwnd, title.as_mut_ptr(), title.len() as i32) };
+        if written <= 0 {
+            return 1;
+        }
+        let mut rect: RECT = unsafe { std::mem::zeroed() };
+        if unsafe { GetWindowRect(hwnd, &mut rect) } == 0
+            || rect.right <= rect.left
+            || rect.bottom <= rect.top
+        {
+            return 1;
+        }
+        let windows = unsafe { &mut *(lparam as *mut Vec<WindowInfo>) };
+        windows.push(WindowInfo {
+            id: hwnd as usize as u64,
+            title: String::from_utf16_lossy(&title[..written as usize]),
+            x: rect.left,
+            y: rect.top,
+            width: (rect.right - rect.left) as u32,
+            height: (rect.bottom - rect.top) as u32,
+        });
+        1
+    }
 
     pub(super) fn capture_surface(include_cursor: bool) -> Result<CaptureSurface, String> {
         let origin_x = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };

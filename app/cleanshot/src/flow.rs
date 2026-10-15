@@ -140,6 +140,75 @@ pub fn open_last_capture(cx: &mut App) {
     }
 }
 
+pub fn show_window_picker(cx: &mut App) {
+    let windows = match capture::list_windows() {
+        Ok(windows) => windows,
+        Err(error) => {
+            eprintln!("cleanshot-w: could not list windows: {error}");
+            return;
+        }
+    };
+    if let Err(error) = crate::window_picker::open(cx, windows) {
+        eprintln!("cleanshot-w: {error}");
+    }
+}
+
+pub fn capture_window(window: &mut Window, cx: &mut App, id: u64, title: String) {
+    #[cfg(windows)]
+    let picker_was_visible = platform::win32::set_visible(window, false);
+    #[cfg(windows)]
+    if !picker_was_visible {
+        eprintln!("cleanshot-w: could not hide the window picker before capture");
+        return;
+    }
+    let (surface, scale) = match capture::capture_window(id, current_settings().include_cursor) {
+        Ok(capture) => capture,
+        Err(error) => {
+            #[cfg(windows)]
+            if picker_was_visible {
+                platform::win32::set_visible(window, true);
+            }
+            eprintln!("cleanshot-w: window capture failed: {error}");
+            return;
+        }
+    };
+    let png = match capture::encode_png(surface.width, surface.height, &surface.rgba) {
+        Ok(png) => png,
+        Err(error) => {
+            #[cfg(windows)]
+            if picker_was_visible {
+                platform::win32::set_visible(window, true);
+            }
+            eprintln!("cleanshot-w: {error}");
+            return;
+        }
+    };
+    let title = format!("Window: {}", title.chars().take(480).collect::<String>());
+    let saved_title = match library::save_capture(&png, surface.width, surface.height, &title) {
+        Ok(metadata) => metadata.title,
+        Err(error) => {
+            eprintln!("cleanshot-w: could not save the window capture: {error}");
+            title.clone()
+        }
+    };
+    cx.global_mut::<AppState>().last = Some(LastCapture {
+        png: png.clone(),
+        title: saved_title.clone(),
+    });
+    window.remove_window();
+    if let Err(error) = pin::open_for_capture(
+        cx,
+        png,
+        &saved_title,
+        surface.width,
+        surface.height,
+        scale,
+        platform::gpui_virtual_screen_bounds(cx).origin,
+    ) {
+        eprintln!("cleanshot-w: {error}");
+    }
+}
+
 /// Linux dev-loop entry: pin a PNG from a path (`cleanshot-w --pin file.png`).
 pub fn open_pin_from_path(cx: &mut App, path: &str) {
     match std::fs::read(path) {
@@ -186,7 +255,15 @@ fn open_pin_from_png(cx: &mut App, png: Vec<u8>, title: &str) {
 pub fn handle_menu_event(cx: &mut App, id: &str) {
     match id {
         "new-capture" => start_capture(cx),
+        "capture-window" => show_window_picker(cx),
         "open-last" => open_last_capture(cx),
+        "toggle-autostart" => match crate::settings::toggle_autostart() {
+            Ok(enabled) => eprintln!(
+                "cleanshot-w: launch at startup {}",
+                if enabled { "enabled" } else { "disabled" }
+            ),
+            Err(error) => eprintln!("cleanshot-w: {error}"),
+        },
         "quit" => cx.quit(),
         _ => {}
     }

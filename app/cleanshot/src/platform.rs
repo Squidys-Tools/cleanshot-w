@@ -163,6 +163,22 @@ pub mod win32 {
         }
     }
 
+    pub fn set_visible(window: &Window, visible: bool) -> bool {
+        let Some(hwnd) = hwnd_of(window) else {
+            return false;
+        };
+        unsafe {
+            winmsg::ShowWindow(
+                hwnd,
+                if visible {
+                    winmsg::SW_SHOWNOACTIVATE
+                } else {
+                    winmsg::SW_HIDE
+                },
+            ) != 0
+        }
+    }
+
     /// WS_EX_TRANSPARENT + WS_EX_LAYERED makes the window invisible to hit
     /// testing. Note: pairing WS_EX_LAYERED with a DirectX swapchain window is
     /// the historically fragile part on NVIDIA + DirectComposition (zed issue

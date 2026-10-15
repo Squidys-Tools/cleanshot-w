@@ -18,6 +18,7 @@ mod settings;
 mod shortcut;
 #[cfg(windows)]
 mod tray;
+mod window_picker;
 
 fn main() {
     capture::configure_dpi_awareness();
@@ -26,6 +27,10 @@ fn main() {
     if !single_instance::acquire() {
         eprintln!("Snipsy: another instance is already running");
         return;
+    }
+
+    if let Err(error) = settings::sync_autostart() {
+        eprintln!("cleanshot-w: could not sync launch-at-startup setting: {error}");
     }
 
     let args: Vec<String> = std::env::args().collect();
@@ -49,7 +54,12 @@ fn main() {
 
     gpui_platform::application().run(move |cx: &mut gpui::App| {
         cx.set_global(flow::AppState::default());
-        cx.bind_keys(overlay::keybindings().into_iter().chain(pin::keybindings()));
+        cx.bind_keys(
+            overlay::keybindings()
+                .into_iter()
+                .chain(pin::keybindings())
+                .chain(window_picker::keybindings()),
+        );
 
         // Tray menu → app actions.
         #[cfg(windows)]

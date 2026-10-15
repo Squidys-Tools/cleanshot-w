@@ -80,9 +80,144 @@ pub fn validate_shortcut(shortcut: &str) -> Result<String, String> {
     Ok(normalized)
 }
 
+pub fn sync_autostart() -> Result<(), String> {
+    set_autostart(read_settings()?.launch_at_startup)
+}
+
+pub fn toggle_autostart() -> Result<bool, String> {
+    let mut settings = read_settings()?;
+    let enabled = !settings.launch_at_startup;
+    set_autostart(enabled)?;
+    settings.launch_at_startup = enabled;
+    if let Err(error) = write_settings(&settings) {
+        let _ = set_autostart(!enabled);
+        return Err(error);
+    }
+    Ok(enabled)
+}
+
+#[cfg(windows)]
+fn set_autostart(enabled: bool) -> Result<(), String> {
+    use std::ffi::c_void;
+    use std::ptr::{null, null_mut};
+
+    type Hkey = *mut c_void;
+
+    #[link(name = "advapi32")]
+    unsafe extern "system" {
+        fn RegCloseKey(key: Hkey) -> i32;
+        fn RegCreateKeyExW(
+            key: Hkey,
+            sub_key: *const u16,
+            reserved: u32,
+            class: *const u16,
+            options: u32,
+            desired_access: u32,
+            security_attributes: *const c_void,
+            result: *mut Hkey,
+            disposition: *mut u32,
+        ) -> i32;
+        fn RegDeleteValueW(key: Hkey, value_name: *const u16) -> i32;
+        fn RegSetValueExW(
+            key: Hkey,
+            value_name: *const u16,
+            reserved: u32,
+            value_type: u32,
+            data: *const u8,
+            data_size: u32,
+        ) -> i32;
+    }
+
+    const HKEY_CURRENT_USER: Hkey = 0x8000_0001usize as Hkey;
+    const KEY_SET_VALUE: u32 = 0x0002;
+    const REG_SZ: u32 = 1;
+    const ERROR_FILE_NOT_FOUND: i32 = 2;
+    const ERROR_SUCCESS: i32 = 0;
+
+    let value = if enabled {
+        let executable = std::env::current_exe()
+            .map_err(|error| format!("Could not locate the application executable: {error}"))?;
+        let command = quote_autostart_command(&executable.to_string_lossy());
+        let value: Vec<u16> = command.encode_utf16().chain(std::iter::once(0)).collect();
+        let byte_len = u32::try_from(value.len() * std::mem::size_of::<u16>())
+            .map_err(|_| "The startup command is too long.")?;
+        Some((value, byte_len))
+    } else {
+        None
+    };
+    let sub_key: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Run\0"
+        .encode_utf16()
+        .collect();
+    let value_name: Vec<u16> = "CleanShotW\0".encode_utf16().collect();
+    let mut key: Hkey = null_mut();
+    let mut disposition = 0;
+    let status = unsafe {
+        RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            sub_key.as_ptr(),
+            0,
+            null(),
+            0,
+            KEY_SET_VALUE,
+            null(),
+            &mut key,
+            &mut disposition,
+        )
+    };
+    if status != ERROR_SUCCESS {
+        return Err(format!(
+            "Could not open the Windows startup registry key ({status})."
+        ));
+    }
+
+    let result = match value {
+        Some((value, byte_len)) => unsafe {
+            RegSetValueExW(
+                key,
+                value_name.as_ptr(),
+                0,
+                REG_SZ,
+                value.as_ptr().cast(),
+                byte_len,
+            )
+        },
+        None => {
+            let status = unsafe { RegDeleteValueW(key, value_name.as_ptr()) };
+            if status == ERROR_FILE_NOT_FOUND {
+                ERROR_SUCCESS
+            } else {
+                status
+            }
+        }
+    };
+    unsafe { RegCloseKey(key) };
+
+    if result == ERROR_SUCCESS {
+        Ok(())
+    } else {
+        Err(format!(
+            "Could not update Windows startup registration ({result})."
+        ))
+    }
+}
+
+#[cfg(not(windows))]
+fn set_autostart(enabled: bool) -> Result<(), String> {
+    if enabled {
+        Err("Launch at startup is only available in the Windows app.".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn quote_autostart_command(executable: &str) -> String {
+    format!("\"{}\" --minimized", executable.replace('"', "\\\""))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{AppSettings, DEFAULT_CAPTURE_HOTKEY, validate_shortcut};
+    use super::{AppSettings, DEFAULT_CAPTURE_HOTKEY, quote_autostart_command, validate_shortcut};
 
     #[test]
     fn settings_keep_new_defaults_when_loading_old_json() {
@@ -101,5 +236,13 @@ mod tests {
         assert!(validate_shortcut("Ctrl+Shift+F10").is_ok());
         assert!(validate_shortcut("Ctrl+F25").is_err());
         assert!(validate_shortcut("\n").is_err());
+    }
+
+    #[test]
+    fn startup_command_is_quoted_and_minimized() {
+        assert_eq!(
+            quote_autostart_command(r#"C:\Apps\CleanShot W.exe"#),
+            r#""C:\Apps\CleanShot W.exe" --minimized"#
+        );
     }
 }
