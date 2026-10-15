@@ -24,12 +24,13 @@ The evaluator normalizes whitespace, then computes character error rate (CER)
 and word error rate (WER) with edit distance. These are synthetic samples, not
 a representative product benchmark.
 
-The table below is the Tesseract binding's first Linux run on the current cloud
-runner. Each timing includes a fresh process and OCR-engine initialization; it
-is a single-run observation, not a latency distribution. The Windows job adds
-the corresponding Windows.Media.Ocr and Windows Tesseract measurements to
-`evaluation-windows.txt` in the downloadable artifact. WinRT results are not
-available until that Windows job runs.
+The Linux table is one Tesseract run on the current cloud runner. The Windows
+table is one `windows-2025` CI run; the same values are in
+`evaluation-windows.txt` in the downloadable artifact. Every timing includes a
+fresh process and OCR-engine initialization, so these are observations rather
+than latency distributions or steady-state measurements.
+
+**Linux Tesseract baseline**
 
 | Sample | Tesseract exact | CER | WER | Confidence | Elapsed |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -37,12 +38,27 @@ available until that Windows job runs.
 | `settings-text.png` | No (`DPI` → `DPl`) | 2.4% | 14.3% | 94% | 237 ms |
 | `low-contrast.png` | Yes | 0.0% | 0.0% | 95% | 185 ms |
 
-The Linux Tesseract CLI release binary measured **560,440 bytes** on this
-runner. The Windows workflow measures the combined CLI against a separate
-Windows.Media.Ocr-only build and records the Tesseract binary-size delta plus
-the size of the bundled `eng.traineddata`; the Windows numbers are not known
-until CI runs. Windows.Media.Ocr uses installed Windows language resources
-instead of bundling a model.
+**Windows-2025 paired-engine results**
+
+| Sample | WinRT CER/WER | WinRT confidence | WinRT elapsed | Tesseract CER/WER | Tesseract confidence | Tesseract elapsed |
+| --- | --- | --- | ---: | --- | ---: | ---: |
+| `clean-lines.png` | 0.0% / 0.0% | Not exposed | 286 ms | 0.0% / 0.0% | 94% | 69 ms |
+| `settings-text.png` | 0.0% / 0.0% | Not exposed | 119 ms | 2.4% / 14.3% | 94% | 65 ms |
+| `low-contrast.png` | 0.0% / 0.0% | Not exposed | 90 ms | 0.0% / 0.0% | 96% | 71 ms |
+
+On these three synthetic samples, WinRT was exact after whitespace
+normalization; Tesseract made one character error on `DPI-aware`. Tesseract was
+faster in this single run and supplied confidence, while WinRT uses the
+Windows-installed OCR runtime and language resources. That tradeoff supports
+WinRT as the Windows default and Tesseract as the cross-platform fallback; the
+sample set is too small to claim general accuracy superiority.
+
+The Linux Tesseract CLI release binary measured **560,440 bytes**. On Windows,
+the WinRT-only CLI measured **260,096 bytes**, while the combined
+WinRT+Tesseract CLI measured **7,680,000 bytes**: Tesseract adds **7,419,904
+bytes** to the executable. The separate English `eng.traineddata` file measured
+**4,113,088 bytes**. WinRT uses installed Windows language resources instead
+of bundling a model.
 
 ## Language support and licensing
 
@@ -61,8 +77,7 @@ artifact contains the model separately from the executable.
 
 ## Limits
 
-This Linux run cannot execute Windows.Media.Ocr or verify WinRT behavior on
-real Windows hardware. Use the Windows workflow's paired results for a CI
-comparison, then verify window capture, cursor inclusion/exclusion, mixed-DPI
-behavior, and startup registration on the target Windows machine before
-adopting the port path.
+The Linux baseline cannot execute Windows.Media.Ocr, and the Windows CI run is
+not a substitute for checking the app on a target Windows machine. Verify
+window capture, cursor inclusion/exclusion, mixed-DPI behavior, and startup
+registration on that machine before adopting the port path.
