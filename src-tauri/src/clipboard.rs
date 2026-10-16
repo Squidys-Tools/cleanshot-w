@@ -131,7 +131,7 @@ pub fn read_image_from_clipboard() -> Result<Option<String>, String> {
 pub fn copy_file_to_clipboard(png_base64: String) -> Result<(), String> {
     let bytes = decode_base64(&png_base64)?;
     decode_png(&bytes)?;
-    let directory = std::env::temp_dir().join("CleanShotW");
+    let directory = std::env::temp_dir().join("Snipsy");
     fs::create_dir_all(&directory)
         .map_err(|error| format!("Could not create the clipboard temp folder: {error}"))?;
     let path = clipboard_temp_path(&directory);

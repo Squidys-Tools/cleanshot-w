@@ -1,6 +1,6 @@
-# CleanShot W documentation
+# Snipsy documentation
 
-CleanShot W is a local-first Windows screenshot and annotation app. This
+Snipsy is a local-first Windows screenshot and annotation app. This
 directory contains the project reference docs. The repository root keeps only
 the user-facing README and project files.
 

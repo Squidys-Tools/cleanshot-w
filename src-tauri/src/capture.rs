@@ -276,7 +276,7 @@ pub async fn start_area_capture(
         "capture-overlay",
         WebviewUrl::App("index.html?overlay=capture".into()),
     )
-    .title("CleanShot W Capture")
+    .title("Snipsy Capture")
     .decorations(false)
     .transparent(true)
     .always_on_top(true)

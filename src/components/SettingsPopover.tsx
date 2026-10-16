@@ -53,7 +53,7 @@ export default function SettingsPopover({
           <input name="launchAtStartup" type="checkbox" defaultChecked={launchAtStartup} />
           <span>
             <strong>Launch at Windows startup</strong>
-            <small>Starts CleanShot W minimized to the system tray.</small>
+            <small>Starts Snipsy minimized to the system tray.</small>
           </span>
         </label>
         {error && <p className="settings-error" role="alert">{error}</p>}

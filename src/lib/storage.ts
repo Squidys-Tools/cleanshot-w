@@ -1,7 +1,7 @@
 import type { CaptureRecord, TldrawState } from "../types";
 import { normalizeCaptureTitle } from "./history";
 
-const DB_NAME = "cleanshotw";
+const DB_NAME = "snipsy";
 const STORE = "captures";
 const VERSION = 1;
 

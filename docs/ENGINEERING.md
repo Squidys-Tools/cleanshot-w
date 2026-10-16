@@ -15,7 +15,7 @@ evidence belongs in [the roadmap and status](ROADMAP.md).
 - **Browser persistence:** IndexedDB for capture images, thumbnails, annotations,
   timestamps, and titles.
 - **Native persistence:** JSON and PNG files under
-  `%LOCALAPPDATA%\CleanShotW\library`.
+  `%LOCALAPPDATA%\Snipsy\library`.
 
 The editor talks to a typed `HostBridge` in `src/lib/bridge.ts`. The browser
 host uses IndexedDB and browser APIs. The native host translates the same
@@ -30,7 +30,7 @@ compiler on TypeScript 7 while allowing it to resolve those declarations.
 
 ## Runtime architecture
 
-CleanShot W uses one React editor in two host environments:
+Snipsy uses one React editor in two host environments:
 
 ```text
 React editor
@@ -80,7 +80,7 @@ The flattened PNG path feeds Save PNG, Copy image, Copy file, and pin windows.
 ## Persistence
 
 The browser host stores capture records in IndexedDB. The native host stores the
-library under `%LOCALAPPDATA%\CleanShotW`:
+library under `%LOCALAPPDATA%\Snipsy`:
 
 ```text
 settings.json

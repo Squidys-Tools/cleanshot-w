@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedAt": "2026-08-22T19:20:00.000Z",
-  "title": "Design System: CleanShot W",
+  "title": "Design System: Snipsy",
   "extensions": {
     "colorMeta": {
       "primary": {
@@ -115,7 +115,7 @@
   ],
   "narrative": {
     "northStar": "The Clear Markup Desk",
-    "overview": "CleanShot W is a quiet Windows utility that keeps the captured screenshot as the visual authority. The editor gives the image generous neutral space, then brings annotation tools together in a detached whiteboard-style dock at the bottom. Export and sharing stay close to the top command bar, where they are readable at a glance rather than hidden behind ambiguous icons.\n\nThe system is native-feeling, compact, and functional. The capture overlay is a separate surface with a darkened screen, a high-contrast selection frame, dimensions, and a direct Cancel action. It does not carry instructional copy or a decorative workspace texture.",
+    "overview": "Snipsy is a quiet Windows utility that keeps the captured screenshot as the visual authority. The editor gives the image generous neutral space, then brings annotation tools together in a detached whiteboard-style dock at the bottom. Export and sharing stay close to the top command bar, where they are readable at a glance rather than hidden behind ambiguous icons.\n\nThe system is native-feeling, compact, and functional. The capture overlay is a separate surface with a darkened screen, a high-contrast selection frame, dimensions, and a direct Cancel action. It does not carry instructional copy or a decorative workspace texture.",
     "keyCharacteristics": ["Screenshot-first neutral canvas with generous breathing room.", "Text-led command bar; Undo and Redo are the only icon-only top controls.", "Detached, labeled annotation dock with intuitive single-key shortcuts.", "Light Windows-native surfaces with restrained borders and ambient depth."],
     "rules": [
       { "name": "The Clear Canvas Rule", "body": "The screenshot and its markup own the visual focus; neutral space supports them and never becomes a decorative scene.", "section": "overview" },

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to CleanShot W are documented here. This file records
+All notable changes to Snipsy are documented here. This file records
 completed or release-visible changes. Current plans and Windows acceptance
 belong in [the roadmap and status](ROADMAP.md). Stable implementation notes
 belong in [engineering](ENGINEERING.md).

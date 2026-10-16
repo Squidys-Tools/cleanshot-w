@@ -188,7 +188,7 @@ fn set_autostart(enabled: bool) -> Result<(), String> {
     let sub_key: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Run\0"
         .encode_utf16()
         .collect();
-    let value_name: Vec<u16> = "CleanShotW\0".encode_utf16().collect();
+    let value_name: Vec<u16> = "Snipsy\0".encode_utf16().collect();
     let mut key: Hkey = null_mut();
     let mut disposition = 0;
     let status = unsafe {
@@ -332,7 +332,7 @@ mod tests {
 
     #[test]
     fn startup_command_is_quoted_and_minimized() {
-        let command = quote_autostart_command(r#"C:\Apps\CleanShot W.exe"#);
-        assert_eq!(command, r#""C:\Apps\CleanShot W.exe" --minimized"#);
+        let command = quote_autostart_command(r#"C:\Apps\Snipsy.exe"#);
+        assert_eq!(command, r#""C:\Apps\Snipsy.exe" --minimized"#);
     }
 }
