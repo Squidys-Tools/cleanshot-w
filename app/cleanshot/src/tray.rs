@@ -5,12 +5,13 @@
 //! from an async task.
 
 use crossbeam_channel::Receiver;
-use tray_icon::menu::{Menu, MenuEvent, MenuItem};
+use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{TrayIcon, TrayIconBuilder};
 
 pub const NEW_CAPTURE_ID: &str = "new-capture";
 pub const OPEN_LAST_ID: &str = "open-last";
 pub const QUIT_ID: &str = "quit";
+const APP_NAME: &str = "Snipsy";
 
 pub struct Tray {
     // The tray icon is removed when dropped, so the caller must keep this
@@ -19,11 +20,13 @@ pub struct Tray {
 }
 
 pub fn create() -> Result<Tray, String> {
+    let brand = MenuItem::with_id("snipsy-title", APP_NAME, false, None);
     let new_capture = MenuItem::with_id(NEW_CAPTURE_ID, "New capture", true, None);
-    let open_last = MenuItem::with_id(OPEN_LAST_ID, "Open last capture", true, None);
+    let open_last = MenuItem::with_id(OPEN_LAST_ID, "Open Snipsy", true, None);
     let quit = MenuItem::with_id(QUIT_ID, "Quit", true, None);
+    let separator = PredefinedMenuItem::separator();
     let menu = Menu::new();
-    menu.append_items(&[&new_capture, &open_last, &quit])
+    menu.append_items(&[&brand, &separator, &new_capture, &open_last, &quit])
         .map_err(|error| format!("Could not build the tray menu: {error}"))?;
 
     let icon = tray_icon::Icon::from_rgba(app_icon_rgba(32, 32), 32, 32)
@@ -31,7 +34,7 @@ pub fn create() -> Result<Tray, String> {
 
     let tray = TrayIconBuilder::new()
         .with_menu(Box::new(menu))
-        .with_tooltip("CleanShot W")
+        .with_tooltip(APP_NAME)
         .with_icon(icon)
         .build()
         .map_err(|error| format!("Could not create the tray icon: {error}"))?;

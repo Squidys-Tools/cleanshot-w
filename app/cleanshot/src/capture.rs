@@ -376,7 +376,7 @@ mod dev_loop {
                 rgba.extend_from_slice(&[warm, 80, cool, 255]);
             }
         }
-        eprintln!("cleanshot-w: SYNTHETIC capture (Linux dev loop, no GDI)");
+        eprintln!("Snipsy: synthetic capture (Linux dev loop, no GDI)");
         Ok(CaptureSurface {
             rgba,
             width,

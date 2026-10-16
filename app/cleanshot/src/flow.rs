@@ -43,7 +43,7 @@ pub fn start_capture(cx: &mut App) {
     let surface = match capture::capture_surface(include_cursor) {
         Ok(surface) => surface,
         Err(error) => {
-            eprintln!("cleanshot-w: capture failed: {error}");
+            eprintln!("Snipsy: capture failed: {error}");
             return;
         }
     };
@@ -55,7 +55,7 @@ pub fn start_capture(cx: &mut App) {
     match overlay::open(cx, bounds) {
         Ok(window_id) => cx.global_mut::<AppState>().overlay_open = Some(window_id),
         Err(error) => {
-            eprintln!("cleanshot-w: {error}");
+            eprintln!("Snipsy: {error}");
             cx.global_mut::<AppState>().pending = None;
         }
     }
@@ -91,7 +91,7 @@ pub fn complete_selection(window: &mut Window, cx: &mut App, selection: Bounds<P
                 match library::save_capture(&png, cropped.width, cropped.height, &title) {
                     Ok(metadata) => metadata.title,
                     Err(error) => {
-                        eprintln!("cleanshot-w: could not save the capture: {error}");
+                        eprintln!("Snipsy: could not save the capture: {error}");
                         title.clone()
                     }
                 };
@@ -111,7 +111,7 @@ pub fn complete_selection(window: &mut Window, cx: &mut App, selection: Bounds<P
         },
     );
     if let Err(error) = result {
-        eprintln!("cleanshot-w: {error}");
+        eprintln!("Snipsy: {error}");
     }
     window.remove_window();
 }
@@ -126,17 +126,17 @@ pub fn open_last_capture(cx: &mut App) {
     let latest = match library::list_captures() {
         Ok(list) if !list.is_empty() => list.into_iter().next().unwrap(),
         Ok(_) => {
-            eprintln!("cleanshot-w: the capture library is empty");
+            eprintln!("Snipsy: the capture library is empty");
             return;
         }
         Err(error) => {
-            eprintln!("cleanshot-w: {error}");
+            eprintln!("Snipsy: {error}");
             return;
         }
     };
     match library::read_image_png(&latest.id) {
         Ok(png) => open_pin_from_png(cx, png, &latest.title),
-        Err(error) => eprintln!("cleanshot-w: {error}"),
+        Err(error) => eprintln!("Snipsy: {error}"),
     }
 }
 
@@ -150,7 +150,7 @@ pub fn open_pin_from_path(cx: &mut App, path: &str) {
                 .unwrap_or_else(|| "Capture".to_string());
             open_pin_from_png(cx, png, &title)
         }
-        Err(error) => eprintln!("cleanshot-w: could not read {path}: {error}"),
+        Err(error) => eprintln!("Snipsy: could not read {path}: {error}"),
     }
 }
 
@@ -163,7 +163,7 @@ fn open_pin_from_png(cx: &mut App, png: Vec<u8>, title: &str) {
     {
         Ok(decoded) => decoded,
         Err(error) => {
-            eprintln!("cleanshot-w: could not decode {title}: {error}");
+            eprintln!("Snipsy: could not decode {title}: {error}");
             return;
         }
     };
@@ -178,7 +178,7 @@ fn open_pin_from_png(cx: &mut App, png: Vec<u8>, title: &str) {
         scale,
         platform::gpui_virtual_screen_bounds(cx).origin,
     ) {
-        eprintln!("cleanshot-w: {error}");
+        eprintln!("Snipsy: {error}");
     }
 }
 

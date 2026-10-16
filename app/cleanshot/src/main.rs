@@ -1,4 +1,4 @@
-//! CleanShot W — pure-native GPUI Windows app (phase 1).
+//! Snipsy — pure-native GPUI Windows app (phase 1).
 //!
 //! Boots to tray, registers the global capture hotkey, and runs the core
 //! capture loop end to end: full-screen GDI snapshot → rubber-band overlay →
@@ -23,7 +23,7 @@ fn main() {
 
     #[cfg(windows)]
     if !single_instance::acquire() {
-        eprintln!("cleanshot-w: another CleanShot W instance is already running");
+        eprintln!("Snipsy: another instance is already running");
         return;
     }
 
@@ -41,7 +41,7 @@ fn main() {
     let _tray = match tray::create() {
         Ok(tray) => Some(tray),
         Err(error) => {
-            eprintln!("cleanshot-w: {error}");
+            eprintln!("Snipsy: {error}");
             None
         }
     };
@@ -83,7 +83,7 @@ fn main() {
                 })
                 .detach();
             }
-            Err(error) => eprintln!("cleanshot-w: {error}"),
+            Err(error) => eprintln!("Snipsy: {error}"),
         }
 
         // Linux dev-loop triggers (no tray, no hotkeys there yet).
@@ -107,15 +107,13 @@ mod single_instance {
         use windows_sys::Win32::Foundation::{ERROR_ALREADY_EXISTS, GetLastError};
         use windows_sys::Win32::System::Threading::CreateMutexW;
 
-        let name: Vec<u16> = "Local\\CleanShotW.SingleInstance\0"
-            .encode_utf16()
-            .collect();
+        let name: Vec<u16> = "Local\\Snipsy.SingleInstance\0".encode_utf16().collect();
         let handle = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
         if handle.is_null() {
             // Could not even create the mutex; let the app run rather than
             // die on a missing single-instance guard.
             eprintln!(
-                "cleanshot-w: could not create the single-instance mutex (error {})",
+                "Snipsy: could not create the single-instance mutex (error {})",
                 std::io::Error::last_os_error()
             );
             return true;

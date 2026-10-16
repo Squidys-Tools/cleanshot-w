@@ -41,6 +41,7 @@ impl Overlay {
 pub fn open(cx: &mut gpui::App, screen: Bounds<Pixels>) -> Result<WindowId, String> {
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(screen)),
+        app_id: Some("com.snipsy.desktop".to_string()),
         titlebar: None,
         window_background: WindowBackgroundAppearance::Transparent,
         focus: true,
@@ -65,6 +66,7 @@ pub fn open(cx: &mut gpui::App, screen: Bounds<Pixels>) -> Result<WindowId, Stri
     };
 
     cx.open_window(options, |window, cx| {
+        window.set_window_title("Snipsy Capture");
         let view = cx.new(|cx| Overlay {
             focus: cx.focus_handle(),
             drag_start: None,

@@ -1,4 +1,4 @@
-# CleanShot W GPUI app — phase 1 notes
+# Snipsy GPUI app — phase 1 notes
 
 Phase 1 vertical slice of the Tauri → pure-native GPUI port: tray shell,
 global hotkey, capture overlay, GDI region capture, capture library, pin
@@ -19,7 +19,7 @@ and the new workflow was changed.
 | `platform.rs` | `spikes/gpui-overlay/src/lib.rs` | Virtual-screen geometry, OS drag, click-through, plus the two fixes below. |
 | `capture.rs` | `src-tauri/src/capture.rs` | GDI BitBlt/GetDIBits virtual-screen snapshot + crop. Window capture (`PrintWindow`) deliberately left out of phase 1. |
 | `library.rs` | `src-tauri/src/library.rs` | Same on-disk format (shared with the Tauri app); list returns metadata, images read on demand — no base64 wire payloads. |
-| `settings.rs` | `src-tauri/src/hotkeys.rs` | Same `settings.json` schema and location; read-only until the preferences UI phase. |
+| `settings.rs` | `src-tauri/src/hotkeys.rs` | Same `settings.json` schema and canonical Snipsy location; one-time migration from the old `CleanShotW` directory; read-only until preferences UI. |
 | `hotkey.rs` | `src-tauri/src/hotkeys.rs` | `RegisterHotKey` on a dedicated thread with its own `GetMessageW` pump; events cross to GPUI over a channel. |
 | `overlay.rs` / `pin.rs` | the spike's `overlay.rs` / `pin.rs` | Same window shapes; wired into the app flow instead of exiting after one use. |
 | `clipboard.rs` | `src-tauri/src/clipboard.rs` | arboard image copy (RGBA in, platform format handled by arboard). |
@@ -94,7 +94,11 @@ delivery from the hotkey thread.
 Download the `cleanshot-w-app-windows` artifact (Actions → "App Windows
 build" → your commit → Artifacts) and run `cleanshot-w.exe`. It lives in the
 tray; the hotkey (default `ctrl+shift+4`, read from
-`%LOCALAPPDATA%/CleanShotW/settings.json`) starts a capture. A second launch
+`%LOCALAPPDATA%/Snipsy/settings.json`) starts a capture. If the Snipsy
+directory does not exist but `%LOCALAPPDATA%/CleanShotW` does, the first
+launch renames that legacy directory to `Snipsy`, keeping settings and
+capture-library data together; an existing `Snipsy` directory always wins.
+A second launch
 exits (single-instance mutex).
 
 ## Extension points for phase 2+

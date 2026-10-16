@@ -40,9 +40,19 @@ struct IndexEntry {
 const INDEX_FILE: &str = "index.json";
 
 pub fn app_data_root() -> Result<PathBuf, String> {
-    dirs::data_local_dir()
-        .map(|path| path.join("CleanShotW"))
-        .ok_or_else(|| "Windows did not provide a local application-data directory.".to_string())
+    let base = dirs::data_local_dir()
+        .ok_or_else(|| "Windows did not provide a local application-data directory.".to_string())?;
+    resolve_data_root(&base)
+}
+
+fn resolve_data_root(base: &Path) -> Result<PathBuf, String> {
+    let root = base.join("Snipsy");
+    let legacy = base.join("CleanShotW");
+    if !root.exists() && legacy.is_dir() {
+        fs::rename(&legacy, &root)
+            .map_err(|error| format!("Could not migrate the legacy capture library: {error}"))?;
+    }
+    Ok(root)
 }
 
 fn library_root() -> Result<PathBuf, String> {
@@ -259,9 +269,10 @@ pub fn now_millis() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        ImageSize, IndexEntry, generate_id, normalize_index_entry, validate_id,
+        ImageSize, IndexEntry, generate_id, normalize_index_entry, resolve_data_root, validate_id,
         validate_index_entry, validate_size, validate_title,
     };
+    use std::fs;
 
     fn valid_entry() -> IndexEntry {
         IndexEntry {
@@ -340,5 +351,48 @@ mod tests {
         for _ in 0..5 {
             assert!(validate_id(&generate_id()).is_ok());
         }
+    }
+
+    #[test]
+    fn legacy_data_directory_moves_to_the_canonical_snipsy_path() {
+        let base = std::env::temp_dir().join(format!(
+            "snipsy-data-migration-test-{}-{}",
+            std::process::id(),
+            generate_id()
+        ));
+        let legacy = base.join("CleanShotW");
+        fs::create_dir_all(&legacy).unwrap();
+        fs::write(legacy.join("settings.json"), b"{}").unwrap();
+        let old_capture = legacy.join("library").join("capture-1");
+        fs::create_dir_all(&old_capture).unwrap();
+        fs::write(old_capture.join("image.png"), b"png bytes").unwrap();
+
+        let root = resolve_data_root(&base).unwrap();
+        assert_eq!(root, base.join("Snipsy"));
+        assert!(root.join("settings.json").exists());
+        assert_eq!(
+            fs::read(root.join("library/capture-1/image.png")).unwrap(),
+            b"png bytes"
+        );
+        assert!(!legacy.exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn existing_snipsy_data_wins_over_a_legacy_directory() {
+        let base = std::env::temp_dir().join(format!(
+            "snipsy-data-precedence-test-{}-{}",
+            std::process::id(),
+            generate_id()
+        ));
+        let canonical = base.join("Snipsy");
+        let legacy = base.join("CleanShotW");
+        fs::create_dir_all(&canonical).unwrap();
+        fs::create_dir_all(&legacy).unwrap();
+        fs::write(legacy.join("settings.json"), b"legacy").unwrap();
+
+        assert_eq!(resolve_data_root(&base).unwrap(), canonical);
+        assert!(legacy.join("settings.json").exists());
+        fs::remove_dir_all(base).unwrap();
     }
 }

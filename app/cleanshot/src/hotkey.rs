@@ -25,7 +25,7 @@ pub fn start() -> Result<HotkeyEvents, String> {
         .ok_or_else(|| format!("Could not parse the capture hotkey {shortcut:?}."))?;
     let (sender, receiver) = crossbeam_channel::bounded::<()>(0);
     std::thread::Builder::new()
-        .name("cleanshot-hotkey".into())
+        .name("snipsy-hotkey".into())
         .spawn(move || hotkey_thread::run(mods, vk, sender))
         .map_err(|error| format!("Could not start the hotkey thread: {error}"))?;
     Ok(HotkeyEvents { receiver })
@@ -94,7 +94,7 @@ mod hotkey_thread {
         unsafe {
             if RegisterHotKey(std::ptr::null_mut(), HOTKEY_ID, mods, vk) == 0 {
                 eprintln!(
-                    "cleanshot-w: could not register the global hotkey (error {}); \
+                    "Snipsy: could not register the global hotkey (error {}); \
                      is another instance running?",
                     std::io::Error::last_os_error()
                 );

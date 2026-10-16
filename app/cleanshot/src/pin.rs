@@ -80,6 +80,7 @@ pub fn open_for_capture(
             size: window_size,
         })),
         titlebar: None,
+        app_id: Some("com.snipsy.desktop".to_string()),
         focus: true,
         show: true,
         // Same shape as the overlay: frameless topmost tool window on
@@ -93,7 +94,9 @@ pub fn open_for_capture(
         ..Default::default()
     };
 
-    cx.open_window(options, |window, cx| {
+    let window_title = format!("Snipsy — {title}");
+    cx.open_window(options, move |window, cx| {
+        window.set_window_title(&window_title);
         let view = cx.new(|cx| PinWindow {
             focus: cx.focus_handle(),
             image,
@@ -133,12 +136,12 @@ impl Render for PinWindow {
             }))
             .on_action(cx.listener(|this, _: &CopyPinImage, _, _| {
                 if let Err(error) = clipboard::copy_png_image(&this.png) {
-                    eprintln!("cleanshot-w: {error}");
+                    eprintln!("Snipsy: {error}");
                 }
             }))
             .on_action(cx.listener(|this, _: &SavePinImage, _, _| {
                 if let Err(error) = save_dialog::save_png_via_dialog(&this.png, &this.title) {
-                    eprintln!("cleanshot-w: {error}");
+                    eprintln!("Snipsy: {error}");
                 }
             }))
             .on_mouse_down(

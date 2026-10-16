@@ -1,7 +1,9 @@
 //! Application settings, ported from `src-tauri/src/hotkeys.rs`.
 //!
-//! The JSON schema and file location (`%LOCALAPPDATA%/CleanShotW/settings.json`)
+//! The JSON schema and file location (`%LOCALAPPDATA%/Snipsy/settings.json`)
 //! are shared with the existing Tauri app so both builds read the same file.
+//! `library::app_data_root` migrates the old `CleanShotW` directory once when
+//! no canonical `Snipsy` directory exists.
 
 use crate::library::{app_data_root, write_atomic};
 use serde::{Deserialize, Serialize};
