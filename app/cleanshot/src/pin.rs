@@ -40,15 +40,19 @@ pub struct PinWindow {
 
 /// Decode PNG bytes into a render-ready (BGRA) image.
 pub fn decode_to_render_image(png: &[u8]) -> Result<Arc<RenderImage>, String> {
-    let mut rgba = image::ImageReader::new(std::io::Cursor::new(png))
+    let rgba = image::ImageReader::new(std::io::Cursor::new(png))
         .with_guessed_format()
         .map_err(|error| format!("Could not open the capture image: {error}"))?
         .decode()
         .map_err(|error| format!("Could not decode the capture image: {error}"))?
         .into_rgba8();
+    Ok(rgba_to_render_image(rgba))
+}
+
+pub fn rgba_to_render_image(mut rgba: image::RgbaImage) -> Arc<RenderImage> {
     platform::rgba_to_bgra(rgba.as_mut());
     let frame = image::Frame::new(rgba);
-    Ok(Arc::new(RenderImage::new(vec![frame])))
+    Arc::new(RenderImage::new(vec![frame]))
 }
 
 /// Open a pin window for a freshly captured PNG. `physical_size` is the

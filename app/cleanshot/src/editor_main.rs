@@ -11,6 +11,7 @@ mod library;
 mod pin;
 mod platform;
 mod save_dialog;
+mod settings;
 
 fn main() {
     #[cfg(windows)]
@@ -40,8 +41,7 @@ fn main() {
             editor::window::EditorSource {
                 png,
                 title,
-                doc: None,
-                doc_path: None,
+                annotations: library::AnnotationSource::Transient,
             },
         ) {
             eprintln!("cleanshot-editor: {error}");

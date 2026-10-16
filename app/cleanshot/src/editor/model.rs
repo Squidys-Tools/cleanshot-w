@@ -10,6 +10,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::icons::{IconGlyph, IconPack, MAX_ICON_SIZE, MIN_ICON_SIZE};
+
 pub const DOCUMENT_VERSION: u32 = 1;
 
 /// The per-shape color palette, in the old app's order.
@@ -319,6 +321,34 @@ pub struct CounterShape {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EffectShape {
+    pub id: ShapeId,
+    pub bounds: Rect,
+    pub kind: EffectKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IconShape {
+    pub id: ShapeId,
+    pub pack: IconPack,
+    pub glyph: IconGlyph,
+    pub x: f32,
+    pub y: f32,
+    pub size: f32,
+    pub color: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum EffectKind {
+    Blur { radius_px: f32 },
+    Pixelate { block_px: u32 },
+    Redact,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum Shape {
     Rectangle(RectShape),
@@ -327,6 +357,8 @@ pub enum Shape {
     Pen(PenShape),
     Text(TextShape),
     Counter(CounterShape),
+    Effect(EffectShape),
+    Icon(IconShape),
 }
 
 impl Shape {
@@ -338,6 +370,8 @@ impl Shape {
             Shape::Pen(shape) => &shape.id,
             Shape::Text(shape) => &shape.id,
             Shape::Counter(shape) => &shape.id,
+            Shape::Effect(shape) => &shape.id,
+            Shape::Icon(shape) => &shape.id,
         }
     }
 
@@ -382,6 +416,8 @@ impl Shape {
                 Rect::new(text.x, text.y, width.max(1.0), text.size * 1.3 * lines)
             }
             Shape::Counter(shape) => Rect::new(shape.x, shape.y, shape.diameter, shape.diameter),
+            Shape::Effect(shape) => shape.bounds,
+            Shape::Icon(shape) => Rect::new(shape.x, shape.y, shape.size, shape.size),
         }
     }
 
@@ -413,6 +449,14 @@ impl Shape {
                 shape.y += dy;
             }
             Shape::Counter(shape) => {
+                shape.x += dx;
+                shape.y += dy;
+            }
+            Shape::Effect(shape) => {
+                shape.bounds.x += dx;
+                shape.bounds.y += dy;
+            }
+            Shape::Icon(shape) => {
                 shape.x += dx;
                 shape.y += dy;
             }
@@ -469,12 +513,53 @@ impl Shape {
                 shape.y = target.y;
                 shape.diameter = (shape.diameter * sx.min(sy)).max(8.0);
             }
+            Shape::Effect(shape) => {
+                shape.bounds = Rect::new(target.x, target.y, target.w.max(1.0), target.h.max(1.0));
+            }
+            Shape::Icon(shape) => {
+                let width_changed = (sx - 1.0).abs() > f32::EPSILON;
+                let height_changed = (sy - 1.0).abs() > f32::EPSILON;
+                shape.x = target.x;
+                shape.y = target.y;
+                shape.size = match (width_changed, height_changed) {
+                    (true, false) => target.w,
+                    (false, true) => target.h,
+                    (true, true) => target.w.min(target.h),
+                    (false, false) => shape.size,
+                }
+                .clamp(MIN_ICON_SIZE, MAX_ICON_SIZE);
+            }
         }
     }
 
     fn validate(&self) -> Result<(), String> {
         if self.id().is_empty() || self.id().len() > 64 {
             return Err("The shape id is invalid.".to_string());
+        }
+        if let Shape::Effect(shape) = self {
+            let Rect { x, y, w, h } = shape.bounds;
+            let bounds_valid = finite(&[x, y, w, h]) && w > 0.0 && h > 0.0;
+            let kind_valid = match &shape.kind {
+                EffectKind::Blur { radius_px } => {
+                    radius_px.is_finite() && (0.1..=128.0).contains(radius_px)
+                }
+                EffectKind::Pixelate { block_px } => (2..=256).contains(block_px),
+                EffectKind::Redact => true,
+            };
+            return if bounds_valid && kind_valid {
+                Ok(())
+            } else {
+                Err(format!("The geometry for shape {} is invalid.", self.id()))
+            };
+        }
+        if let Shape::Icon(shape) = self {
+            let geometry_valid = finite(&[shape.x, shape.y, shape.size])
+                && (MIN_ICON_SIZE..=MAX_ICON_SIZE).contains(&shape.size);
+            return if geometry_valid {
+                validate_color(&shape.color)
+            } else {
+                Err(format!("The geometry for shape {} is invalid.", self.id()))
+            };
         }
         let (color, geometry_valid) = match self {
             Shape::Rectangle(shape) => (
@@ -517,6 +602,8 @@ impl Shape {
                     && shape.diameter <= 100_000.0
                     && shape.n > 0,
             ),
+            Shape::Effect(_) => unreachable!("effects are validated without a color"),
+            Shape::Icon(_) => unreachable!("icons are validated separately"),
         };
         if !geometry_valid {
             return Err(format!("The geometry for shape {} is invalid.", self.id()));
@@ -833,5 +920,106 @@ mod tests {
         });
         let bounds = text.bounds();
         assert!(bounds.h > 0.0);
+    }
+
+    #[test]
+    fn effect_shapes_round_trip_and_resize_as_boxes() {
+        let mut document = Document::new(100, 80);
+        document.shapes.push(Shape::Effect(EffectShape {
+            id: "blur".to_string(),
+            bounds: Rect::new(10.0, 20.0, 30.0, 40.0),
+            kind: EffectKind::Blur { radius_px: 14.0 },
+        }));
+        assert_eq!(
+            Document::from_bytes(&document.to_bytes().unwrap()).unwrap(),
+            document
+        );
+
+        let shape = &mut document.shapes[0];
+        shape.translate(5.0, -5.0);
+        shape.scale_to(&Rect::new(20.0, 30.0, 60.0, 50.0));
+        assert_eq!(shape.bounds(), Rect::new(20.0, 30.0, 60.0, 50.0));
+    }
+
+    #[test]
+    fn effect_parameters_are_validated_at_document_load() {
+        for kind in [
+            EffectKind::Blur { radius_px: 0.0 },
+            EffectKind::Pixelate { block_px: 1 },
+        ] {
+            let mut document = Document::new(100, 80);
+            document.shapes.push(Shape::Effect(EffectShape {
+                id: "effect".to_string(),
+                bounds: Rect::new(0.0, 0.0, 10.0, 10.0),
+                kind,
+            }));
+            assert!(document.to_bytes().is_err());
+        }
+    }
+
+    #[test]
+    fn icon_shapes_round_trip_and_resize_without_distortion() {
+        let mut document = Document::new(100, 80);
+        document.shapes.push(Shape::Icon(IconShape {
+            id: "icon".to_string(),
+            pack: IconPack::Heroicons,
+            glyph: IconGlyph::ArrowRight,
+            x: 10.0,
+            y: 20.0,
+            size: 32.0,
+            color: "#1971c2".to_string(),
+        }));
+        assert_eq!(
+            Document::from_bytes(&document.to_bytes().unwrap()).unwrap(),
+            document
+        );
+
+        document.shapes[0].scale_to(&Rect::new(10.0, 20.0, 64.0, 32.0));
+        assert_eq!(
+            document.shapes[0].bounds(),
+            Rect::new(10.0, 20.0, 64.0, 64.0)
+        );
+        document.shapes[0].scale_to(&Rect::new(10.0, 20.0, 64.0, 48.0));
+        assert_eq!(
+            document.shapes[0].bounds(),
+            Rect::new(10.0, 20.0, 48.0, 48.0)
+        );
+    }
+
+    #[test]
+    fn resizing_an_icon_beyond_its_raster_limit_keeps_the_document_valid() {
+        let mut document = Document::new(2400, 1600);
+        document.shapes.push(Shape::Icon(IconShape {
+            id: "icon".to_string(),
+            pack: IconPack::Heroicons,
+            glyph: IconGlyph::ArrowRight,
+            x: 10.0,
+            y: 20.0,
+            size: 32.0,
+            color: "#1971c2".to_string(),
+        }));
+
+        document.shapes[0].scale_to(&Rect::new(10.0, 20.0, 2048.0, 1600.0));
+
+        let bytes = document
+            .to_bytes()
+            .expect("a resized icon should remain a valid annotation");
+        let restored = Document::from_bytes(&bytes).unwrap();
+        assert_eq!(
+            restored.shapes[0].bounds(),
+            Rect::new(10.0, 20.0, 1024.0, 1024.0)
+        );
+    }
+
+    #[test]
+    fn unknown_icon_pack_or_glyph_is_rejected_at_parse_time() {
+        for icon in [
+            r##"{"type":"icon","id":"icon","pack":"next","glyph":"arrow-right","x":0,"y":0,"size":32,"color":"#1971c2"}"##,
+            r##"{"type":"icon","id":"icon","pack":"lucide","glyph":"not-bundled","x":0,"y":0,"size":32,"color":"#1971c2"}"##,
+        ] {
+            let bytes =
+                format!(r#"{{"version":1,"imageWidth":10,"imageHeight":10,"shapes":[{icon}]}}"#);
+            assert!(Document::from_bytes(bytes.as_bytes()).is_err());
+        }
     }
 }

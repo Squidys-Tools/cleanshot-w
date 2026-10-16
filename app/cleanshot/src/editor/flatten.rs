@@ -9,6 +9,7 @@
 
 use tiny_skia::{Color, Pixmap, PremultipliedColorU8, Stroke};
 
+use super::effects::{self, EffectPatch};
 use super::model::{Document, Shape};
 
 /// Draws text into a tiny-skia pixmap. `paint` places the text block's
@@ -186,6 +187,23 @@ pub fn flatten(
     image_rgba: &[u8],
     painter: &dyn TextPainter,
 ) -> Result<Pixmap, String> {
+    flatten_with_effect_patches(document, image_rgba, painter).map(|(pixmap, _)| pixmap)
+}
+
+pub fn flatten_with_effect_patches(
+    document: &Document,
+    image_rgba: &[u8],
+    painter: &dyn TextPainter,
+) -> Result<(Pixmap, Vec<EffectPatch>), String> {
+    flatten_with_effect_patches_skipping(document, image_rgba, painter, None)
+}
+
+pub fn flatten_with_effect_patches_skipping(
+    document: &Document,
+    image_rgba: &[u8],
+    painter: &dyn TextPainter,
+    skip_shape: Option<&str>,
+) -> Result<(Pixmap, Vec<EffectPatch>), String> {
     let width = document.image_width;
     let height = document.image_height;
     if (image_rgba.len()) != (width as usize * height as usize * 4) {
@@ -207,10 +225,22 @@ pub fn flatten(
             .ok_or("The image buffer holds an invalid pixel.")?;
         *pixel = color;
     }
+    let mut effect_patches = Vec::new();
     for shape in &document.shapes {
-        draw_shape(&mut pixmap, shape, painter);
+        if skip_shape == Some(shape.id()) {
+            continue;
+        }
+        if let Shape::Effect(effect) = shape {
+            let source = pixmap_to_rgba(&pixmap);
+            if let Some(patch) = effects::rasterize(&source, effect) {
+                composite_effect(&mut pixmap, &patch);
+                effect_patches.push(patch);
+            }
+        } else {
+            draw_shape(&mut pixmap, shape, painter);
+        }
     }
-    Ok(pixmap)
+    Ok((pixmap, effect_patches))
 }
 
 /// Flatten and encode straight to PNG bytes.
@@ -365,6 +395,79 @@ fn draw_shape(pixmap: &mut Pixmap, shape: &Shape, painter: &dyn TextPainter) {
                 Color::WHITE,
             );
         }
+        Shape::Effect(_) => {}
+        Shape::Icon(icon) => {
+            if let Ok(image) =
+                super::icons::rasterize(icon.pack, icon.glyph, &icon.color, icon.size)
+            {
+                composite_image(pixmap, &image, icon.x, icon.y);
+            }
+        }
+    }
+}
+
+pub(super) fn pixmap_to_rgba(pixmap: &Pixmap) -> image::RgbaImage {
+    let mut image = image::RgbaImage::new(pixmap.width(), pixmap.height());
+    for (destination, source) in image.pixels_mut().zip(pixmap.pixels()) {
+        let source = source.demultiply();
+        *destination = image::Rgba([source.red(), source.green(), source.blue(), source.alpha()]);
+    }
+    image
+}
+
+fn composite_effect(pixmap: &mut Pixmap, patch: &EffectPatch) {
+    let width = pixmap.width();
+    let data = pixmap.pixels_mut();
+    for (y, row) in patch.rgba.rows().enumerate() {
+        for (x, pixel) in row.enumerate() {
+            let alpha = u16::from(pixel.0[3]);
+            let premultiplied = |channel: u8| ((u16::from(channel) * alpha + 127) / 255) as u8;
+            let index = ((patch.y as usize + y) * width as usize) + patch.x as usize + x;
+            data[index] = PremultipliedColorU8::from_rgba(
+                premultiplied(pixel.0[0]),
+                premultiplied(pixel.0[1]),
+                premultiplied(pixel.0[2]),
+                pixel.0[3],
+            )
+            .expect("RGBA channels were premultiplied before storing");
+        }
+    }
+}
+
+fn composite_image(pixmap: &mut Pixmap, image: &image::RgbaImage, x: f32, y: f32) {
+    let origin_x = x.round() as i32;
+    let origin_y = y.round() as i32;
+    let width = pixmap.width() as i32;
+    let height = pixmap.height() as i32;
+    let data = pixmap.pixels_mut();
+    for (source_y, row) in image.rows().enumerate() {
+        let target_y = origin_y + source_y as i32;
+        if target_y < 0 || target_y >= height {
+            continue;
+        }
+        for (source_x, pixel) in row.enumerate() {
+            let target_x = origin_x + source_x as i32;
+            if target_x < 0 || target_x >= width || pixel.0[3] == 0 {
+                continue;
+            }
+            let alpha = u16::from(pixel.0[3]);
+            let inverse_alpha = 255 - alpha;
+            let index = (target_y as usize * width as usize) + target_x as usize;
+            let destination = data[index];
+            let output_alpha = alpha + (u16::from(destination.alpha()) * inverse_alpha + 127) / 255;
+            let channel = |source: u8, destination: u8| {
+                ((u16::from(source) * alpha + 127) / 255
+                    + (u16::from(destination) * inverse_alpha + 127) / 255)
+                    .min(output_alpha) as u8
+            };
+            data[index] = PremultipliedColorU8::from_rgba(
+                channel(pixel.0[0], destination.red()),
+                channel(pixel.0[1], destination.green()),
+                channel(pixel.0[2], destination.blue()),
+                output_alpha as u8,
+            )
+            .expect("icon pixels were alpha-composited");
+        }
     }
 }
 
@@ -477,8 +580,8 @@ impl TextPainter for BlockTextPainter {
 mod tests {
     use super::*;
     use crate::editor::model::{
-        ArrowShape, COUNTER_DIAMETER, CounterShape, Document, EllipseShape, PenShape, Rect,
-        RectShape, TextShape,
+        ArrowShape, COUNTER_DIAMETER, CounterShape, Document, EffectKind, EffectShape,
+        EllipseShape, IconShape, PenShape, Rect, RectShape, TextShape,
     };
 
     fn solid_image(width: u32, height: u32) -> Vec<u8> {
@@ -514,6 +617,70 @@ mod tests {
             [pixel.red(), pixel.green(), pixel.blue(), pixel.alpha()],
             [10, 20, 30, 255]
         );
+    }
+
+    #[test]
+    fn bundled_icon_is_tinted_and_flattened_into_the_export() {
+        let size = 28.0;
+        let icon_image = super::super::icons::rasterize(
+            super::super::icons::IconPack::Lucide,
+            super::super::icons::IconGlyph::ArrowRight,
+            "#e03131",
+            size,
+        )
+        .unwrap();
+        let (source_x, source_y, _) = icon_image
+            .enumerate_pixels()
+            .find(|(_, _, pixel)| pixel.0[3] == 255)
+            .expect("the bundled arrow has opaque pixels");
+        let mut document = Document::new(40, 40);
+        document.shapes.push(Shape::Icon(IconShape {
+            id: "icon".to_string(),
+            pack: super::super::icons::IconPack::Lucide,
+            glyph: super::super::icons::IconGlyph::ArrowRight,
+            x: 4.0,
+            y: 4.0,
+            size,
+            color: "#e03131".to_string(),
+        }));
+        let flattened = flatten(&document, &[0; 40 * 40 * 4], &BlockTextPainter).unwrap();
+        let output = pixmap_to_rgba(&flattened);
+        assert_eq!(
+            output.get_pixel(4 + source_x, 4 + source_y).0,
+            [224, 49, 49, 255]
+        );
+        assert_eq!(output.get_pixel(0, 0).0, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn effects_sample_the_current_composition_and_only_replace_their_bounds() {
+        let source = [200, 200, 200, 255].repeat(6 * 2);
+        let mut document = Document::new(6, 2);
+        document.shapes.push(Shape::Effect(EffectShape {
+            id: "redact".to_string(),
+            bounds: Rect::new(0.0, 0.0, 2.0, 2.0),
+            kind: EffectKind::Redact,
+        }));
+        document.shapes.push(Shape::Effect(EffectShape {
+            id: "blur".to_string(),
+            bounds: Rect::new(1.0, 0.0, 2.0, 2.0),
+            kind: EffectKind::Blur { radius_px: 1.0 },
+        }));
+
+        let (preview, patches) =
+            flatten_with_effect_patches(&document, &source, &BlockTextPainter).unwrap();
+        assert_eq!(patches.len(), 2);
+        assert_eq!((patches[0].x, patches[0].y), (0, 0));
+        assert_eq!((patches[1].x, patches[1].y), (1, 0));
+        assert_eq!(preview.pixel(0, 0).unwrap().red(), 0x11);
+        assert!(preview.pixel(1, 0).unwrap().red() < 200);
+        assert_eq!(preview.pixel(3, 0).unwrap().red(), 200);
+
+        let png = flatten_to_png(&document, &source).unwrap();
+        let exported = image::load_from_memory(&png).unwrap().into_rgba8();
+        assert_eq!(exported.get_pixel(0, 0).0, [0x11, 0x18, 0x27, 0xff]);
+        assert!(exported.get_pixel(1, 0).0[0] < 200);
+        assert_eq!(exported.get_pixel(3, 0).0, [200, 200, 200, 255]);
     }
 
     #[test]

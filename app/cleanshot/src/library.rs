@@ -228,22 +228,30 @@ pub fn update_title(id: &str, title: &str) -> Result<bool, String> {
     Ok(true)
 }
 
-#[allow(dead_code)] // library management API for the editor phase
 pub fn delete_capture(id: &str) -> Result<(), String> {
     validate_id(id)?;
     let root = library_root()?;
-    let mut entries = read_index(&root)?;
+    delete_capture_from_root(&root, id)
+}
+
+fn delete_capture_from_root(root: &Path, id: &str) -> Result<(), String> {
+    validate_id(id)?;
+    let mut entries = read_index(root)?;
     let before = entries.len();
     entries.retain(|entry| entry.id != id);
     if entries.len() == before {
         return Ok(());
     }
-    let dir = capture_dir(&root, id);
+    write_index(root, &entries)?;
+    let dir = capture_dir(root, id);
     if dir.exists() {
-        fs::remove_dir_all(&dir)
-            .map_err(|error| format!("Could not delete capture {id}: {error}"))?;
+        fs::remove_dir_all(&dir).map_err(|error| {
+            format!(
+                "Capture {id} was removed from the library, but its files could not be deleted: {error}"
+            )
+        })?;
     }
-    write_index(&root, &entries)
+    Ok(())
 }
 
 /// Path of the editor's annotation document for one capture. The document
@@ -253,18 +261,47 @@ pub fn annotations_path(id: &str) -> Result<PathBuf, String> {
     Ok(capture_dir(&library_root()?, id).join("annotations.json"))
 }
 
-/// Load the annotation document for a capture, if it has one. Entries from
-/// the old Tauri app (or any foreign format) have no version-1 document and
-/// return None — the editor opens them as un-annotated images.
-pub fn read_annotations(id: &str) -> Result<Option<crate::editor::model::Document>, String> {
-    let path = annotations_path(id)?;
-    match fs::read(&path) {
+#[derive(Debug)]
+pub enum AnnotationSource {
+    Transient,
+    Missing {
+        path: PathBuf,
+    },
+    Loaded {
+        document: crate::editor::model::Document,
+        path: PathBuf,
+    },
+    Rejected {
+        error: String,
+    },
+}
+
+pub fn read_annotations(id: &str) -> AnnotationSource {
+    let path = match annotations_path(id) {
+        Ok(path) => path,
+        Err(error) => return AnnotationSource::Rejected { error },
+    };
+    annotation_source_from_path(path)
+}
+
+fn annotation_source_from_path(path: PathBuf) -> AnnotationSource {
+    match read_annotations_from_path(&path) {
+        Ok(Some(document)) => AnnotationSource::Loaded { document, path },
+        Ok(None) => AnnotationSource::Missing { path },
+        Err(error) => AnnotationSource::Rejected { error },
+    }
+}
+
+fn read_annotations_from_path(
+    path: &Path,
+) -> Result<Option<crate::editor::model::Document>, String> {
+    match fs::read(path) {
         Ok(bytes) => match crate::editor::model::Document::from_bytes(&bytes) {
             Ok(document) => Ok(Some(document)),
-            Err(error) => {
-                eprintln!("Snipsy: ignoring non-editor annotations for capture {id}: {error}");
-                Ok(None)
-            }
+            Err(error) => Err(format!(
+                "Could not read annotation document at {}: {error}",
+                path.display()
+            )),
         },
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(format!("Could not read the annotation document: {error}")),
@@ -318,8 +355,9 @@ pub fn now_millis() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        ImageSize, IndexEntry, generate_id, normalize_index_entry, resolve_data_root, validate_id,
-        validate_index_entry, validate_size, validate_title, write_atomic,
+        AnnotationSource, ImageSize, IndexEntry, generate_id, normalize_index_entry,
+        resolve_data_root, validate_id, validate_index_entry, validate_size, validate_title,
+        write_atomic,
     };
     use std::fs;
 
@@ -460,5 +498,56 @@ mod tests {
         assert_eq!(resolve_data_root(&base).unwrap(), canonical);
         assert!(legacy.join("settings.json").exists());
         fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn invalid_annotation_files_are_rejected_without_being_modified() {
+        let path = std::env::temp_dir().join(format!(
+            "cleanshot-w-phase3-{}-{}.json",
+            std::process::id(),
+            super::now_millis()
+        ));
+        let original = b"{\"version\":99}";
+        std::fs::write(&path, original).unwrap();
+
+        let source = super::annotation_source_from_path(path.clone());
+        let bytes_after_read = std::fs::read(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+
+        assert!(matches!(source, AnnotationSource::Rejected { .. }));
+        assert_eq!(bytes_after_read, original);
+    }
+
+    #[test]
+    fn deleting_capture_removes_index_entry_and_capture_files() {
+        let root = std::env::temp_dir().join(format!(
+            "cleanshot-w-library-delete-{}-{}",
+            std::process::id(),
+            super::now_millis()
+        ));
+        let dir = root.join("capture-1");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("image.png"), b"capture").unwrap();
+        super::write_index(&root, &[valid_entry()]).unwrap();
+
+        super::delete_capture_from_root(&root, "capture-1").unwrap();
+
+        assert!(super::read_index(&root).unwrap().is_empty());
+        assert!(!dir.exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn deleting_invalid_or_missing_library_ids_is_non_destructive() {
+        let root = std::env::temp_dir().join(format!(
+            "cleanshot-w-library-delete-empty-{}-{}",
+            std::process::id(),
+            super::now_millis()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        assert!(super::delete_capture_from_root(&root, "../outside").is_err());
+        assert!(super::delete_capture_from_root(&root, "missing").is_ok());
+        assert!(super::read_index(&root).unwrap().is_empty());
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

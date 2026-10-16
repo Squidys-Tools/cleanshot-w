@@ -104,21 +104,17 @@ pub fn complete_selection(window: &mut Window, cx: &mut App, selection: Bounds<P
                 title: saved_title.clone(),
                 id: saved.as_ref().map(|metadata| metadata.id.clone()),
             });
-            let (doc, doc_path) = saved.as_ref().map_or((None, None), |metadata| {
-                let doc = library::read_annotations(&metadata.id).unwrap_or_else(|error| {
-                    eprintln!("Snipsy: {error}");
-                    None
+            let annotations = saved
+                .as_ref()
+                .map_or(library::AnnotationSource::Transient, |metadata| {
+                    library::read_annotations(&metadata.id)
                 });
-                let path = library::annotations_path(&metadata.id).ok();
-                (doc, path)
-            });
             editor::window::open(
                 cx,
                 editor::window::EditorSource {
                     png,
                     title: saved_title,
-                    doc,
-                    doc_path,
+                    annotations,
                 },
             )
         },
@@ -230,21 +226,16 @@ pub fn capture_window(window: &mut Window, cx: &mut App, id: u64, title: String)
 }
 
 fn open_editor_capture(cx: &mut App, id: Option<&str>, png: Vec<u8>, title: String) {
-    let doc = id.and_then(|id| match library::read_annotations(id) {
-        Ok(doc) => doc,
-        Err(error) => {
-            eprintln!("Snipsy: {error}");
-            None
-        }
-    });
-    let doc_path = id.and_then(|id| library::annotations_path(id).ok());
+    let annotations = id.map_or(
+        library::AnnotationSource::Transient,
+        library::read_annotations,
+    );
     if let Err(error) = editor::window::open(
         cx,
         editor::window::EditorSource {
             png,
             title,
-            doc,
-            doc_path,
+            annotations,
         },
     ) {
         eprintln!("Snipsy: {error}");

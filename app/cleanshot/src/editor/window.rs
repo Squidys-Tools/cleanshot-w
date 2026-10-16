@@ -6,25 +6,29 @@
 //! - **screen px (GPUI logical)** — window-relative; `screen = pan + image × zoom`.
 //!   Export flattens 1:1 in image px via `flatten`, never screen px.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use gpui::{
     App, Bounds, Context, Corners, FocusHandle, KeyBinding, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, PathBuilder, Pixels, Point, Render, RenderImage,
-    ScrollWheelEvent, Size, Window, WindowBounds, WindowOptions, actions, canvas, div, prelude::*,
-    px, rgb, size,
+    ScrollWheelEvent, Size, Window, WindowBounds, WindowHandle, WindowOptions, actions, canvas,
+    div, prelude::*, px, rgb, size,
 };
 
 use crate::clipboard;
 use crate::editor::flatten::flatten_to_png;
 use crate::editor::history::History;
 use crate::editor::hit_test::{Handle, handle_at, hit_test};
+use crate::editor::icons::{IconGlyph, IconPack};
 use crate::editor::model::{
-    ArrowShape, COUNTER_DIAMETER, CounterShape, DEFAULT_TEXT_SIZE, Document, EllipseShape, PALETTE,
-    PenShape, Rect, RectShape, STROKE_WIDTHS, Shape, ShapeId, TextShape,
+    ArrowShape, COUNTER_DIAMETER, CounterShape, DEFAULT_TEXT_SIZE, Document, EffectKind,
+    EffectShape, EllipseShape, IconShape, PALETTE, PenShape, Rect, RectShape, STROKE_WIDTHS, Shape,
+    ShapeId, TextShape,
 };
 use crate::library;
+use crate::settings::{AppSettings, current_settings};
 use crate::{platform, save_dialog};
 
 actions!(
@@ -38,6 +42,10 @@ actions!(
         ToolText,
         ToolCounter,
         ToolCrop,
+        ToolBlur,
+        ToolPixelate,
+        ToolRedact,
+        ToolIcon,
         DeleteShape,
         UndoEdit,
         RedoEdit,
@@ -56,6 +64,8 @@ actions!(
 
 const TOOLBAR_HEIGHT: f32 = 48.0;
 const SELECTION_BAR_HEIGHT: f32 = 44.0;
+const SIDE_PANEL_WIDTH: f32 = 284.0;
+const ICON_CACHE_MAX_BYTES: usize = 16 * 1024 * 1024;
 const HANDLE_SCREEN_SIZE: f32 = 10.0; // selection handles, screen px
 const ZOOM_MIN: f32 = 0.05;
 const ZOOM_MAX: f32 = 16.0;
@@ -70,6 +80,17 @@ pub enum Tool {
     Text,
     Counter,
     Crop,
+    Blur,
+    Pixelate,
+    Redact,
+    Icon,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EditorPanel {
+    Icons,
+    Library,
+    Preferences,
 }
 
 impl Tool {
@@ -129,11 +150,23 @@ enum Drag {
 pub struct EditorSource {
     pub png: Vec<u8>,
     pub title: String,
-    /// Annotation document to edit (None → fresh, un-annotated image).
-    pub doc: Option<Document>,
-    /// Where the document persists (None → transient, e.g. the Linux
-    /// `--edit` dev loop).
-    pub doc_path: Option<PathBuf>,
+    pub annotations: library::AnnotationSource,
+}
+
+#[derive(Default)]
+pub struct EditorSession {
+    window: Option<WindowHandle<EditorWindow>>,
+}
+
+impl gpui::Global for EditorSession {}
+
+struct PreparedCapture {
+    title: String,
+    image: Arc<RenderImage>,
+    rgba: image::RgbaImage,
+    doc: Document,
+    doc_path: Option<PathBuf>,
+    annotation_warning: bool,
 }
 
 pub struct EditorWindow {
@@ -144,10 +177,23 @@ pub struct EditorWindow {
     rgba: image::RgbaImage,
     doc: Document,
     doc_path: Option<PathBuf>,
+    annotation_warning: bool,
     history: History,
     tool: Tool,
     color_index: usize,
     stroke_width_index: usize,
+    icon_pack: IconPack,
+    icon_glyph: IconGlyph,
+    panel: Option<EditorPanel>,
+    captures: Vec<library::CaptureMetadata>,
+    library_error: Option<String>,
+    library_notice: Option<String>,
+    pending_delete: Option<String>,
+    settings: AppSettings,
+    settings_notice: Option<String>,
+    capturing_shortcut: bool,
+    icon_image_cache: HashMap<(IconPack, IconGlyph, String, u32), Arc<RenderImage>>,
+    icon_image_cache_bytes: usize,
     selected: Option<ShapeId>,
     zoom: f32,
     pan: Point<Pixels>,
@@ -158,10 +204,18 @@ pub struct EditorWindow {
     caret: usize,
     /// Crop rect in image px while the crop tool is active.
     crop: Option<Rect>,
+    source_revision: u64,
+    effect_cache: Option<EffectCache>,
 }
 
-/// Open an editor window for a capture.
-pub fn open(cx: &mut App, source: EditorSource) -> Result<(), String> {
+struct EffectCache {
+    source_revision: u64,
+    shapes: Vec<Shape>,
+    editing_shape: Option<ShapeId>,
+    preview: Option<Arc<RenderImage>>,
+}
+
+fn prepare_capture(source: EditorSource) -> Result<PreparedCapture, String> {
     let rgba = image::ImageReader::new(std::io::Cursor::new(&source.png))
         .with_guessed_format()
         .map_err(|error| format!("Could not open the capture image: {error}"))?
@@ -170,17 +224,25 @@ pub fn open(cx: &mut App, source: EditorSource) -> Result<(), String> {
         .into_rgba8();
     let (width, height) = rgba.dimensions();
 
-    let mut doc = match source.doc {
+    let (mut doc, doc_path, annotation_warning) = match source.annotations {
+        library::AnnotationSource::Transient => (None, None, false),
+        library::AnnotationSource::Missing { path } => (None, Some(path), false),
+        library::AnnotationSource::Loaded { document, path } => (Some(document), Some(path), false),
+        library::AnnotationSource::Rejected { error } => {
+            eprintln!("Snipsy: {error}");
+            (None, None, true)
+        }
+    };
+
+    let mut doc = match doc.take() {
         Some(doc) => doc,
         None => Document::new(width, height),
     };
-    doc.image_id = source
-        .doc_path
+    doc.image_id = doc_path
         .as_ref()
         .and_then(|path| path.parent())
         .and_then(|path| path.file_name())
         .map(|id| id.to_string_lossy().into_owned());
-    let image = crate::pin::decode_to_render_image(&source.png)?;
     if doc.image_width != width || doc.image_height != height {
         return Err(format!(
             "The annotation document is {}×{} but the image is {width}×{height}.",
@@ -188,6 +250,47 @@ pub fn open(cx: &mut App, source: EditorSource) -> Result<(), String> {
         ));
     }
 
+    Ok(PreparedCapture {
+        title: source.title,
+        image: crate::pin::rgba_to_render_image(rgba.clone()),
+        rgba,
+        doc,
+        doc_path,
+        annotation_warning,
+    })
+}
+
+/// Open an editor window for a capture, reusing the current window when present.
+pub fn open(cx: &mut App, source: EditorSource) -> Result<(), String> {
+    let prepared = prepare_capture(source)?;
+    if !cx.has_global::<EditorSession>() {
+        cx.set_global(EditorSession::default());
+    }
+
+    if let Some(handle) = cx.global::<EditorSession>().window {
+        let mut prepared = Some(prepared);
+        match handle.update(cx, |editor, window, cx| {
+            editor.replace_capture(
+                prepared.take().expect("capture is only loaded once"),
+                window,
+                cx,
+            );
+        }) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                let Some(prepared) = prepared else {
+                    return Err(format!("Could not update the existing editor: {error}"));
+                };
+                cx.global_mut::<EditorSession>().window = None;
+                return open_new(cx, prepared);
+            }
+        }
+    }
+
+    open_new(cx, prepared)
+}
+
+fn open_new(cx: &mut App, prepared: PreparedCapture) -> Result<(), String> {
     // Editor: a normal, decorated window the user can move and resize.
     let options = WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds {
@@ -195,7 +298,7 @@ pub fn open(cx: &mut App, source: EditorSource) -> Result<(), String> {
             size: size(px(960.), px(700.)),
         })),
         titlebar: Some(gpui::TitlebarOptions {
-            title: Some(format!("Snipsy — {}", source.title).into()),
+            title: Some(format!("Snipsy — {}", prepared.title).into()),
             ..Default::default()
         }),
         focus: true,
@@ -205,33 +308,97 @@ pub fn open(cx: &mut App, source: EditorSource) -> Result<(), String> {
         ..Default::default()
     };
 
-    cx.open_window(options, |window, cx| {
-        let view = cx.new(|cx| EditorWindow {
+    let handle = cx
+        .open_window(options, |window, cx| {
+            let view = cx.new(|cx| EditorWindow::from_prepared(prepared, cx));
+            let focus = view.read(cx).focus.clone();
+            window.focus(&focus, cx);
+            view
+        })
+        .map_err(|error| format!("Could not open the editor window: {error}"))?;
+    cx.global_mut::<EditorSession>().window = Some(handle);
+    Ok(())
+}
+
+impl EditorWindow {
+    fn from_prepared(prepared: PreparedCapture, cx: &mut Context<Self>) -> Self {
+        let settings = current_settings();
+        let (captures, library_error) = match library::list_captures() {
+            Ok(captures) => (captures, None),
+            Err(error) => (Vec::new(), Some(error)),
+        };
+        Self {
             focus: cx.focus_handle(),
-            title: source.title.clone(),
-            image,
-            rgba,
-            doc,
-            doc_path: source.doc_path.clone(),
+            title: prepared.title,
+            image: prepared.image,
+            rgba: prepared.rgba,
+            doc: prepared.doc,
+            doc_path: prepared.doc_path,
+            annotation_warning: prepared.annotation_warning,
             history: History::new(),
             tool: Tool::Select,
-            color_index: 4, // blue, the old app's default
+            color_index: 4,
             stroke_width_index: 1,
+            icon_pack: settings.default_icon_pack,
+            icon_glyph: IconGlyph::Star,
+            panel: None,
+            captures,
+            library_error,
+            library_notice: None,
+            pending_delete: None,
+            settings,
+            settings_notice: None,
+            capturing_shortcut: false,
+            icon_image_cache: HashMap::new(),
+            icon_image_cache_bytes: 0,
             selected: None,
-            zoom: 0.0, // fit on first render
+            zoom: 0.0,
             pan: Point::default(),
             drag: Drag::None,
             space_held: false,
             text_editing: None,
             caret: 0,
             crop: None,
-        });
-        let focus = view.read(cx).focus.clone();
-        window.focus(&focus, cx);
-        view
-    })
-    .map_err(|error| format!("Could not open the editor window: {error}"))?;
-    Ok(())
+            source_revision: 0,
+            effect_cache: None,
+        }
+    }
+
+    fn replace_capture(
+        &mut self,
+        prepared: PreparedCapture,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.commit_text_edit();
+        self.title = prepared.title;
+        window.set_window_title(&format!("Snipsy — {}", self.title));
+        self.image = prepared.image;
+        self.rgba = prepared.rgba;
+        self.doc = prepared.doc;
+        self.doc_path = prepared.doc_path;
+        self.annotation_warning = prepared.annotation_warning;
+        self.library_notice = None;
+        self.pending_delete = None;
+        self.history = History::new();
+        self.tool = Tool::Select;
+        self.color_index = 4;
+        self.stroke_width_index = 1;
+        self.selected = None;
+        self.zoom = 0.0;
+        self.pan = Point::default();
+        self.drag = Drag::None;
+        self.space_held = false;
+        self.text_editing = None;
+        self.caret = 0;
+        self.crop = None;
+        self.source_revision = self.source_revision.wrapping_add(1);
+        self.effect_cache = None;
+        self.refresh_library();
+        window.activate_window();
+        window.focus(&self.focus, cx);
+        cx.notify();
+    }
 }
 
 /// Keystroke bindings for the editor window. Old app letters plus the
@@ -254,6 +421,10 @@ pub fn keybindings() -> Vec<KeyBinding> {
         KeyBinding::new("6", ToolText, Some("EditorWindow")),
         KeyBinding::new("7", ToolCounter, Some("EditorWindow")),
         KeyBinding::new("8", ToolCrop, Some("EditorWindow")),
+        KeyBinding::new("b", ToolBlur, Some("EditorWindow")),
+        KeyBinding::new("m", ToolPixelate, Some("EditorWindow")),
+        KeyBinding::new("shift-r", ToolRedact, Some("EditorWindow")),
+        KeyBinding::new("i", ToolIcon, Some("EditorWindow")),
         KeyBinding::new("delete", DeleteShape, Some("EditorWindow")),
         KeyBinding::new("backspace", DeleteShape, Some("EditorWindow")),
         KeyBinding::new("ctrl-z", UndoEdit, Some("EditorWindow")),
@@ -412,7 +583,12 @@ impl EditorWindow {
         let (ix, iy) = self.to_image(event.position);
         match self.tool {
             Tool::Select => self.select_mouse_down(ix, iy),
-            Tool::Rectangle | Tool::Ellipse | Tool::Arrow => {
+            Tool::Rectangle
+            | Tool::Ellipse
+            | Tool::Arrow
+            | Tool::Blur
+            | Tool::Pixelate
+            | Tool::Redact => {
                 self.history.begin(&self.doc, None);
                 self.drag = Drag::Draw {
                     start: (ix, iy),
@@ -427,6 +603,7 @@ impl EditorWindow {
             }
             Tool::Text => self.place_text(ix, iy),
             Tool::Counter => self.place_counter(ix, iy),
+            Tool::Icon => self.place_icon(ix, iy),
             Tool::Crop => self.crop_mouse_down(ix, iy),
         }
     }
@@ -508,6 +685,22 @@ impl EditorWindow {
         self.commit();
         // Counters stay selected so the palette applies to them.
         self.selected = self.doc.shapes.last().map(|shape| shape.id().clone());
+    }
+
+    fn place_icon(&mut self, ix: f32, iy: f32) {
+        let size = 48.0;
+        self.history.begin(&self.doc, None);
+        self.doc.shapes.push(Shape::Icon(IconShape {
+            id: next_shape_id("icon"),
+            pack: self.icon_pack,
+            glyph: self.icon_glyph,
+            x: ix - size / 2.0,
+            y: iy - size / 2.0,
+            size,
+            color: self.current_color(),
+        }));
+        self.selected = self.doc.shapes.last().map(|shape| shape.id().clone());
+        self.commit();
     }
 
     fn crop_mouse_down(&mut self, ix: f32, iy: f32) {
@@ -646,6 +839,9 @@ impl EditorWindow {
                 (start.0 - current.0).abs() >= 2.0 || (start.1 - current.1).abs() >= 2.0
             }
             Tool::Arrow => (start.0 - current.0).powi(2) + (start.1 - current.1).powi(2) >= 4.0,
+            Tool::Blur | Tool::Pixelate | Tool::Redact => {
+                (start.0 - current.0).abs() >= 2.0 && (start.1 - current.1).abs() >= 2.0
+            }
             _ => false,
         };
         if !created {
@@ -680,6 +876,21 @@ impl EditorWindow {
                 color: self.current_color(),
                 stroke_width: self.current_stroke_width(),
             }),
+            Tool::Blur | Tool::Pixelate | Tool::Redact => Shape::Effect(EffectShape {
+                id,
+                bounds: Rect::new(
+                    start.0.min(current.0),
+                    start.1.min(current.1),
+                    (start.0 - current.0).abs(),
+                    (start.1 - current.1).abs(),
+                ),
+                kind: match self.tool {
+                    Tool::Blur => EffectKind::Blur { radius_px: 14.0 },
+                    Tool::Pixelate => EffectKind::Pixelate { block_px: 10 },
+                    Tool::Redact => EffectKind::Redact,
+                    _ => unreachable!(),
+                },
+            }),
             _ => unreachable!("finish_draw only runs for drawing tools"),
         };
         self.doc.shapes.push(shape);
@@ -697,12 +908,32 @@ impl EditorWindow {
             Tool::Text => "text",
             Tool::Counter => "counter",
             Tool::Crop => "crop",
+            Tool::Blur => "blur",
+            Tool::Pixelate => "pixelate",
+            Tool::Redact => "redact",
+            Tool::Icon => "icon",
         }
     }
 
     // ---- interaction: keyboard ------------------------------------------
 
     fn on_key_down_raw(&mut self, event: &gpui::KeyDownEvent) {
+        if self.capturing_shortcut {
+            if event.keystroke.key == "escape" {
+                self.capturing_shortcut = false;
+                self.settings_notice = Some("Shortcut recording cancelled.".to_string());
+            } else if let Some(shortcut) = captured_shortcut(event) {
+                self.settings.capture_hotkey = shortcut;
+                self.capturing_shortcut = false;
+                self.persist_settings();
+            } else {
+                self.settings_notice = Some(
+                    "Hold Ctrl, Alt or Shift and press a letter, number or function key."
+                        .to_string(),
+                );
+            }
+            return;
+        }
         if self.text_editing.is_some() {
             self.handle_text_keystroke(event);
             return;
@@ -819,6 +1050,76 @@ impl EditorWindow {
         }
     }
 
+    fn show_panel(&mut self, panel: EditorPanel) {
+        self.capturing_shortcut = false;
+        let next = (self.panel != Some(panel)).then_some(panel);
+        if next != Some(EditorPanel::Library) {
+            self.pending_delete = None;
+        }
+        self.panel = next;
+    }
+
+    fn set_icon_pack(&mut self, pack: IconPack) {
+        self.icon_pack = pack;
+        self.settings.default_icon_pack = pack;
+        self.persist_settings();
+    }
+
+    fn persist_settings(&mut self) {
+        self.settings_notice = Some(match crate::settings::write_settings(&self.settings) {
+            Ok(()) => "Saved. Cursor applies next capture; restart to apply the hotkey. Startup registration is not wired in this GPUI shell yet.".to_string(),
+            Err(error) => format!("Could not save preferences: {error}"),
+        });
+    }
+
+    fn refresh_library(&mut self) {
+        match library::list_captures() {
+            Ok(captures) => {
+                self.captures = captures;
+                self.library_error = None;
+            }
+            Err(error) => self.library_error = Some(error),
+        }
+    }
+
+    fn open_library_capture(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(capture) = self.captures.iter().find(|capture| capture.id == id) else {
+            self.library_notice = Some("That capture is no longer in the library.".to_string());
+            self.refresh_library();
+            return;
+        };
+        let source = EditorSource {
+            png: match library::read_image_png(id) {
+                Ok(png) => png,
+                Err(error) => {
+                    self.library_notice = Some(error);
+                    self.refresh_library();
+                    return;
+                }
+            },
+            title: capture.title.clone(),
+            annotations: library::read_annotations(id),
+        };
+        match prepare_capture(source) {
+            Ok(prepared) => self.replace_capture(prepared, window, cx),
+            Err(error) => self.library_notice = Some(error),
+        }
+    }
+
+    fn delete_library_capture(&mut self, id: &str) {
+        if self.doc.image_id.as_deref() == Some(id) {
+            self.library_notice = Some("Close this capture before deleting it.".to_string());
+            self.pending_delete = None;
+            return;
+        }
+        self.library_notice = match library::delete_capture(id) {
+            Ok(()) => Some("Capture deleted.".to_string()),
+            Err(error) => Some(error),
+        };
+        self.pending_delete = None;
+        self.refresh_library();
+    }
+
     fn delete_selected(&mut self) {
         if self.text_editing.is_some() {
             return;
@@ -856,6 +1157,9 @@ impl EditorWindow {
             return;
         }
         if let Some(index) = self.selected_index() {
+            if matches!(&self.doc.shapes[index], Shape::Effect(_)) {
+                return;
+            }
             self.history.begin(&self.doc, None);
             let shape_color = match &mut self.doc.shapes[index] {
                 Shape::Rectangle(shape) => &mut shape.color,
@@ -864,6 +1168,8 @@ impl EditorWindow {
                 Shape::Pen(shape) => &mut shape.color,
                 Shape::Text(shape) => &mut shape.color,
                 Shape::Counter(shape) => &mut shape.color,
+                Shape::Icon(shape) => &mut shape.color,
+                Shape::Effect(_) => unreachable!(),
             };
             if *shape_color != color {
                 *shape_color = color;
@@ -887,7 +1193,7 @@ impl EditorWindow {
                 Shape::Ellipse(shape) => shape.stroke_width = width,
                 Shape::Arrow(shape) => shape.stroke_width = width,
                 Shape::Pen(shape) => shape.stroke_width = width,
-                Shape::Text(_) | Shape::Counter(_) => {}
+                Shape::Text(_) | Shape::Counter(_) | Shape::Icon(_) | Shape::Effect(_) => {}
             }
             self.commit();
         }
@@ -903,6 +1209,8 @@ impl EditorWindow {
             if let Some(image) = previous.image {
                 self.rgba = image;
                 self.rebuild_image_from_rgba();
+                self.source_revision = self.source_revision.wrapping_add(1);
+                self.effect_cache = None;
                 if let Err(error) = self.replace_library_image() {
                     eprintln!("Snipsy: {error}");
                 }
@@ -926,6 +1234,8 @@ impl EditorWindow {
             if let Some(image) = next.image {
                 self.rgba = image;
                 self.rebuild_image_from_rgba();
+                self.source_revision = self.source_revision.wrapping_add(1);
+                self.effect_cache = None;
                 if let Err(error) = self.replace_library_image() {
                     eprintln!("Snipsy: {error}");
                 }
@@ -996,6 +1306,8 @@ impl EditorWindow {
             .crop(&Rect::new(x as f32, y as f32, w as f32, h as f32));
         self.rgba = image::imageops::crop_imm(&self.rgba, x, y, w, h).to_image();
         self.rebuild_image_from_rgba();
+        self.source_revision = self.source_revision.wrapping_add(1);
+        self.effect_cache = None;
         self.commit_with_image();
 
         // The library's stored capture is now stale — replace it so closing
@@ -1097,6 +1409,47 @@ fn next_shape_id(prefix: &str) -> ShapeId {
     )
 }
 
+fn captured_shortcut(event: &gpui::KeyDownEvent) -> Option<String> {
+    let modifiers = event.keystroke.modifiers;
+    shortcut_from_keys(
+        &event.keystroke.key,
+        modifiers.control,
+        modifiers.platform,
+        modifiers.alt,
+        modifiers.shift,
+    )
+}
+
+fn shortcut_from_keys(
+    key: &str,
+    control: bool,
+    platform: bool,
+    alt: bool,
+    shift: bool,
+) -> Option<String> {
+    let key = key.to_ascii_lowercase();
+    let valid_key = (key.len() == 1 && key.as_bytes()[0].is_ascii_alphanumeric())
+        || key
+            .strip_prefix('f')
+            .and_then(|number| number.parse::<u8>().ok())
+            .is_some_and(|number| (1..=24).contains(&number));
+    if !valid_key || !(control || platform || alt || shift) {
+        return None;
+    }
+    let mut parts = Vec::new();
+    if control || platform {
+        parts.push("ctrl");
+    }
+    if alt {
+        parts.push("alt");
+    }
+    if shift {
+        parts.push("shift");
+    }
+    parts.push(&key);
+    Some(parts.join("+"))
+}
+
 impl Render for EditorWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let viewport = window.viewport_size();
@@ -1107,13 +1460,16 @@ impl Render for EditorWindow {
         let canvas_state = self.canvas_state();
         let focus = self.focus.clone();
         let has_selection = self.selected_index().is_some() && self.text_editing.is_none();
+        let panel_open = self.panel.is_some();
 
         let mut root = div()
             .id("editor-root")
             .relative()
             .size_full()
             .bg(rgb(0x1e1e22))
-            .key_context(if self.text_editing.is_some() {
+            .key_context(if self.capturing_shortcut {
+                "ShortcutCapture"
+            } else if self.text_editing.is_some() {
                 "EditorText"
             } else {
                 "EditorWindow"
@@ -1154,6 +1510,23 @@ impl Render for EditorWindow {
             }))
             .on_action(cx.listener(|this, _: &ToolCrop, _, cx| {
                 this.set_tool(Tool::Crop);
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &ToolBlur, _, cx| {
+                this.set_tool(Tool::Blur);
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &ToolPixelate, _, cx| {
+                this.set_tool(Tool::Pixelate);
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &ToolRedact, _, cx| {
+                this.set_tool(Tool::Redact);
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &ToolIcon, _, cx| {
+                this.set_tool(Tool::Icon);
+                this.show_panel(EditorPanel::Icons);
                 cx.notify();
             }))
             .on_action(cx.listener(|this, _: &DeleteShape, _, cx| {
@@ -1225,7 +1598,7 @@ impl Render for EditorWindow {
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this, event: &MouseDownEvent, _, _| {
-                    if in_chrome(event.position, viewport, has_selection) {
+                    if in_chrome(event.position, viewport, has_selection, panel_open) {
                         return;
                     }
                     this.on_canvas_mouse_down(event);
@@ -1234,7 +1607,7 @@ impl Render for EditorWindow {
             .on_mouse_down(
                 MouseButton::Middle,
                 cx.listener(move |this, event: &MouseDownEvent, _, _| {
-                    if !in_chrome(event.position, viewport, has_selection) {
+                    if !in_chrome(event.position, viewport, has_selection, panel_open) {
                         this.on_canvas_mouse_down(event);
                     }
                 }),
@@ -1279,8 +1652,11 @@ impl Render for EditorWindow {
             )
             .children(self.text_overlays())
             .children(self.crop_status())
+            .children(self.redact_warning())
+            .children(self.annotation_warning())
             .child(self.toolbar(cx))
             .children(self.selection_bar(cx))
+            .children(self.side_panel(cx))
             .child(self.zoom_indicator(viewport))
             .child({
                 let _ = (canvas_bounds_for_hit, focus);
@@ -1297,7 +1673,12 @@ fn size_to_point(size: Size<Pixels>) -> Point<Pixels> {
     }
 }
 
-fn in_chrome(position: Point<Pixels>, viewport: Size<Pixels>, has_selection: bool) -> bool {
+fn in_chrome(
+    position: Point<Pixels>,
+    viewport: Size<Pixels>,
+    has_selection: bool,
+    panel_open: bool,
+) -> bool {
     let bar_height = TOOLBAR_HEIGHT
         + if has_selection {
             SELECTION_BAR_HEIGHT
@@ -1305,6 +1686,7 @@ fn in_chrome(position: Point<Pixels>, viewport: Size<Pixels>, has_selection: boo
             0.0
         };
     position.y >= viewport.height - px(bar_height)
+        || (panel_open && position.x >= viewport.width - px(SIDE_PANEL_WIDTH))
 }
 
 impl EditorWindow {
@@ -1313,14 +1695,31 @@ impl EditorWindow {
     }
 
     /// Everything the canvas paint closure needs, resolved at render time.
-    fn canvas_state(&self) -> CanvasState {
+    fn canvas_state(&mut self) -> CanvasState {
+        let flattened_preview = self.flattened_preview();
+        let shapes = self.doc.shapes.clone();
+        let icons = shapes
+            .iter()
+            .filter_map(|shape| match shape {
+                Shape::Icon(icon) => Some(icon.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        let mut icon_images = HashMap::new();
+        for icon in icons {
+            if let Some(image) = self.cached_icon_image(&icon) {
+                icon_images.insert(icon.id, image);
+            }
+        }
         CanvasState {
             image: self.image.clone(),
             image_width: self.doc.image_width,
             image_height: self.doc.image_height,
             zoom: self.zoom,
             pan: self.pan,
-            shapes: self.doc.shapes.clone(),
+            shapes,
+            icon_images,
+            flattened_preview,
             preview: self.preview_shape(),
             selected: self.selected.clone(),
             space_or_pan: self.space_held,
@@ -1330,6 +1729,77 @@ impl EditorWindow {
                 None
             },
         }
+    }
+
+    fn cached_icon_image(&mut self, icon: &IconShape) -> Option<Arc<RenderImage>> {
+        self.cached_icon_asset(icon.pack, icon.glyph, &icon.color, icon.size)
+    }
+
+    fn cached_icon_asset(
+        &mut self,
+        pack: IconPack,
+        glyph: IconGlyph,
+        color: &str,
+        size: f32,
+    ) -> Option<Arc<RenderImage>> {
+        let key = (pack, glyph, color.to_string(), size.round() as u32);
+        if let Some(image) = self.icon_image_cache.get(&key) {
+            return Some(image.clone());
+        }
+        let raster = super::icons::rasterize(pack, glyph, color, size).ok()?;
+        let image_bytes = raster.as_raw().len();
+        if self.icon_image_cache_bytes + image_bytes > ICON_CACHE_MAX_BYTES {
+            self.icon_image_cache.clear();
+            self.icon_image_cache_bytes = 0;
+        }
+        let image = crate::pin::rgba_to_render_image(raster);
+        self.icon_image_cache_bytes += image_bytes;
+        self.icon_image_cache.insert(key, image.clone());
+        Some(image)
+    }
+
+    fn flattened_preview(&mut self) -> Option<Arc<RenderImage>> {
+        if !self
+            .doc
+            .shapes
+            .iter()
+            .any(|shape| matches!(shape, Shape::Effect(_)))
+        {
+            self.effect_cache = None;
+            return None;
+        }
+
+        let editing_shape = self.text_editing.clone();
+        let cache_is_current = self.effect_cache.as_ref().is_some_and(|cache| {
+            cache.source_revision == self.source_revision
+                && cache.shapes == self.doc.shapes
+                && cache.editing_shape == editing_shape
+        });
+        if !cache_is_current {
+            let preview = match super::flatten::flatten_with_effect_patches_skipping(
+                &self.doc,
+                self.rgba.as_raw(),
+                &super::flatten::SystemTextPainter::new(),
+                editing_shape.as_deref(),
+            ) {
+                Ok((pixmap, _)) => Some(crate::pin::rgba_to_render_image(
+                    super::flatten::pixmap_to_rgba(&pixmap),
+                )),
+                Err(error) => {
+                    eprintln!("Snipsy: could not render effect preview: {error}");
+                    None
+                }
+            };
+            self.effect_cache = Some(EffectCache {
+                source_revision: self.source_revision,
+                shapes: self.doc.shapes.clone(),
+                editing_shape,
+                preview,
+            });
+        }
+        self.effect_cache
+            .as_ref()
+            .and_then(|cache| cache.preview.clone())
     }
 
     /// The shape currently being drawn, for live preview.
@@ -1366,6 +1836,21 @@ impl EditorWindow {
                         color,
                         stroke_width,
                     }),
+                    Tool::Blur | Tool::Pixelate | Tool::Redact => Shape::Effect(EffectShape {
+                        id: "preview".to_string(),
+                        bounds: Rect::new(
+                            start.0.min(current.0),
+                            start.1.min(current.1),
+                            (start.0 - current.0).abs(),
+                            (start.1 - current.1).abs(),
+                        ),
+                        kind: match self.tool {
+                            Tool::Blur => EffectKind::Blur { radius_px: 14.0 },
+                            Tool::Pixelate => EffectKind::Pixelate { block_px: 10 },
+                            Tool::Redact => EffectKind::Redact,
+                            _ => unreachable!(),
+                        },
+                    }),
                     _ => return None,
                 })
             }
@@ -1382,6 +1867,11 @@ impl EditorWindow {
     /// Text shapes (and counter digits) as absolutely-positioned divs.
     fn text_overlays(&self) -> Vec<gpui::AnyElement> {
         let mut overlays = Vec::new();
+        let has_effect = self
+            .doc
+            .shapes
+            .iter()
+            .any(|shape| matches!(shape, Shape::Effect(_)));
         for shape in &self.doc.shapes {
             match shape {
                 Shape::Text(text) => {
@@ -1389,6 +1879,9 @@ impl EditorWindow {
                     let top = self.to_screen_y(text.y);
                     let font_px = (text.size * self.zoom).max(6.0);
                     let is_editing = self.text_editing.as_ref() == Some(&text.id);
+                    if has_effect && !is_editing {
+                        continue;
+                    }
                     let color = parse_gpui_color(&text.color);
                     let mut styled = div()
                         .absolute()
@@ -1433,6 +1926,9 @@ impl EditorWindow {
                     overlays.push(styled.into_any_element());
                 }
                 Shape::Counter(counter) => {
+                    if has_effect {
+                        continue;
+                    }
                     let diameter = counter.diameter * self.zoom;
                     let left = self.to_screen_x(counter.x);
                     let top = self.to_screen_y(counter.y);
@@ -1481,12 +1977,382 @@ impl EditorWindow {
         )
     }
 
+    fn redact_warning(&self) -> Option<gpui::AnyElement> {
+        (self.tool == Tool::Redact
+            || self.doc.shapes.iter().any(
+                |shape| {
+                    matches!(shape, Shape::Effect(effect) if matches!(&effect.kind, EffectKind::Redact))
+                },
+            ))
+        .then(|| {
+            div()
+                .absolute()
+                .top(px(8.0))
+                .left(px(12.0))
+                .px_2()
+                .py_1()
+                .rounded(px(4.0))
+                .bg(rgb(0x382713).alpha(0.9))
+                .text_size(px(11.0))
+                .text_color(rgb(0xffffff))
+                .font_family(default_font_family())
+                .child("Redaction affects flattened exports only; the original capture remains unchanged.")
+                .into_any_element()
+        })
+    }
+
+    fn annotation_warning(&self) -> Option<gpui::AnyElement> {
+        self.annotation_warning.then(|| {
+            div()
+                .absolute()
+                .top(px(8.0))
+                .right(px(12.0))
+                .w(px(360.0))
+                .px_3()
+                .py_2()
+                .rounded(px(6.0))
+                .border_1()
+                .border_color(rgb(0xe4a756))
+                .bg(rgb(0x382713).alpha(0.95))
+                .text_size(px(12.0))
+                .text_color(rgb(0xffffff))
+                .font_family(default_font_family())
+                .child("Annotations could not be loaded. Changes won't overwrite the file; use Save PNG to keep a copy.")
+                .into_any_element()
+        })
+    }
+
+    fn panel_shell(
+        &self,
+        panel: EditorPanel,
+        title: &'static str,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        div()
+            .absolute()
+            .top(px(TOOLBAR_HEIGHT))
+            .right(px(0.0))
+            .bottom(px(TOOLBAR_HEIGHT))
+            .w(px(SIDE_PANEL_WIDTH))
+            .flex()
+            .flex_col()
+            .gap_2()
+            .px_3()
+            .py_3()
+            .bg(rgb(0x28282e))
+            .border_l_1()
+            .border_color(rgb(0x000000).alpha(0.5))
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .justify_between()
+                    .child(
+                        div()
+                            .font_family(default_font_family())
+                            .text_size(px(16.0))
+                            .text_color(rgb(0xffffff))
+                            .child(title),
+                    )
+                    .child(small_button("×").on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                            this.show_panel(panel);
+                            cx.notify();
+                        }),
+                    )),
+            )
+    }
+
+    fn side_panel(&mut self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
+        match self.panel? {
+            EditorPanel::Icons => Some(self.icons_panel(cx).into_any_element()),
+            EditorPanel::Library => Some(self.library_panel(cx).into_any_element()),
+            EditorPanel::Preferences => Some(self.preferences_panel(cx).into_any_element()),
+        }
+    }
+
+    fn icons_panel(&mut self, cx: &mut Context<Self>) -> gpui::Div {
+        let mut panel = self.panel_shell(EditorPanel::Icons, "Icons", cx).child(
+            div()
+                .text_size(px(11.0))
+                .text_color(rgb(0xb8b8c0))
+                .child("Pick a pack and symbol, then click the canvas."),
+        );
+        let mut packs = div().flex().flex_row().gap_1();
+        for pack in IconPack::ALL {
+            let mut button = div()
+                .flex_1()
+                .px_1()
+                .py_2()
+                .rounded(px(4.0))
+                .text_size(px(10.0))
+                .text_color(rgb(0xffffff))
+                .cursor(gpui::CursorStyle::PointingHand)
+                .child(pack.label())
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        this.set_icon_pack(pack);
+                        this.set_tool(Tool::Icon);
+                        cx.notify();
+                    }),
+                );
+            if self.icon_pack == pack {
+                button = button.bg(rgb(0x3B82F6));
+            } else {
+                button = button.bg(rgb(0x3a3a42));
+            }
+            packs = packs.child(button);
+        }
+        panel = panel.child(packs);
+        let pack = self.icon_pack;
+        let color = self.current_color();
+        for glyphs in IconGlyph::ALL.chunks(2) {
+            let mut row = div().flex().flex_row().gap_1();
+            for &glyph in glyphs {
+                let preview = self.cached_icon_asset(pack, glyph, &color, 24.0);
+                let mut button = div()
+                    .id(gpui::ElementId::Name(
+                        format!("glyph-{}", glyph.label()).into(),
+                    ))
+                    .flex_1()
+                    .h(px(34.0))
+                    .px_2()
+                    .rounded(px(4.0))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .text_size(px(12.0))
+                    .text_color(rgb(0xffffff))
+                    .cursor(gpui::CursorStyle::PointingHand)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                            this.icon_glyph = glyph;
+                            this.set_tool(Tool::Icon);
+                            cx.notify();
+                        }),
+                    );
+                if let Some(preview) = preview {
+                    button = button.child(icon_preview(preview));
+                }
+                button = button.child(glyph.label());
+                if self.icon_glyph == glyph {
+                    button = button.bg(rgb(0x3B82F6));
+                } else {
+                    button = button.bg(rgb(0x3a3a42));
+                }
+                row = row.child(button);
+            }
+            panel = panel.child(row);
+        }
+        panel
+    }
+
+    fn library_panel(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let mut panel = self
+            .panel_shell(EditorPanel::Library, "Capture library", cx)
+            .child(small_button("Refresh").on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                    this.library_notice = None;
+                    this.refresh_library();
+                    cx.notify();
+                }),
+            ));
+        if let Some(error) = &self.library_error {
+            panel = panel.child(panel_message(error, 0xe4a756));
+        }
+        if let Some(notice) = &self.library_notice {
+            panel = panel.child(panel_message(notice, 0xe4a756));
+        }
+        if self.captures.is_empty() && self.library_error.is_none() {
+            panel = panel.child(panel_message("No captures yet.", 0xb8b8c0));
+        }
+        let mut entries = div()
+            .id("library-entries")
+            .flex()
+            .flex_col()
+            .gap_2()
+            .flex_1()
+            .overflow_y_scroll();
+        for capture in self.captures.iter().cloned() {
+            let id = capture.id.clone();
+            let current = self.doc.image_id.as_deref() == Some(id.as_str());
+            let pending_delete = self.pending_delete.as_deref() == Some(id.as_str());
+            let mut row = div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .p_2()
+                .rounded(px(5.0))
+                .bg(rgb(0x34343b))
+                .child(
+                    div()
+                        .font_family(default_font_family())
+                        .text_size(px(12.0))
+                        .text_color(rgb(0xffffff))
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .child(capture.title),
+                )
+                .child(
+                    div()
+                        .text_size(px(10.0))
+                        .text_color(rgb(0xb8b8c0))
+                        .child(format!(
+                            "{} × {}",
+                            capture.image.width, capture.image.height
+                        )),
+                );
+            let mut actions = div().flex().flex_row().gap_1();
+            let open = if current {
+                small_button("Current")
+                    .flex_1()
+                    .opacity(0.45)
+                    .cursor(gpui::CursorStyle::Arrow)
+            } else {
+                let open_id = id.clone();
+                small_button("Open").flex_1().on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, _: &MouseDownEvent, window, cx| {
+                        this.open_library_capture(&open_id, window, cx);
+                        cx.notify();
+                    }),
+                )
+            };
+            actions = actions.child(open);
+            if pending_delete {
+                row = row.child(panel_message(
+                    "Delete this capture and its annotations?",
+                    0xe4a756,
+                ));
+                let confirm_id = id.clone();
+                actions = actions.child(
+                    small_button("Confirm delete")
+                        .bg(rgb(0x9f2d2d))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                                this.delete_library_capture(&confirm_id);
+                                cx.notify();
+                            }),
+                        ),
+                );
+                let cancel_id = id.clone();
+                actions = actions.child(small_button("Cancel").on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        if this.pending_delete.as_deref() == Some(cancel_id.as_str()) {
+                            this.pending_delete = None;
+                        }
+                        cx.notify();
+                    }),
+                ));
+            } else if !current {
+                let delete_id = id.clone();
+                actions = actions.child(small_button("Delete").on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        this.pending_delete = Some(delete_id.clone());
+                        this.library_notice = None;
+                        cx.notify();
+                    }),
+                ));
+            }
+            row = row.child(actions);
+            entries = entries.child(row);
+        }
+        panel.child(entries)
+    }
+
+    fn preferences_panel(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let shortcut_label = if self.capturing_shortcut {
+            "Press shortcut · Esc cancels".to_string()
+        } else {
+            format!("Record · {}", self.settings.capture_hotkey)
+        };
+        let mut panel = self
+            .panel_shell(EditorPanel::Preferences, "Preferences", cx)
+            .child(panel_label("Capture shortcut"))
+            .child(
+                div()
+                    .px_2()
+                    .py_2()
+                    .rounded(px(4.0))
+                    .bg(if self.capturing_shortcut {
+                        rgb(0x3B82F6)
+                    } else {
+                        rgb(0x3a3a42)
+                    })
+                    .text_size(px(12.0))
+                    .text_color(rgb(0xffffff))
+                    .cursor(gpui::CursorStyle::PointingHand)
+                    .child(shortcut_label)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                            this.capturing_shortcut = true;
+                            this.settings_notice = Some("Press the new shortcut now.".to_string());
+                            cx.notify();
+                        }),
+                    ),
+            )
+            .child(toggle_preference(
+                "Include cursor in captures",
+                self.settings.include_cursor,
+                cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                    this.settings.include_cursor = !this.settings.include_cursor;
+                    this.persist_settings();
+                    cx.notify();
+                }),
+            ))
+            .child(toggle_preference(
+                "Launch at Windows startup",
+                self.settings.launch_at_startup,
+                cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                    this.settings.launch_at_startup = !this.settings.launch_at_startup;
+                    this.persist_settings();
+                    cx.notify();
+                }),
+            ))
+            .child(panel_label("Default icon pack"));
+        let mut packs = div().flex().flex_col().gap_1();
+        for pack in IconPack::ALL {
+            let mut button = small_button(pack.label()).on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                    this.set_icon_pack(pack);
+                    cx.notify();
+                }),
+            );
+            if self.settings.default_icon_pack == pack {
+                button = button.bg(rgb(0x3B82F6));
+            }
+            packs = packs.child(button);
+        }
+        panel = panel.child(packs);
+        if let Some(notice) = &self.settings_notice {
+            panel = panel.child(panel_message(notice, 0xe4a756));
+        }
+        panel.child(div().text_size(px(10.0)).text_color(rgb(0xb8b8c0)).child(
+            "Cursor applies to the next capture. Restart to apply the hotkey. Startup is saved but not registered by the GPUI shell yet.",
+        ))
+    }
+
     fn zoom_indicator(&self, viewport: Size<Pixels>) -> gpui::AnyElement {
         let _ = viewport;
         let percent = (self.zoom * 100.0).round() as i32;
+        let right = if self.panel.is_some() {
+            SIDE_PANEL_WIDTH + 12.0
+        } else {
+            12.0
+        };
         div()
             .absolute()
-            .right(px(12.0))
+            .right(px(right))
             .bottom(px(TOOLBAR_HEIGHT + 8.0))
             .px_2()
             .py_1()
@@ -1509,6 +2375,10 @@ impl EditorWindow {
             (Tool::Text, "6", "Text"),
             (Tool::Counter, "7", "Counter"),
             (Tool::Crop, "8", "Crop"),
+            (Tool::Blur, "B", "Blur"),
+            (Tool::Pixelate, "M", "Pixelate"),
+            (Tool::Redact, "⇧R", "Redact"),
+            (Tool::Icon, "I", "Icon"),
         ];
         let mut bar = div()
             .absolute()
@@ -1561,6 +2431,11 @@ impl EditorWindow {
             bar = bar.child(button);
         }
 
+        bar = bar
+            .child(self.panel_button("Icons", EditorPanel::Icons, cx))
+            .child(self.panel_button("Library", EditorPanel::Library, cx))
+            .child(self.panel_button("Settings", EditorPanel::Preferences, cx));
+
         // Export actions at the right end of the bar.
         bar = bar
             .child(div().flex_1())
@@ -1599,6 +2474,26 @@ impl EditorWindow {
                 }),
             ));
         bar.into_any_element()
+    }
+
+    fn panel_button(
+        &self,
+        label: &'static str,
+        panel: EditorPanel,
+        cx: &mut Context<Self>,
+    ) -> gpui::Div {
+        let active = self.panel == Some(panel);
+        let mut button = small_button(label).on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                this.show_panel(panel);
+                cx.notify();
+            }),
+        );
+        if active {
+            button = button.bg(rgb(0x3B82F6));
+        }
+        button
     }
 
     /// Color / width / z-order / delete bar shown while a shape is selected.
@@ -1714,6 +2609,8 @@ impl EditorWindow {
             Shape::Pen(shape) => &shape.color,
             Shape::Text(shape) => &shape.color,
             Shape::Counter(shape) => &shape.color,
+            Shape::Icon(shape) => &shape.color,
+            Shape::Effect(_) => return None,
         };
         PALETTE.iter().position(|candidate| candidate == color)
     }
@@ -1726,7 +2623,7 @@ impl EditorWindow {
             Shape::Ellipse(shape) => shape.stroke_width,
             Shape::Arrow(shape) => shape.stroke_width,
             Shape::Pen(shape) => shape.stroke_width,
-            Shape::Text(_) | Shape::Counter(_) => return None,
+            Shape::Text(_) | Shape::Counter(_) | Shape::Icon(_) | Shape::Effect(_) => return None,
         };
         STROKE_WIDTHS
             .iter()
@@ -1745,6 +2642,68 @@ fn small_button(label: &'static str) -> gpui::Div {
         .font_family(default_font_family())
         .cursor(gpui::CursorStyle::PointingHand)
         .child(label)
+}
+
+fn panel_label(label: &'static str) -> gpui::Div {
+    div()
+        .font_family(default_font_family())
+        .text_size(px(12.0))
+        .text_color(rgb(0xd0d0d6))
+        .child(label)
+}
+
+fn panel_message(message: &str, color: u32) -> gpui::Div {
+    div()
+        .px_2()
+        .py_2()
+        .rounded(px(4.0))
+        .bg(rgb(0x3a3a42))
+        .text_size(px(11.0))
+        .text_color(rgb(color))
+        .child(message.to_string())
+}
+
+fn icon_preview(image: Arc<RenderImage>) -> gpui::AnyElement {
+    canvas(
+        move |_, _, _| image.clone(),
+        |bounds, image, window, _| {
+            window
+                .paint_image(
+                    bounds,
+                    bounds,
+                    Corners::<Pixels>::default(),
+                    image.clone(),
+                    0,
+                    false,
+                )
+                .ok();
+        },
+    )
+    .w(px(24.0))
+    .h(px(24.0))
+    .into_any_element()
+}
+
+fn toggle_preference(
+    label: &'static str,
+    enabled: bool,
+    listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> gpui::Div {
+    div()
+        .flex()
+        .flex_row()
+        .items_center()
+        .justify_between()
+        .px_2()
+        .py_2()
+        .rounded(px(4.0))
+        .bg(rgb(0x34343b))
+        .text_size(px(11.0))
+        .text_color(rgb(0xffffff))
+        .cursor(gpui::CursorStyle::PointingHand)
+        .child(label)
+        .child(if enabled { "On" } else { "Off" })
+        .on_mouse_down(MouseButton::Left, listener)
 }
 
 fn default_font_family() -> &'static str {
@@ -1776,6 +2735,8 @@ struct CanvasState {
     zoom: f32,
     pan: Point<Pixels>,
     shapes: Vec<Shape>,
+    icon_images: HashMap<ShapeId, Arc<RenderImage>>,
+    flattened_preview: Option<Arc<RenderImage>>,
     preview: Option<Shape>,
     selected: Option<ShapeId>,
     #[allow(dead_code)]
@@ -1822,21 +2783,30 @@ fn paint_canvas(bounds: Bounds<Pixels>, state: &CanvasState, window: &mut Window
         rgb(0xffffff).alpha(0.15),
         Default::default(),
     ));
+    let image = state
+        .flattened_preview
+        .clone()
+        .unwrap_or_else(|| state.image.clone());
     window
         .paint_image(
             bounds,
             image_bounds,
             Corners::<Pixels>::default(),
-            state.image.clone(),
+            image,
             0,
             false,
         )
         .ok();
 
-    // Shapes, document order (later on top).
-    for shape in state.shapes.iter().chain(state.preview.as_ref()) {
-        let selected = state.selected.as_deref() == Some(shape.id().as_str());
-        paint_shape(bounds, state, window, shape, selected);
+    if state.flattened_preview.is_some() {
+        if let Some(preview) = &state.preview {
+            paint_shape(bounds, state, window, preview, false);
+        }
+    } else {
+        for shape in state.shapes.iter().chain(state.preview.as_ref()) {
+            let selected = state.selected.as_deref() == Some(shape.id().as_str());
+            paint_shape(bounds, state, window, shape, selected);
+        }
     }
 
     // Selection outline + handles.
@@ -1971,6 +2941,42 @@ fn paint_shape(
             // A filled badge plus a thin white ring reads on any background.
             if let Some(ring) = ring {
                 window.paint_path(ring, rgb(0xffffff));
+            }
+        }
+        Shape::Effect(effect) => {
+            let bounds = effect.bounds;
+            let screen = bounds_of_canvas(bounds.x, bounds.y, bounds.w, bounds.h, _bounds, state);
+            window.paint_quad(gpui::quad(
+                screen,
+                px(0.0),
+                color.alpha(0.2),
+                px(0.0),
+                gpui::transparent_black(),
+                Default::default(),
+            ));
+            if let Some(path) = rect_path(screen, px(1.5)) {
+                window.paint_path(path, color);
+            }
+        }
+        Shape::Icon(icon) => {
+            if let Some(image) = state.icon_images.get(&icon.id) {
+                let screen = Bounds {
+                    origin: image_to_screen(state, _bounds, icon.x, icon.y),
+                    size: Size {
+                        width: px(icon.size * state.zoom),
+                        height: px(icon.size * state.zoom),
+                    },
+                };
+                window
+                    .paint_image(
+                        _bounds,
+                        screen,
+                        Corners::<Pixels>::default(),
+                        image.clone(),
+                        0,
+                        false,
+                    )
+                    .ok();
             }
         }
     }
@@ -2199,15 +3205,20 @@ fn paint_crop_overlay(
 }
 
 fn shape_color(shape: &Shape) -> gpui::Hsla {
-    let hex = match shape {
-        Shape::Rectangle(shape) => &shape.color,
-        Shape::Ellipse(shape) => &shape.color,
-        Shape::Arrow(shape) => &shape.color,
-        Shape::Pen(shape) => &shape.color,
-        Shape::Text(shape) => &shape.color,
-        Shape::Counter(shape) => &shape.color,
-    };
-    rgb(parse_hex(hex)).into()
+    match shape {
+        Shape::Effect(effect) => match &effect.kind {
+            EffectKind::Blur { .. } => rgb(0x3b82f6).into(),
+            EffectKind::Pixelate { .. } => rgb(0xf08c00).into(),
+            EffectKind::Redact => rgb(0x111827).into(),
+        },
+        Shape::Rectangle(shape) => rgb(parse_hex(&shape.color)).into(),
+        Shape::Ellipse(shape) => rgb(parse_hex(&shape.color)).into(),
+        Shape::Arrow(shape) => rgb(parse_hex(&shape.color)).into(),
+        Shape::Pen(shape) => rgb(parse_hex(&shape.color)).into(),
+        Shape::Text(shape) => rgb(parse_hex(&shape.color)).into(),
+        Shape::Counter(shape) => rgb(parse_hex(&shape.color)).into(),
+        Shape::Icon(shape) => rgb(parse_hex(&shape.color)).into(),
+    }
 }
 
 /// Toolbar/selection icons drawn as vector shapes.
@@ -2359,9 +3370,167 @@ fn icon_for(tool: Tool, active: bool) -> gpui::AnyElement {
                     path(&[(0.35, 0.15), (0.35, 0.65), (0.85, 0.65)], false, 2.0);
                     path(&[(0.15, 0.35), (0.65, 0.35), (0.65, 0.85)], false, 2.0);
                 }
+                Tool::Blur => {
+                    path(
+                        &[(0.28, 0.5), (0.4, 0.35), (0.52, 0.5), (0.4, 0.65)],
+                        true,
+                        1.6,
+                    );
+                    path(
+                        &[(0.48, 0.5), (0.6, 0.35), (0.72, 0.5), (0.6, 0.65)],
+                        true,
+                        1.6,
+                    );
+                }
+                Tool::Pixelate => {
+                    path(
+                        &[(0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75)],
+                        true,
+                        1.8,
+                    );
+                    path(&[(0.25, 0.5), (0.75, 0.5)], false, 1.4);
+                    path(&[(0.5, 0.25), (0.5, 0.75)], false, 1.4);
+                }
+                Tool::Redact => {
+                    let mut builder = PathBuilder::fill();
+                    builder.move_to(Point {
+                        x: px(x + 0.25 * w),
+                        y: px(y + 0.3 * h),
+                    });
+                    builder.line_to(Point {
+                        x: px(x + 0.75 * w),
+                        y: px(y + 0.3 * h),
+                    });
+                    builder.line_to(Point {
+                        x: px(x + 0.75 * w),
+                        y: px(y + 0.7 * h),
+                    });
+                    builder.line_to(Point {
+                        x: px(x + 0.25 * w),
+                        y: px(y + 0.7 * h),
+                    });
+                    builder.close();
+                    if let Ok(rect) = builder.build() {
+                        window.paint_path(rect, c);
+                    }
+                }
+                Tool::Icon => {
+                    path(
+                        &[
+                            (0.5, 0.15),
+                            (0.6, 0.38),
+                            (0.85, 0.4),
+                            (0.67, 0.57),
+                            (0.72, 0.82),
+                            (0.5, 0.69),
+                            (0.28, 0.82),
+                            (0.33, 0.57),
+                            (0.15, 0.4),
+                            (0.4, 0.38),
+                        ],
+                        true,
+                        1.7,
+                    );
+                }
             }
         },
     )
     .size_full()
     .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EditorSource, EditorWindow, open, shortcut_from_keys};
+    use crate::library::AnnotationSource;
+    use gpui::TestAppContext;
+
+    fn source(title: &str, width: u32, height: u32) -> EditorSource {
+        EditorSource {
+            png: crate::capture::encode_png(
+                width,
+                height,
+                &vec![0x5a; width as usize * height as usize * 4],
+            )
+            .unwrap(),
+            title: title.to_string(),
+            annotations: AnnotationSource::Transient,
+        }
+    }
+
+    #[test]
+    fn shortcut_recording_requires_a_modifier_and_supported_key() {
+        assert_eq!(
+            shortcut_from_keys("4", true, false, false, true).as_deref(),
+            Some("ctrl+shift+4")
+        );
+        assert_eq!(
+            shortcut_from_keys("F5", false, false, true, false).as_deref(),
+            Some("alt+f5")
+        );
+        assert!(shortcut_from_keys("4", false, false, false, false).is_none());
+        assert!(shortcut_from_keys("escape", true, false, false, false).is_none());
+    }
+
+    #[gpui::test]
+    async fn opening_a_bad_capture_keeps_the_existing_editor_unchanged() {
+        let cx = TestAppContext::single();
+        cx.update(|cx| open(cx, source("First", 2, 2)).unwrap());
+        let handle = cx.windows()[0].downcast::<EditorWindow>().unwrap();
+
+        let initial = handle
+            .read_with(&cx, |editor, _| {
+                (editor.title.clone(), editor.rgba.dimensions())
+            })
+            .unwrap();
+        assert_eq!(initial, ("First".to_string(), (2, 2)));
+
+        let error = cx.update(|cx| {
+            open(
+                cx,
+                EditorSource {
+                    png: b"not a PNG".to_vec(),
+                    title: "Broken".to_string(),
+                    annotations: AnnotationSource::Transient,
+                },
+            )
+        });
+        assert!(error.is_err());
+
+        let after_failure = handle
+            .read_with(&cx, |editor, _| {
+                (editor.title.clone(), editor.rgba.dimensions())
+            })
+            .unwrap();
+        assert_eq!(after_failure, initial);
+
+        cx.update(|cx| open(cx, source("Second", 3, 1)).unwrap());
+        assert_eq!(cx.windows().len(), 1);
+        let after_reuse = handle
+            .read_with(&cx, |editor, _| {
+                (editor.title.clone(), editor.rgba.dimensions())
+            })
+            .unwrap();
+        assert_eq!(after_reuse, ("Second".to_string(), (3, 1)));
+    }
+
+    #[gpui::test]
+    async fn deleting_the_active_capture_is_blocked() {
+        let cx = TestAppContext::single();
+        cx.update(|cx| open(cx, source("Current", 2, 2)).unwrap());
+        let handle = cx.windows()[0].downcast::<EditorWindow>().unwrap();
+
+        cx.update(|cx| {
+            handle
+                .update(cx, |editor, _, _| {
+                    editor.doc.image_id = Some("active-capture".to_string());
+                    editor.delete_library_capture("active-capture");
+                    assert_eq!(
+                        editor.library_notice.as_deref(),
+                        Some("Close this capture before deleting it.")
+                    );
+                })
+                .unwrap();
+        });
+    }
 }

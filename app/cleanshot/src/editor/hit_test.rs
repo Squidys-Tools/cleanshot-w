@@ -134,6 +134,10 @@ fn shape_contains(shape: &Shape, px: f32, py: f32, tolerance: f32) -> bool {
             let dy = py - cy;
             (dx * dx + dy * dy).sqrt() <= r + tolerance
         }
+        Shape::Effect(_) | Shape::Icon(_) => {
+            let bounds = shape.bounds();
+            bounds.contains(px, py) || distance_to_rect_edge(&bounds, px, py) <= tolerance
+        }
     }
 }
 
