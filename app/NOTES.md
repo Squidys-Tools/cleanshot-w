@@ -87,13 +87,14 @@ image without library persistence.
 
 ## Verified vs not
 
-Phase 1 passes Linux validation: formatting, strict Clippy, all-target checks,
-20 unit tests, and a release build. The Windows GNU-target check and Clippy
-also pass. The `windows-2025` CI job runs Clippy, unit tests, and release builds
-for both binaries. Phase 1 was verified on Windows hardware at 150% scaling.
+Phase 1 passes Linux formatting, strict Clippy, all-target checks, 20 unit
+tests, and a release build. The Windows GNU-target check and Clippy also pass.
+The `windows-2025` job runs Clippy and all-target tests before building both
+binaries. Phase 1 passed on Windows hardware at 150% scaling.
 
 The Linux cloud desktop did not display a GPUI window, so the editor UI and
-export still need a Windows hardware run.
+export are not visually verified. Phase-two behavior still needs a Windows
+hardware run.
 
 ## How to run on Windows
 
