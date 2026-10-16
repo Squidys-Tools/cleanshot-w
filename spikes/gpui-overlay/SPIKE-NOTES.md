@@ -91,30 +91,47 @@ reported display bounds 1280×800 (logical), raw `GetSystemMetrics` reported
 - **Win32 is physical px**: `GetSystemMetrics(SM_*VIRTUALSCREEN)` and GDI
   (`BitBlt` capture, `CreateCompatibleBitmap`) — the process is per-monitor-v2
   DPI-aware, so real physical values come through (no 96-DPI virtualization).
-- **Conversion: `physical = logical × scale_factor`**, where `scale_factor`
-  is `window.scale_factor()` (1.5 at 150%) for the window's monitor. For
-  mixed-DPI multi-monitor, a rect spanning several monitors must be converted
-  per monitor: map the logical rect to each `PlatformDisplay`, use *that*
-  display's scale factor, and intersect in physical px.
+- **Verified conversion for the tested single-monitor case:**
+  `physical = logical × scale_factor`, where `window.scale_factor()` was 1.5.
+  This reproduces the observed 1920×1200 physical screen from the 1280×800
+  logical display and is correct for a uniform-DPI screen.
+- **Mixed-DPI conversion is not implemented or hardware-verified.** The spike
+  multiplies the entire selection by one `window.scale_factor()`; that is not
+  valid for a selection crossing monitors with different scale factors. GPUI
+  does not expose a per-display scale factor on `PlatformDisplay`, and this
+  full-screen overlay has no per-monitor coordinate transform. The
+  vendored Windows display implementation (`gpui-pre-windows/src/display.rs`)
+  constructs each `PlatformDisplay::bounds()` by dividing that monitor's
+  physical origin and size by its scale factor (`logical_point` in
+  `gpui-pre-windows/src/util.rs`). The inverse for a point on one monitor is
+  `physical = logical × that_monitor_scale_factor`. To convert a mixed-DPI
+  selection, the port must map it piecewise using each monitor's physical
+  origin and scale factor; a practical route is to enumerate the physical
+  monitor rectangles, obtain each factor with `GetDpiForMonitor`, and map the
+  corresponding GPUI logical bounds back to physical coordinates. The
+  transform, full-screen overlay behavior, and a selection spanning monitors
+  with different DPI remain to be implemented and tested on hardware.
 
 Consequence for the port's capture path: the overlay selection arrives in
-global **logical** px; before calling GDI, convert to physical px per monitor.
-The first version of this spike got this wrong in a subtle way: it unioned
+global **logical** px. For the tested single-display 150% case, multiply by
+1.5 before calling GDI; for mixed DPI, do not use that single factor. The first
+version of this spike got the window bounds wrong in a subtle way: it unioned
 GPUI's logical display bounds with the raw **physical** virtual screen and
 took the larger, which at 150% produced a 1920×1200 *logical* overlay window —
 1.5× the actual screen. The union is now logical-only (for the window), and
 `spike-overlay` logs both unit systems side by side at startup and prints the
-selection rect in both (`selection (logical): …` / `selection (physical, x1.5): …`)
-so the conversion is directly observable on hardware.
+selection rect in both (`selection (logical): …` / `selection (uniform-DPI
+physical estimate, x1.5): …`). The physical output is an estimate valid only
+when the selected area has one scale factor; it uses the overlay window's
+single scale factor and is not a mixed-DPI conversion.
 
 ## Known limitations and risks
 
 - **Remaining hardware unknowns**: the first Windows run (single 150% display)
   verified both spikes end to end — overlay selection, cancel, global rect
   logging, pin drag, opacity, click-through — and this is a GO. Not yet
-  exercised on hardware: multi-monitor arrangements, mixed-DPI conversions
-  (the per-monitor logic above is implemented and logged but only single-scale
-  was run), and the NVIDIA alpha path below.
+  exercised on hardware: multi-monitor arrangements, any mixed-DPI conversion
+  (not implemented; see above), and the NVIDIA alpha path below.
 - **Click-through + DirectX is the known fragile spot.** `WS_EX_LAYERED` on a
   DirectX-swapchain window is exactly the configuration implicated in the
   NVIDIA + DirectComposition alpha-zeroing bug (zed issue #55654). If a
@@ -129,8 +146,10 @@ so the conversion is directly observable on hardware.
   Windows PopUp provides it). Wayland is untested entirely.
 - The overlay scrim (15% black) covers the whole screen including all monitors;
   on Windows the PopUp tool-window has no taskbar button, which matches capture
-  UX. Multi-monitor DPI scaling is handled by GPUI (per-display scale factors),
-  but mixed-DPI rect math is only verified by inspection.
+  UX. GPUI reports per-display logical bounds, but the spike does not implement
+  mixed-DPI selection-to-GDI coordinate conversion; its one-window logical
+  bounds and single scale factor are not evidence that a mixed-DPI overlay
+  spans or maps every monitor correctly.
 - `spike-pin` decodes the PNG fully into memory at startup; no progressive
   loading, which is fine for a spike (pins are screenshots).
 - `gpui-pre` re-publishes weekly and snapshots can break APIs; both crates are
@@ -143,8 +162,9 @@ so the conversion is directly observable on hardware.
 Download the `gpui-spike-windows` artifact from the latest workflow run on this
 branch (Actions → "Spike Windows build" → run for your commit → Artifacts) and
 unzip it. Run `spike-overlay.exe`: the screen dims across every monitor, drag a
-blue rectangle, and mouse-up prints the selected rect (`selection: x=… y=… w=…
-h=…`) and exits — Escape cancels instead. Run `spike-pin.exe C:\path\to\image.png`
+blue rectangle, and mouse-up prints the selected rect in logical coordinates
+and a uniform-DPI physical estimate, then exits — Escape cancels instead. Run
+`spike-pin.exe C:\path\to\image.png`
 to open a frameless always-on-top window showing the PNG; drag it to move, press
 `+`/`-` for opacity in 10% steps, press `t` to toggle full click-through (mouse
 and keyboard pass through the window entirely), and Escape or `q` to quit. If

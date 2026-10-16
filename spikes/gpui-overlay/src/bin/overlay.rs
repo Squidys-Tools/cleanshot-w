@@ -118,9 +118,10 @@ impl Render for Overlay {
                         // the window's global logical origin (the virtual
                         // screen origin, which can be negative on
                         // multi-monitor setups) to get global logical
-                        // coordinates. GDI capture works in physical px:
-                        // multiply by the scale factor of the monitor under
-                        // the rect (see SPIKE-NOTES.md).
+                        // coordinates. GDI capture works in physical px. The
+                        // window scale factor gives a correct conversion only
+                        // for a uniform-DPI screen; mixed-DPI mapping is not
+                        // implemented by this spike (see SPIKE-NOTES.md).
                         let origin = window.bounds().origin;
                         let scale = window.scale_factor();
                         let (x, y) = (origin.x + start.x.min(end.x), origin.y + start.y.min(end.y));
@@ -133,7 +134,7 @@ impl Render for Overlay {
                             f32::from(h) as i32
                         );
                         println!(
-                            "selection (physical, x{scale}): x={} y={} w={} h={}",
+                            "selection (uniform-DPI physical estimate, x{scale}): x={} y={} w={} h={}",
                             (f32::from(x) * scale) as i32,
                             (f32::from(y) * scale) as i32,
                             (f32::from(w) * scale) as i32,
