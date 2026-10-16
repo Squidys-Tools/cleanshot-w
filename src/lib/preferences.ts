@@ -22,7 +22,7 @@ import type {
   TLGeoShapeGeoStyle,
 } from "@tldraw/tlschema";
 
-const STORAGE_KEY = "cleanshotw.editor-preferences.v1";
+const STORAGE_KEY = "snipsy.editor-preferences.v1";
 
 const COLORS = ["red", "orange", "yellow", "green", "blue", "violet", "black", "grey"] as const;
 const SIZES = ["s", "m", "l", "xl"] as const;

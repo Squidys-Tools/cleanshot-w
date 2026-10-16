@@ -1,11 +1,11 @@
-# CleanShot W
+# Snipsy
 
-CleanShot W is a local-first Windows screenshot tool for capturing, annotating,
+Snipsy is a local-first Windows screenshot tool for capturing, annotating,
 and sharing screenshots without getting in the way.
 
 Capture something. Mark it up. Copy it where it needs to go. Find it again later.
 
-> CleanShot W is in active development. The native Windows app is implemented,
+> Snipsy is in active development. The native Windows app is implemented,
 > but a public release still needs final testing on real Windows hardware.
 
 ## The workflow
@@ -32,7 +32,7 @@ are no hosted share links or accounts.
 
 ### 4. Find it later
 
-CleanShot W keeps a local capture history with thumbnails, titles, and title
+Snipsy keeps a local capture history with thumbnails, titles, and title
 search. You can reopen captures, continue editing them, or pin them above other
 windows for reference.
 
@@ -79,4 +79,4 @@ The [documentation index](docs/README.md) collects the project references:
 
 ## License
 
-CleanShot W is released under the MIT License.
+Snipsy is released under the MIT License.

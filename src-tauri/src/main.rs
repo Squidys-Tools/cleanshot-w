@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    cleanshot_w_lib::run()
+    snipsy_lib::run()
 }

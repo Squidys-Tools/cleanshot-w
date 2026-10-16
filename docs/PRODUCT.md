@@ -14,14 +14,14 @@ be easier to annotate, share, organize, and work with in general.
 
 ## Product purpose
 
-CleanShot W is a local-first screenshot and annotation app. It lets people
+Snipsy is a local-first screenshot and annotation app. It lets people
 capture an area, window, or full screen; mark up the image; recognize text;
 copy or export the result; and find captures again later. The goal is a simple
 workflow that does not require an account or cloud service.
 
 ## Positioning
 
-CleanShot W is a private desktop screenshot workflow that combines capture,
+Snipsy is a private desktop screenshot workflow that combines capture,
 annotation, OCR, export, and local history in one place. It is not a hosted
 sharing or collaboration product. Sharing happens through local clipboard and
 file exports.
@@ -45,7 +45,7 @@ file exports.
   title editing and search, always-on-top pins, tray controls, a configurable
   capture hotkey, cursor inclusion, and optional per-user startup.
 - Capture history, annotations, images, titles, and settings are stored locally
-  in the browser or under `%LOCALAPPDATA%\CleanShotW` in the native app.
+  in the browser or under `%LOCALAPPDATA%\Snipsy` in the native app.
 - The product is local-first. No account, cloud sync, telemetry, or network
   dependency is required for capture, annotation, export, library use, or OCR.
   OCR assets are bundled locally.
@@ -72,10 +72,8 @@ file exports.
 
 ## Brand commitments
 
-- The current working product name is **CleanShot W**.
-- The repository records a planned rename to **ShutterW** before the first
-  public release because of a name collision with the macOS CleanShot product.
-  This remains an open product decision.
+- The product name is **Snipsy**. It replaced the earlier working name
+  CleanShot W, which collided with the macOS CleanShot product.
 - The visual system is documented in [the design system](DESIGN.md): a neutral
   screenshot-first editor, text-led command bar, detached annotation dock, and
   separate capture overlay.
@@ -103,7 +101,7 @@ file exports.
 | Highlighter | Implemented | Translucent highlight annotations are supported. |
 | Text tool | Partial | Text annotations work; the reference product's seven predefined text styles are not yet implemented. |
 | Combine multiple images in one annotation document | Planned | Dropping or pasting another image currently creates a new capture rather than adding an image layer to the open document. |
-| Editable CleanShot project file format | Partial | Annotations persist in the local browser/native library, but there is no user-facing project-file export/import format. |
+| Editable Snipsy project file format | Partial | Annotations persist in the local browser/native library, but there is no user-facing project-file export/import format. |
 
 ## Background tool
 
@@ -142,7 +140,7 @@ file exports.
 
 | Reference capability | Status | Current scope / follow-up |
 |---|---|---|
-| Hosted uploads, share links, passwords, self-destruct, tags, teams, and custom domains | Out of scope | CleanShot W is local-first with no accounts, cloud sync, telemetry, or hosted library in v1. |
+| Hosted uploads, share links, passwords, self-destruct, tags, teams, and custom domains | Out of scope | Snipsy is local-first with no accounts, cloud sync, telemetry, or hosted library in v1. |
 
 ## Floating screenshots
 

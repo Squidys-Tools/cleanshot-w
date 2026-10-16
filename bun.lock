@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "cleanshot-w",
+      "name": "snipsy",
       "dependencies": {
         "@heroicons/react": "^2.2.0",
         "@phosphor-icons/react": "^2.1.10",

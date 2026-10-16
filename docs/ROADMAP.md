@@ -1,4 +1,4 @@
-# CleanShot W roadmap and status
+# Snipsy roadmap and status
 
 > Last updated: 2026-10-03
 > Current version: 0.1.0 (unreleased)
@@ -120,7 +120,7 @@ Implemented in the repository:
 - Window enumeration and `PrintWindow` capture with a GDI fallback.
 - Full-screen capture, optional cursor compositing, and native image, text, and
   file clipboard output.
-- Disk-backed library under `%LOCALAPPDATA%\CleanShotW`, including annotations,
+- Disk-backed library under `%LOCALAPPDATA%\Snipsy`, including annotations,
   thumbnails, title updates, safe index validation, and atomic writes.
 - Global capture hotkey, settings persistence, conflict errors, per-user `HKCU`
   startup registration, tray actions, and single-instance activation.
@@ -157,7 +157,7 @@ Priority order:
 | Tauri remains the Windows shell. The editor stays shell-agnostic through a typed host bridge. | Decided |
 | The app is local-first. It has no accounts, cloud sync, sharing URLs, or telemetry. | Decided |
 | The Windows native build uses the GNU Rust toolchain. MSVC is not required. | Decided; verified in the Windows build environment |
-| Keep the name **CleanShot W** for now. Revisit **ShutterW** before the first public release because of the macOS product name collision. | Decided - defer rename |
+| The product name is **Snipsy**, replacing the earlier working name CleanShot W (which collided with the macOS CleanShot product). | Decided |
 | Scrolling capture ships as an M3 beta rather than blocking the native shell release gate. | Proposed |
 | No auto-update in v1. | Decided |
 
@@ -174,7 +174,7 @@ gate is not closed.
 
 #### Run 1 - automated pass
 
-- **Build/version:** CleanShot W 0.1.0, NSIS bundle
+- **Build/version:** Snipsy 0.1.0, NSIS bundle
 - **Commit:** `14ad5f1`
 - **Tester:** automated agent-driven pass, not a human tester
 - **Date:** 2026-10-03
@@ -184,7 +184,7 @@ gate is not closed.
   32.0.101.7088. Nested VMware guest with a single display, 1920x1080 at 125%
   scaling, and no Explorer shell taskbar.
 - **Account:** standard user, no administrator elevation (verified)
-- **Artifact:** `CleanShot W_0.1.0_x64-setup.exe`, 19,426,839 bytes,
+- **Artifact:** `Snipsy_0.1.0_x64-setup.exe`, 19,426,839 bytes,
   SHA-256 `F30C8DC1447173ABA3964F628122FF05449C92EF5506919FFC325AA147383A3C`,
   built with `bun run tauri build`
 - **Result:** FAIL - one blocking defect, see the finding below
@@ -235,7 +235,7 @@ a shell notification area this host does not have.
 
 - [x] Per-user NSIS installation completes without a UAC prompt. Installed
       silently as a non-elevated user, exit code 0. It landed in
-      `%LOCALAPPDATA%\CleanShot W` with an `HKCU` uninstall entry, not
+      `%LOCALAPPDATA%\Snipsy` with an `HKCU` uninstall entry, not
       `%LOCALAPPDATA%\Programs`.
 - [ ] The installed app starts from the Start menu and from its executable. The
       shortcut is created and launching from the executable works, but this host
@@ -250,7 +250,7 @@ a shell notification area this host does not have.
 - [x] Closing the main window hides it to the tray. The window disappeared while
       the process stayed alive with only the hidden single-instance helper
       window remaining.
-- [ ] Tray **Open CleanShot W** restores and focuses the editor. Blocked: this
+- [ ] Tray **Open Snipsy** restores and focuses the editor. Blocked: this
       host has no Explorer shell taskbar, so the notification area and its tray
       menus cannot be reached.
 - [ ] Tray **Quit** exits the process and removes the tray icon. Blocked for the
@@ -387,12 +387,12 @@ The on-disk layout matched the documented structure exactly: `settings.json` plu
       force-killed and relaunched, and the setting was still `true` and the
       checkbox still rendered as checked.
 - [x] **Launch at Windows startup** creates the per-user `HKCU` entry. Saving
-      created `HKCU\...\Run\CleanShotW` pointing at the installed executable.
+      created `HKCU\...\Run\Snipsy` pointing at the installed executable.
 - [ ] Startup launches the app minimized to the tray. The registered value
       includes the `--minimized` argument, but no real logon launch was
       performed, so the behaviour is unverified.
 - [x] Turning startup off removes the `HKCU` entry. After unchecking and saving,
-      the `CleanShotW` value was gone and only unrelated `Run` values remained.
+      the `Snipsy` value was gone and only unrelated `Run` values remained.
 - [ ] Settings writes survive a failed shortcut or registry update without
       leaving a partially applied configuration.
 

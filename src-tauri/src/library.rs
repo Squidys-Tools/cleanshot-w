@@ -38,7 +38,7 @@ const INDEX_FILE: &str = "index.json";
 
 pub fn app_data_root() -> Result<PathBuf, String> {
     dirs::data_local_dir()
-        .map(|path| path.join("CleanShotW"))
+        .map(|path| path.join("Snipsy"))
         .ok_or_else(|| "Windows did not provide a local application-data directory.".to_string())
 }
 

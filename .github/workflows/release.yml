@@ -34,7 +34,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: CleanShot W ${{ github.ref_name }}
+          releaseName: Snipsy ${{ github.ref_name }}
           releaseBody: Download the Windows installer below.
           releaseDraft: true
           prerelease: false

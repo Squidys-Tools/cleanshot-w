@@ -1,5 +1,5 @@
 ---
-name: CleanShot W
+name: Snipsy
 description: A warm, calm Windows screenshot capture and markup workspace.
 colors:
   primary: "#ff8f70"
@@ -38,13 +38,13 @@ spacing:
   xl: "24px"
 ---
 
-# Design system: CleanShot W
+# Design system: Snipsy
 
 ## Overview
 
 **Creative North Star: "The calm warm utility."**
 
-CleanShot W's editor is a quiet, cozy dark workspace in the register of modern
+Snipsy's editor is a quiet, cozy dark workspace in the register of modern
 polished utilities (Raycast, Alcove, Mole): a warm near-black surface ladder,
 hairline edges instead of heavy chrome, soft ambient depth under floating
 layers, and exactly one coral state color. Identity comes from craft and
