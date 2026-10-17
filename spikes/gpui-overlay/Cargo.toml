@@ -1,0 +1,32 @@
+[package]
+name = "gpui-overlay-spike"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+gpui-pre = "=0.3.9"
+raw-window-handle = "0.6"
+gpui-pre-platform = "=0.3.9"
+image = "0.25"
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+x11rb = { version = "0.13", features = ["shape"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[[bin]]
+name = "spike-overlay"
+path = "src/bin/overlay.rs"
+
+[[bin]]
+name = "spike-pin"
+path = "src/bin/pin.rs"

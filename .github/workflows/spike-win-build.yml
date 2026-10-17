@@ -1,0 +1,86 @@
+# Spike: prove GPUI on Windows can build the capture overlay and pin window
+# binaries. This is a go/no-go spike, not product CI: it builds the
+# spikes/gpui-overlay workspace and uploads both exes so they can be run on
+# real Windows hardware (the team has no Windows dev machine).
+name: Spike Windows build
+
+on:
+  pull_request:
+    paths:
+      - "spikes/gpui-overlay/**"
+      - ".github/workflows/spike-win-build.yml"
+  push:
+    paths:
+      - "spikes/gpui-overlay/**"
+      - ".github/workflows/spike-win-build.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spike-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-check:
+    # Keeps the Linux x11 dev loop honest: the spike must keep compiling and
+    # linting clean off-Windows too.
+    name: Linux check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install GPUI Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libxkbcommon-dev libwayland-dev
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "spikes/gpui-overlay -> target"
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path spikes/gpui-overlay/Cargo.toml -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --manifest-path spikes/gpui-overlay/Cargo.toml --all-targets -- -D warnings
+
+      - name: Check compile
+        run: cargo check --manifest-path spikes/gpui-overlay/Cargo.toml
+
+  windows-build:
+    name: Windows build
+    runs-on: windows-2025
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.0
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "spikes/gpui-overlay -> target"
+
+      - name: Build spike binaries
+        run: cargo build --release --manifest-path spikes/gpui-overlay/Cargo.toml
+
+      - name: Upload spike exes
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpui-spike-windows
+          path: |
+            spikes/gpui-overlay/target/release/spike-overlay.exe
+            spikes/gpui-overlay/target/release/spike-pin.exe
+          if-no-files-found: error
