@@ -1,15 +1,17 @@
 # Snipsy GPUI app — phase 2 notes
 
 Phase 1 added the tray shell, global hotkey, capture overlay, GDI region
-capture, library, and pin window. Phase 2 adds the native annotation editor:
-image-space document model, shapes, undo/redo, crop, and full-resolution
-flatten/export. OCR, blur/pixelate/redact, window capture, autostart, icon
-library, and preferences remain later phases.
+capture, library, and pin window. Core extras adds `PrintWindow` capture and
+Windows launch-at-startup registration; its OCR evaluator and Tesseract CLI
+stay in `ocr/`. Phase 2 adds the native annotation editor: an image-space
+document model, shapes, undo/redo, crop, and full-resolution flatten/export.
+Blur, pixelate, redact, the icon library, capture history, and editor
+preferences remain phase-three work.
 
 The stack is `gpui-overlay-spike` (PR #35) → `gpui-port-1` (PR #36) →
-`gpui-editor`. The spike's overlay/pin/window code was copied (not imported)
-into this app tree. The phase-2 changes stay in `app/` and the Windows build
-workflow.
+`gpui-core-extras` (PR #37) → `gpui-editor` (PR #38) → `gpui-phase3` (PR #42).
+The spike's overlay, pin, and window code was copied into this app tree. The
+phase-2 changes stay in `app/` and the Windows build workflow.
 
 ## Layout
 
@@ -92,9 +94,12 @@ tests, and a release build. The Windows GNU-target check and Clippy also pass.
 The `windows-2025` job runs Clippy and all-target tests before building both
 binaries. Phase 1 passed on Windows hardware at 150% scaling.
 
-The Linux cloud desktop did not display a GPUI window, so the editor UI and
-export are not visually verified. Phase-two behavior still needs a Windows
-hardware run.
+A Linux-host Windows GNU release build cannot verify the Windows binaries
+because upstream `gpui-pre-windows` 0.3.9 leaves `shaders_bytes.rs`
+ungenerated on a Linux host. The `windows-2025` workflow builds and uploads
+the artifacts. The cloud desktop did not display a GPUI app window, so the
+editor UI and export still need a Windows hardware run; the earlier phase-one
+hardware pass does not verify the editor.
 
 ## How to run on Windows
 
@@ -104,8 +109,9 @@ tray, and the hotkey (default `ctrl+shift+4`, read from
 `%LOCALAPPDATA%/Snipsy/settings.json`) starts a capture. If `Snipsy` does not
 exist but `%LOCALAPPDATA%/CleanShotW` does, the first launch migrates the old
 settings and capture library; an existing `Snipsy` directory wins. A second
-launch exits (single-instance mutex), and a successful capture opens the
-editor. To test it separately, run `cleanshot-editor.exe <image.png>`.
+launch exits (single-instance mutex), and a successful screen capture opens
+the editor. The tray also offers window capture and a launch-at-startup toggle.
+To test the editor separately, run `cleanshot-editor.exe <image.png>`.
 
 ## Extension points for phase 3+
 
@@ -113,9 +119,8 @@ editor. To test it separately, run `cleanshot-editor.exe <image.png>`.
   version-1 documents; no tldraw migration is attempted.
 - `editor/flatten.rs` is CPU-only so export remains independent of display
   zoom and GPU readback.
-- `capture.rs` keeps the full-screen-then-crop shape, so a future
-  "window capture" path can hand a different `CaptureSurface` to the same
-  crop/library/editor pipeline. Cursor drawing is ported and driven by the
-  `includeCursor` setting.
+- `capture.rs` supports both full-screen capture and `PrintWindow` capture.
+  The window picker sends captures through the same library path. Cursor
+  drawing is driven by the `includeCursor` setting.
 - Hotkey settings are read at startup; re-registration on settings change
   slots into `hotkey.rs`.
