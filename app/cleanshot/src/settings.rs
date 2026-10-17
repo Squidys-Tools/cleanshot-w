@@ -74,7 +74,7 @@ pub fn validate_shortcut(shortcut: &str) -> Result<String, String> {
         return Err("Enter a valid shortcut such as Ctrl+Shift+4.".to_string());
     }
     let normalized = value.to_ascii_lowercase();
-    if crate::hotkey::parse_shortcut(&normalized).is_none() {
+    if crate::shortcut::parse_shortcut(&normalized).is_none() {
         return Err("Enter a valid shortcut such as Ctrl+Shift+4.".to_string());
     }
     Ok(normalized)

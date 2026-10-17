@@ -15,6 +15,7 @@ mod pin;
 mod platform;
 mod save_dialog;
 mod settings;
+mod shortcut;
 #[cfg(windows)]
 mod tray;
 
