@@ -73,7 +73,11 @@ pub fn validate_shortcut(shortcut: &str) -> Result<String, String> {
     if value.is_empty() || value.len() > 80 || value.chars().any(char::is_control) {
         return Err("Enter a valid shortcut such as Ctrl+Shift+4.".to_string());
     }
-    Ok(value.to_ascii_lowercase())
+    let normalized = value.to_ascii_lowercase();
+    if crate::hotkey::parse_shortcut(&normalized).is_none() {
+        return Err("Enter a valid shortcut such as Ctrl+Shift+4.".to_string());
+    }
+    Ok(normalized)
 }
 
 #[cfg(test)]
@@ -93,6 +97,9 @@ mod tests {
     #[test]
     fn shortcut_validation_normalizes_case_and_whitespace() {
         assert_eq!(validate_shortcut(" Ctrl+Shift+4 ").unwrap(), "ctrl+shift+4");
+        assert_eq!(validate_shortcut(" Alt+Space ").unwrap(), "alt+space");
+        assert!(validate_shortcut("Ctrl+Shift+F10").is_ok());
+        assert!(validate_shortcut("Ctrl+F25").is_err());
         assert!(validate_shortcut("\n").is_err());
     }
 }

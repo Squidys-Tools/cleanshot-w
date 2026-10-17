@@ -132,10 +132,6 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let temp = path.with_extension("tmp");
     fs::write(&temp, bytes)
         .map_err(|error| format!("Could not write {}: {error}", path.display()))?;
-    if path.exists() {
-        fs::remove_file(path)
-            .map_err(|error| format!("Could not replace {}: {error}", path.display()))?;
-    }
     fs::rename(&temp, path)
         .map_err(|error| format!("Could not finish writing {}: {error}", path.display()))
 }
@@ -270,7 +266,7 @@ pub fn now_millis() -> i64 {
 mod tests {
     use super::{
         ImageSize, IndexEntry, generate_id, normalize_index_entry, resolve_data_root, validate_id,
-        validate_index_entry, validate_size, validate_title,
+        validate_index_entry, validate_size, validate_title, write_atomic,
     };
     use std::fs;
 
@@ -336,6 +332,23 @@ mod tests {
         assert!(validate_title("   ").is_err());
         assert!(validate_title(&"界".repeat(500)).is_ok());
         assert!(validate_title(&"界".repeat(501)).is_err());
+    }
+
+    #[test]
+    fn atomic_write_replaces_existing_file() {
+        let directory = std::env::temp_dir().join(format!(
+            "snipsy-atomic-write-test-{}-{}",
+            std::process::id(),
+            generate_id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("settings.json");
+        fs::write(&path, b"old contents").unwrap();
+
+        write_atomic(&path, b"new contents").unwrap();
+
+        assert_eq!(fs::read(&path).unwrap(), b"new contents");
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

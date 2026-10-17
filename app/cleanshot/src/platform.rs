@@ -59,7 +59,7 @@ pub fn gpui_virtual_screen_bounds(cx: &App) -> Bounds<Pixels> {
     )
 }
 
-/// Toggle full mouse/keyboard pass-through on the window.
+/// Toggle mouse pass-through on the window.
 ///
 /// GPUI has no surface for this; it needs raw window styles: WS_EX_TRANSPARENT
 /// (+ WS_EX_LAYERED so DWM honors it) on Windows, an empty X11 input shape on

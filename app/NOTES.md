@@ -76,15 +76,17 @@ save dialog, Esc closes, `+`/`-` opacity, `t` click-through, drag to move.
 ## Verified vs not
 
 Verified on Linux x11: `cargo build` (full link), `cargo fmt --check`,
-`cargo clippy --all-targets -- -D warnings`, `cargo test` (15 tests:
+`cargo clippy --all-targets -- -D warnings`, `cargo test` (20 tests:
 selection validation, crop, PNG round-trip, DPI conversion, swizzle,
-settings/hotkey parsing, library validation). Windows-only code paths
+settings shortcut validation and hotkey parsing, library validation).
+Windows-only code paths
 (`cfg(windows)`: tray, RegisterHotKey thread, GDI capture, single-instance
 mutex) do not compile on Linux and were written against the vendored
-gpui-pre-windows source and the Tauri app's proven capture code; they are
-exercised by the `windows-2025` CI build, but **runtime behavior on Windows
-hardware is not yet verified** — that is what the artifact is for. In
-particular unverified-on-hardware: the color fix (logic verified against
+gpui-pre-windows source and the Tauri app's proven capture code. The
+`windows-2025` CI job runs Clippy, unit tests, and the release build, but
+**runtime behavior on Windows hardware is not yet verified** — that is what
+the artifact is for.
+In particular unverified-on-hardware: the color fix (logic verified against
 gpui-pre source), the exact DPI conversion at 150% (unit-tested, not run),
 tray menu event delivery through GPUI's message loop, and `WM_HOTKEY`
 delivery from the hotkey thread.

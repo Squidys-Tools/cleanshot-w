@@ -43,6 +43,12 @@ impl CaptureSurface {
     /// Crop a physical rect (global coordinates) out of the surface,
     /// returning the cropped RGBA and the cropped surface's global origin.
     pub fn crop(&self, x: i32, y: i32, width: u32, height: u32) -> Result<CaptureSurface, String> {
+        let x = x
+            .checked_sub(self.origin_x)
+            .ok_or_else(|| "The selected area is outside the capture.".to_string())?;
+        let y = y
+            .checked_sub(self.origin_y)
+            .ok_or_else(|| "The selected area is outside the capture.".to_string())?;
         validate_selection(x, y, width, height, self.width, self.height)?;
 
         let row_bytes = usize::try_from(width)
@@ -221,6 +227,9 @@ mod windows_capture {
             draw_cursor(memory_dc, origin_x, origin_y, width, height);
         }
 
+        unsafe {
+            SelectObject(memory_dc, previous);
+        }
         let rgba = read_bitmap(memory_dc, bitmap, width, height);
         cleanup(screen_dc, memory_dc, bitmap, previous);
         let rgba = rgba?;
@@ -412,7 +421,7 @@ mod tests {
 
     #[test]
     fn crop_preserves_pixels_and_origin() {
-        let cropped = sample_surface().crop(1, 0, 2, 2).unwrap();
+        let cropped = sample_surface().crop(-119, 48, 2, 2).unwrap();
         assert_eq!(cropped.width, 2);
         assert_eq!(cropped.height, 2);
         assert_eq!(cropped.origin_x, -119);

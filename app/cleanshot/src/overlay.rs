@@ -158,6 +158,12 @@ impl Render for Overlay {
                         return;
                     };
                     let end = ev.position;
+                    if start.x == end.x || start.y == end.y {
+                        this.drag_start = None;
+                        this.drag_current = None;
+                        cx.notify();
+                        return;
+                    }
                     // ev.position is window-relative; add the window's
                     // global origin to get logical global coordinates.
                     let origin = window.bounds().origin;

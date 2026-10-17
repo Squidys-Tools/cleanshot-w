@@ -18,6 +18,12 @@ pub struct HotkeyEvents {
     pub receiver: Receiver<()>,
 }
 
+const MOD_ALT: u32 = 0x0001;
+const MOD_CONTROL: u32 = 0x0002;
+const MOD_SHIFT: u32 = 0x0004;
+const MOD_WIN: u32 = 0x0008;
+const MOD_NOREPEAT: u32 = 0x4000;
+
 #[cfg(windows)]
 pub fn start() -> Result<HotkeyEvents, String> {
     let shortcut = current_settings().capture_hotkey;
@@ -39,12 +45,7 @@ pub fn start() -> Result<HotkeyEvents, String> {
 
 /// Parse a shortcut like "ctrl+shift+4" into Win32 modifier flags and a
 /// virtual-key code.
-#[cfg(windows)]
 pub(crate) fn parse_shortcut(shortcut: &str) -> Option<(u32, u32)> {
-    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-        MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, MOD_WIN,
-    };
-
     let mut mods = MOD_NOREPEAT;
     let mut key = None;
     for part in shortcut.trim().split('+') {
@@ -64,21 +65,23 @@ pub(crate) fn parse_shortcut(shortcut: &str) -> Option<(u32, u32)> {
     Some((mods, key?))
 }
 
-#[cfg(windows)]
 fn parse_key(key: &str) -> Option<u32> {
     let lower = key.trim().to_ascii_lowercase();
-    let mut chars = lower.chars();
-    let vk = match (lower.len(), chars.next()) {
-        (1, Some(c @ '0'..='9')) => c as u32,
-        (1, Some(c @ 'a'..='z')) => c.to_ascii_uppercase() as u32,
-        (2, Some('f')) => lower[1..]
+    if lower == "space" {
+        return Some(0x20);
+    }
+    if let Some(number) = lower.strip_prefix('f') {
+        return number
             .parse::<u32>()
             .ok()
             .filter(|n| (1..=24).contains(n))
-            .map(|n| 0x6F + n)?,
-        _ => return None,
-    };
-    Some(vk)
+            .map(|n| 0x6F + n);
+    }
+    match lower.as_bytes() {
+        [digit @ b'0'..=b'9'] => Some(u32::from(*digit)),
+        [letter @ b'a'..=b'z'] => Some(u32::from(letter.to_ascii_uppercase())),
+        _ => None,
+    }
 }
 
 #[cfg(windows)]
@@ -119,22 +122,23 @@ mod hotkey_thread {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(windows)]
     use super::parse_shortcut;
 
-    #[cfg(windows)]
     #[test]
     fn parses_the_default_shortcut() {
         let (mods, vk) = parse_shortcut("ctrl+shift+4").unwrap();
         assert_eq!(vk, '4' as u32);
         assert_ne!(mods & 0xF, 0);
+        assert_eq!(parse_shortcut("alt+space").unwrap().1, 0x20);
+        assert_eq!(parse_shortcut("ctrl+shift+f10").unwrap().1, 0x79);
+        assert_eq!(parse_shortcut("win+f24").unwrap().1, 0x87);
     }
 
-    #[cfg(windows)]
     #[test]
     fn rejects_multi_key_and_empty_shortcuts() {
         assert!(parse_shortcut("ctrl+shift+4+5").is_none());
         assert!(parse_shortcut("ctrl").is_none());
         assert!(parse_shortcut("").is_none());
+        assert!(parse_shortcut("ctrl+f25").is_none());
     }
 }

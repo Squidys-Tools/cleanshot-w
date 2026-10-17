@@ -155,19 +155,18 @@ pub fn open_pin_from_path(cx: &mut App, path: &str) {
 }
 
 fn open_pin_from_png(cx: &mut App, png: Vec<u8>, title: &str) {
-    use image::GenericImageView;
-    let decoded = match image::ImageReader::new(std::io::Cursor::new(&png))
+    let dimensions = match image::ImageReader::new(std::io::Cursor::new(&png))
         .with_guessed_format()
         .map_err(|error| format!("{error}"))
-        .and_then(|reader| reader.decode().map_err(|error| format!("{error}")))
+        .and_then(|reader| reader.into_dimensions().map_err(|error| format!("{error}")))
     {
-        Ok(decoded) => decoded,
+        Ok(dimensions) => dimensions,
         Err(error) => {
             eprintln!("Snipsy: could not decode {title}: {error}");
             return;
         }
     };
-    let (width, height) = decoded.dimensions();
+    let (width, height) = dimensions;
     let scale = platform::primary_scale_factor();
     if let Err(error) = pin::open_for_capture(
         cx,
