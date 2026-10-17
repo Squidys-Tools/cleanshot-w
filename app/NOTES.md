@@ -31,6 +31,7 @@ entry point for the same editor window):
 | `library.rs` | `src-tauri/src/library.rs` | Same on-disk format (shared with the Tauri app); list returns metadata, images read on demand, and rejected annotation sidecars stay unwritable. |
 | `settings.rs` | `src-tauri/src/hotkeys.rs` | Reads and writes the shared shortcut, cursor, and startup fields under Snipsy's canonical data path, migrating the old `CleanShotW` directory once. The icon-pack default lives in `editor-settings.json` so the legacy writer cannot drop it. |
 | `hotkey.rs` | `src-tauri/src/hotkeys.rs` | `RegisterHotKey` on a dedicated thread with its own `GetMessageW` pump; events cross to GPUI over a channel. |
+| `shortcut.rs` | new | Shared shortcut parser used by settings validation and the Windows hotkey registration path; tested in both binaries. |
 | `overlay.rs` / `pin.rs` | the spike's `overlay.rs` / `pin.rs` | Same window shapes; wired into the app flow instead of exiting after one use. |
 | `clipboard.rs` | `src-tauri/src/clipboard.rs` | arboard image copy (RGBA in, platform format handled by arboard). |
 | `save_dialog.rs` | — | `rfd` file dialog replaces the Tauri anchor-download hack. |
@@ -101,14 +102,15 @@ tests, and a release build. The Windows GNU-target check and Clippy also pass.
 The `windows-2025` job runs Clippy and all-target tests before building both
 binaries. Phase 1 passed on Windows hardware at 150% scaling.
 
-The previous full-stack phase-three head passed formatting, strict Clippy,
-Linux and Windows GNU all-target checks, 93 tests in each binary, and the Linux
-release build. Those checks predate the phase-one review fixes and are being
-rerun on the current stack. A Linux-host Windows GNU release build cannot
-verify the Windows binaries because upstream `gpui-pre-windows` 0.3.9 leaves
-`shaders_bytes.rs` ungenerated on Linux. The `windows-2025` workflow builds and
-uploads both executables. The cloud desktop did not display a GPUI app window,
-so the editor UI and export still need a Windows hardware run at 150% scaling.
+The current full stack passes formatting, strict Clippy, Linux and Windows GNU
+all-target checks, 96 tests in each binary, and the Linux release build. The
+phase-one branch also passes its standalone Linux and Windows GNU checks with
+20 tests. A Linux-host Windows GNU release build cannot verify the Windows
+binaries because upstream `gpui-pre-windows` 0.3.9 leaves `shaders_bytes.rs`
+ungenerated on Linux. The `windows-2025` workflow builds and uploads both
+executables. The latest core-extras and phase-three artifacts still need a
+Windows hardware run at 150% scaling, including capture, editor crop/undo,
+persistence, save, and clipboard behavior.
 
 ## How to run on Windows
 

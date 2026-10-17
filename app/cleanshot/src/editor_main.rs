@@ -12,6 +12,7 @@ mod pin;
 mod platform;
 mod save_dialog;
 mod settings;
+mod shortcut;
 
 fn main() {
     #[cfg(windows)]
