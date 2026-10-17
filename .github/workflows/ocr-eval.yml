@@ -1,4 +1,4 @@
-name: OCR evaluation crate
+name: Snipsy OCR evaluation
 
 on:
   pull_request:
@@ -53,8 +53,8 @@ jobs:
       - name: Build CLI and evaluate generated samples
         run: |
           cargo build --release --manifest-path ocr/Cargo.toml
-          python3 ocr/scripts/evaluate_samples.py --binary ocr/target/release/cleanshot-ocr
-          stat -c 'Linux CLI binary size: %s bytes' ocr/target/release/cleanshot-ocr
+          python3 ocr/scripts/evaluate_samples.py --binary ocr/target/release/snipsy-ocr
+          stat -c 'Linux CLI binary size: %s bytes' ocr/target/release/snipsy-ocr
 
       - name: Cross-check Windows.Media.Ocr cfg code
         run: |
@@ -95,7 +95,7 @@ jobs:
         run: |
           cargo build --release --manifest-path ocr/Cargo.toml --no-default-features
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Copy-Item "ocr/target/release/cleanshot-ocr.exe" "ocr/target/release/cleanshot-ocr-winrt-only.exe"
+          Copy-Item "ocr/target/release/snipsy-ocr.exe" "ocr/target/release/snipsy-ocr-winrt-only.exe"
           cargo build --release --manifest-path ocr/Cargo.toml
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -104,13 +104,13 @@ jobs:
         run: |
           $stage = "ocr/dist"
           New-Item -ItemType Directory -Force -Path "$stage/tessdata" | Out-Null
-          Copy-Item "ocr/target/release/cleanshot-ocr.exe" $stage
-          Copy-Item "ocr/target/release/cleanshot-ocr-winrt-only.exe" $stage
+          Copy-Item "ocr/target/release/snipsy-ocr.exe" $stage
+          Copy-Item "ocr/target/release/snipsy-ocr-winrt-only.exe" $stage
           Invoke-WebRequest `
             -Uri "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/eng.traineddata" `
             -OutFile "$stage/tessdata/eng.traineddata"
-          $exeBytes = (Get-Item "$stage/cleanshot-ocr.exe").Length
-          $winrtBytes = (Get-Item "$stage/cleanshot-ocr-winrt-only.exe").Length
+          $exeBytes = (Get-Item "$stage/snipsy-ocr.exe").Length
+          $winrtBytes = (Get-Item "$stage/snipsy-ocr-winrt-only.exe").Length
           $modelBytes = (Get-Item "$stage/tessdata/eng.traineddata").Length
           "Windows CLI binary size: $exeBytes bytes" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
           "WinRT-only CLI binary size: $winrtBytes bytes" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
@@ -127,10 +127,10 @@ jobs:
         run: |
           $report = "ocr/dist/evaluation-windows.txt"
           "Windows.Media.Ocr" | Out-File -FilePath $report
-          python ocr/scripts/evaluate_samples.py --binary ocr/target/release/cleanshot-ocr.exe --engine winrt --language en-US | Tee-Object -FilePath $report -Append
+          python ocr/scripts/evaluate_samples.py --binary ocr/target/release/snipsy-ocr.exe --engine winrt --language en-US | Tee-Object -FilePath $report -Append
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "`nTesseract" | Tee-Object -FilePath $report -Append
-          python ocr/scripts/evaluate_samples.py --binary ocr/target/release/cleanshot-ocr.exe --engine tesseract --language eng --tessdata-dir ocr/dist/tessdata | Tee-Object -FilePath $report -Append
+          python ocr/scripts/evaluate_samples.py --binary ocr/target/release/snipsy-ocr.exe --engine tesseract --language eng --tessdata-dir ocr/dist/tessdata | Tee-Object -FilePath $report -Append
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-Content $report | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
@@ -138,6 +138,6 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: cleanshot-ocr-windows
+          name: snipsy-ocr-windows
           path: ocr/dist/
           if-no-files-found: error

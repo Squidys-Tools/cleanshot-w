@@ -12,4 +12,4 @@ Chromium install.
 
 Each pack's license notice is under `licenses/`. The Remix assets remain under
 the Remix Icon License v1.0 and are included only as functional annotations in
-the CleanShot W application, not as a standalone icon product.
+the Snipsy application, not as a standalone icon product.

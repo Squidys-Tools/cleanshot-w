@@ -755,27 +755,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cleanshot-w"
-version = "0.1.0"
-dependencies = [
- "arboard",
- "crossbeam-channel",
- "dirs 7.0.0",
- "fontdue",
- "gpui-pre",
- "gpui-pre-platform",
- "image",
- "raw-window-handle",
- "rfd",
- "serde",
- "serde_json",
- "tiny-skia",
- "tray-icon",
- "windows-sys 0.61.2",
- "x11rb",
-]
-
-[[package]]
 name = "clipboard-win"
 version = "5.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4698,6 +4677,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4aaa7368fcf4852a4c2dd92df0cace6a71f2091ca0a23391ce7f3a31833f1523"
 dependencies = [
  "serde_core",
+]
+
+[[package]]
+name = "snipsy"
+version = "0.1.0"
+dependencies = [
+ "arboard",
+ "crossbeam-channel",
+ "dirs 7.0.0",
+ "fontdue",
+ "gpui-pre",
+ "gpui-pre-platform",
+ "image",
+ "raw-window-handle",
+ "rfd",
+ "serde",
+ "serde_json",
+ "tiny-skia",
+ "tray-icon",
+ "windows-sys 0.61.2",
+ "x11rb",
 ]
 
 [[package]]

@@ -190,7 +190,8 @@ fn set_autostart(enabled: bool) -> Result<(), String> {
     let sub_key: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Run\0"
         .encode_utf16()
         .collect();
-    let value_name: Vec<u16> = "CleanShotW\0".encode_utf16().collect();
+    let value_name: Vec<u16> = "Snipsy\0".encode_utf16().collect();
+    let legacy_value_name: Vec<u16> = "CleanShotW\0".encode_utf16().collect();
     let mut key: Hkey = null_mut();
     let mut disposition = 0;
     let status = unsafe {
@@ -232,7 +233,18 @@ fn set_autostart(enabled: bool) -> Result<(), String> {
             }
         }
     };
+    let legacy_result = unsafe { RegDeleteValueW(key, legacy_value_name.as_ptr()) };
     unsafe { RegCloseKey(key) };
+
+    let result = if result == ERROR_SUCCESS
+        && (legacy_result == ERROR_SUCCESS || legacy_result == ERROR_FILE_NOT_FOUND)
+    {
+        ERROR_SUCCESS
+    } else if result != ERROR_SUCCESS {
+        result
+    } else {
+        legacy_result
+    };
 
     if result == ERROR_SUCCESS {
         Ok(())
@@ -307,7 +319,7 @@ mod tests {
     #[test]
     fn editor_icon_pack_survives_legacy_settings_writes() {
         let root = std::env::temp_dir().join(format!(
-            "cleanshot-w-settings-{}-{}",
+            "snipsy-settings-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -349,8 +361,8 @@ mod tests {
     #[test]
     fn startup_command_is_quoted_and_minimized() {
         assert_eq!(
-            quote_autostart_command(r#"C:\Apps\CleanShot W.exe"#),
-            r#""C:\Apps\CleanShot W.exe" --minimized"#
+            quote_autostart_command(r#"C:\Apps\Snipsy.exe"#),
+            r#""C:\Apps\Snipsy.exe" --minimized"#
         );
     }
 }

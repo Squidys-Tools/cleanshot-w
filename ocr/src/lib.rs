@@ -88,7 +88,7 @@ mod tests {
     #[test]
     fn passes_the_image_path_to_the_backend_and_preserves_optional_confidence() {
         let path = std::env::temp_dir().join(format!(
-            "cleanshot-ocr-test-{}-{}.png",
+            "snipsy-ocr-test-{}-{}.png",
             std::process::id(),
             NEXT_FILE.fetch_add(1, Ordering::Relaxed)
         ));
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn rejects_missing_files_without_calling_the_backend() {
         let path = std::env::temp_dir().join(format!(
-            "cleanshot-ocr-missing-{}-{}.png",
+            "snipsy-ocr-missing-{}-{}.png",
             std::process::id(),
             NEXT_FILE.fetch_add(1, Ordering::Relaxed)
         ));

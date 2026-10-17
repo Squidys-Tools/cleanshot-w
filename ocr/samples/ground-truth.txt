@@ -1,5 +1,5 @@
 clean-lines.png
-CleanShot W OCR sample.
+Snipsy OCR sample.
 Save 1 PNG.
 
 settings-text.png

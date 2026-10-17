@@ -242,7 +242,7 @@ fn open_editor_capture(cx: &mut App, id: Option<&str>, png: Vec<u8>, title: Stri
     }
 }
 
-/// Linux dev-loop entry: pin a PNG from a path (`cleanshot-w --pin file.png`).
+/// Linux dev-loop entry: pin a PNG from a path (`snipsy --pin file.png`).
 pub fn open_pin_from_path(cx: &mut App, path: &str) {
     match std::fs::read(path) {
         Ok(png) => {

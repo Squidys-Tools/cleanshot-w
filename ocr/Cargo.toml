@@ -1,5 +1,5 @@
 [package]
-name = "cleanshot-ocr-eval"
+name = "snipsy-ocr-eval"
 version = "0.1.0"
 edition = "2024"
 publish = false
@@ -31,5 +31,5 @@ windows = { version = "0.62", features = [
 ] }
 
 [[bin]]
-name = "cleanshot-ocr"
+name = "snipsy-ocr"
 path = "src/main.rs"

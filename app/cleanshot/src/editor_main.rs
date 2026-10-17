@@ -20,13 +20,13 @@ fn main() {
 
     let path = std::env::args().nth(1).filter(|arg| arg != "--help");
     let Some(path) = path else {
-        eprintln!("Usage: cleanshot-editor <image.png>");
+        eprintln!("Usage: snipsy-editor <image.png>");
         return;
     };
     let png = match std::fs::read(&path) {
         Ok(png) => png,
         Err(error) => {
-            eprintln!("cleanshot-editor: could not read {path}: {error}");
+            eprintln!("snipsy-editor: could not read {path}: {error}");
             return;
         }
     };
@@ -45,7 +45,7 @@ fn main() {
                 annotations: library::AnnotationSource::Transient,
             },
         ) {
-            eprintln!("cleanshot-editor: {error}");
+            eprintln!("snipsy-editor: {error}");
             cx.quit();
         }
     });

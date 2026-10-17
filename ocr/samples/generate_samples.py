@@ -17,7 +17,7 @@ def draw_lines(image, lines, color, font_size, position=(36, 30), spacing=20):
 
 
 clean = Image.new("RGB", (760, 190), "white")
-draw_lines(clean, ["CleanShot W OCR sample.", "Save 1 PNG."], "#161616", 36)
+draw_lines(clean, ["Snipsy OCR sample.", "Save 1 PNG."], "#161616", 36)
 clean.save(OUTPUT / "clean-lines.png")
 
 settings = Image.new("RGB", (960, 190), "white")

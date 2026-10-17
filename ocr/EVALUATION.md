@@ -8,7 +8,7 @@ fixture is acceptable. Windows.Media.Ocr remains in the evaluation crate as a
 Windows-only comparison; it was exact on these fixtures but does not expose
 confidence scores.
 
-`cleanshot-ocr` defaults to Tesseract on every platform. On Windows, pass
+`snipsy-ocr` defaults to Tesseract on every platform. On Windows, pass
 `--engine winrt` to run the comparison. The Windows CI workflow runs both
 engines on the same generated PNG fixtures, prints character/word error rates
 and per-process elapsed time, and uploads the report with both CLI builds and

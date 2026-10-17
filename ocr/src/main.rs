@@ -3,11 +3,11 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 #[cfg(not(feature = "tesseract"))]
-use cleanshot_ocr_eval::OcrError;
+use snipsy_ocr_eval::OcrError;
 #[cfg(feature = "tesseract")]
-use cleanshot_ocr_eval::TesseractEngine;
-use cleanshot_ocr_eval::windows_ocr::WindowsMediaOcr;
-use cleanshot_ocr_eval::{OcrBackend, recognize_image};
+use snipsy_ocr_eval::TesseractEngine;
+use snipsy_ocr_eval::windows_ocr::WindowsMediaOcr;
+use snipsy_ocr_eval::{OcrBackend, recognize_image};
 
 struct Arguments {
     engine: String,
@@ -19,7 +19,7 @@ struct Arguments {
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("cleanshot-ocr: {error}");
+        eprintln!("snipsy-ocr: {error}");
         std::process::exit(1);
     }
 }
@@ -131,7 +131,7 @@ fn confidence_label(confidence: Option<f32>) -> String {
 }
 
 fn usage() -> &'static str {
-    "Usage: cleanshot-ocr [--engine winrt|tesseract] [--language CODE] [--tessdata-dir DIR] IMAGE\n\
+    "Usage: snipsy-ocr [--engine winrt|tesseract] [--language CODE] [--tessdata-dir DIR] IMAGE\n\
      Default engine: Tesseract. On Windows, use --engine winrt for comparison.\n\
      Tesseract language uses traineddata codes (for example, eng); WinRT uses Windows language tags (for example, en-US)."
 }

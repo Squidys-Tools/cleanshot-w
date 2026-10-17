@@ -503,7 +503,7 @@ mod tests {
     #[test]
     fn invalid_annotation_files_are_rejected_without_being_modified() {
         let path = std::env::temp_dir().join(format!(
-            "cleanshot-w-phase3-{}-{}.json",
+            "snipsy-phase3-{}-{}.json",
             std::process::id(),
             super::now_millis()
         ));
@@ -521,7 +521,7 @@ mod tests {
     #[test]
     fn deleting_capture_removes_index_entry_and_capture_files() {
         let root = std::env::temp_dir().join(format!(
-            "cleanshot-w-library-delete-{}-{}",
+            "snipsy-library-delete-{}-{}",
             std::process::id(),
             super::now_millis()
         ));
@@ -540,7 +540,7 @@ mod tests {
     #[test]
     fn deleting_invalid_or_missing_library_ids_is_non_destructive() {
         let root = std::env::temp_dir().join(format!(
-            "cleanshot-w-library-delete-empty-{}-{}",
+            "snipsy-library-delete-empty-{}-{}",
             std::process::id(),
             super::now_millis()
         ));

@@ -5,7 +5,7 @@
 //! `GetMessageW` pump and forwards events over a channel. This keeps the
 //! hotkey independent of GPUI's message loop.
 //!
-//! Linux: no global hotkey in the dev loop — use `cleanshot-w --capture`.
+//! Linux: no global hotkey in the dev loop — use `snipsy --capture`.
 //! (The `global-hotkey` crate wants its own event-loop integration; revisit
 //! if the dev loop needs hotkeys.)
 
