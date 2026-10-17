@@ -119,7 +119,8 @@ tray, and the hotkey (default `ctrl+shift+4`, read from
 exist but `%LOCALAPPDATA%/CleanShotW` does, the first launch migrates the old
 settings and capture library; an existing `Snipsy` directory wins. A second
 launch exits (single-instance mutex), and a successful screen capture opens
-the editor. The tray also offers window capture and a launch-at-startup toggle.
+the editor. The tray can capture a window, open the latest capture in the
+editor, or toggle launch at startup. Window captures open in a pin window.
 To test the editor separately, run `cleanshot-editor.exe <image.png>`.
 
 ## Remaining extension points
