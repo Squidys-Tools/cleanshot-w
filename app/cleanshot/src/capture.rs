@@ -288,6 +288,9 @@ mod windows_capture {
         if include_cursor {
             draw_cursor(memory_dc, rect.left, rect.top, width, height);
         }
+        unsafe {
+            SelectObject(memory_dc, previous);
+        }
         let rgba = read_bitmap(memory_dc, bitmap, width, height);
         cleanup(screen_dc, memory_dc, bitmap, previous);
         let scale_factor = (unsafe { GetDpiForWindow(hwnd) } as f32 / 96.0).max(1.0);
