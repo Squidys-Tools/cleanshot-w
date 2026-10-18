@@ -18,6 +18,7 @@ mod settings;
 mod shortcut;
 #[cfg(windows)]
 mod tray;
+mod ui;
 mod window_picker;
 
 fn main() {

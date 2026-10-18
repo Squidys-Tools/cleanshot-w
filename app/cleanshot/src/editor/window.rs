@@ -94,6 +94,23 @@ enum EditorPanel {
 }
 
 impl Tool {
+    fn icon_slug(self) -> &'static str {
+        match self {
+            Tool::Select => "select",
+            Tool::Rectangle => "rectangle",
+            Tool::Ellipse => "ellipse",
+            Tool::Arrow => "arrow",
+            Tool::Pen => "pen",
+            Tool::Text => "text",
+            Tool::Counter => "counter",
+            Tool::Crop => "crop",
+            Tool::Blur => "blur",
+            Tool::Pixelate => "pixelate",
+            Tool::Redact => "redact",
+            Tool::Icon => "sticker",
+        }
+    }
+
     fn cursor(self) -> gpui::CursorStyle {
         match self {
             Tool::Select => gpui::CursorStyle::Arrow,
@@ -3220,223 +3237,14 @@ fn shape_color(shape: &Shape) -> gpui::Hsla {
         Shape::Icon(shape) => rgb(parse_hex(&shape.color)).into(),
     }
 }
-
-/// Toolbar/selection icons drawn as vector shapes.
+/// Toolbar tool icon via the bundled HugeIcons chrome set.
 fn icon_for(tool: Tool, active: bool) -> gpui::AnyElement {
-    let color = if active { 0xffffff } else { 0xd0d0d6 };
-    canvas(
-        move |_, _, _| {},
-        move |bounds, _, window, _| {
-            let c = rgb(color);
-            let x = f32::from(bounds.origin.x);
-            let y = f32::from(bounds.origin.y);
-            let w = f32::from(bounds.size.width);
-            let h = f32::from(bounds.size.height);
-            let (cx, cy) = (x + w / 2.0, y + h / 2.0);
-            let mut path = |points: &[(f32, f32)], close: bool, stroke_w: f32| {
-                let mut builder = PathBuilder::stroke(px(stroke_w));
-                if let Some(first) = points.first() {
-                    builder.move_to(Point {
-                        x: px(x + first.0 * w),
-                        y: px(y + first.1 * h),
-                    });
-                    for point in &points[1..] {
-                        builder.line_to(Point {
-                            x: px(x + point.0 * w),
-                            y: px(y + point.1 * h),
-                        });
-                    }
-                    if close {
-                        builder.close();
-                    }
-                }
-                builder.build().ok().map(|path| window.paint_path(path, c))
-            };
-            match tool {
-                Tool::Select => {
-                    // Pointer arrow.
-                    let fill_points: Vec<(f32, f32)> = vec![
-                        (0.28, 0.15),
-                        (0.28, 0.75),
-                        (0.44, 0.6),
-                        (0.54, 0.82),
-                        (0.62, 0.78),
-                        (0.52, 0.57),
-                        (0.72, 0.57),
-                    ];
-                    let mut builder = PathBuilder::fill();
-                    builder.move_to(Point {
-                        x: px(x + fill_points[0].0 * w),
-                        y: px(y + fill_points[0].1 * h),
-                    });
-                    for point in &fill_points[1..] {
-                        builder.line_to(Point {
-                            x: px(x + point.0 * w),
-                            y: px(y + point.1 * h),
-                        });
-                    }
-                    builder.close();
-                    if let Ok(path) = builder.build() {
-                        window.paint_path(path, c);
-                    }
-                }
-                Tool::Rectangle => {
-                    path(
-                        &[(0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75)],
-                        true,
-                        2.0,
-                    );
-                }
-                Tool::Ellipse => {
-                    const SEGMENTS: usize = 40;
-                    let mut builder = PathBuilder::stroke(px(2.0));
-                    for index in 0..SEGMENTS {
-                        let angle = index as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
-                        let px_ = cx + angle.cos() * w * 0.25;
-                        let py = cy + angle.sin() * h * 0.25;
-                        if index == 0 {
-                            builder.move_to(Point {
-                                x: px(px_),
-                                y: px(py),
-                            });
-                        } else {
-                            builder.line_to(Point {
-                                x: px(px_),
-                                y: px(py),
-                            });
-                        }
-                    }
-                    builder.close();
-                    if let Ok(path) = builder.build() {
-                        window.paint_path(path, c);
-                    }
-                }
-                Tool::Arrow => {
-                    path(&[(0.25, 0.75), (0.7, 0.3)], false, 2.0);
-                    let mut builder = PathBuilder::fill();
-                    builder.move_to(Point {
-                        x: px(x + 0.78 * w),
-                        y: px(y + 0.22 * h),
-                    });
-                    builder.line_to(Point {
-                        x: px(x + 0.6 * w),
-                        y: px(y + 0.26 * h),
-                    });
-                    builder.line_to(Point {
-                        x: px(x + 0.74 * w),
-                        y: px(y + 0.4 * h),
-                    });
-                    builder.close();
-                    if let Ok(head) = builder.build() {
-                        window.paint_path(head, c);
-                    }
-                }
-                Tool::Pen => {
-                    path(
-                        &[(0.25, 0.7), (0.4, 0.35), (0.55, 0.6), (0.75, 0.3)],
-                        false,
-                        2.0,
-                    );
-                }
-                Tool::Text => {
-                    path(&[(0.3, 0.3), (0.7, 0.3)], false, 2.0);
-                    path(&[(0.5, 0.3), (0.5, 0.78)], false, 2.0);
-                }
-                Tool::Counter => {
-                    const SEGMENTS: usize = 32;
-                    let mut builder = PathBuilder::fill();
-                    for index in 0..SEGMENTS {
-                        let angle = index as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
-                        let px_ = cx + angle.cos() * w * 0.28;
-                        let py = cy + angle.sin() * h * 0.28;
-                        if index == 0 {
-                            builder.move_to(Point {
-                                x: px(px_),
-                                y: px(py),
-                            });
-                        } else {
-                            builder.line_to(Point {
-                                x: px(px_),
-                                y: px(py),
-                            });
-                        }
-                    }
-                    builder.close();
-                    if let Ok(path) = builder.build() {
-                        window.paint_path(path, c);
-                    }
-                }
-                Tool::Crop => {
-                    path(&[(0.35, 0.15), (0.35, 0.65), (0.85, 0.65)], false, 2.0);
-                    path(&[(0.15, 0.35), (0.65, 0.35), (0.65, 0.85)], false, 2.0);
-                }
-                Tool::Blur => {
-                    path(
-                        &[(0.28, 0.5), (0.4, 0.35), (0.52, 0.5), (0.4, 0.65)],
-                        true,
-                        1.6,
-                    );
-                    path(
-                        &[(0.48, 0.5), (0.6, 0.35), (0.72, 0.5), (0.6, 0.65)],
-                        true,
-                        1.6,
-                    );
-                }
-                Tool::Pixelate => {
-                    path(
-                        &[(0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75)],
-                        true,
-                        1.8,
-                    );
-                    path(&[(0.25, 0.5), (0.75, 0.5)], false, 1.4);
-                    path(&[(0.5, 0.25), (0.5, 0.75)], false, 1.4);
-                }
-                Tool::Redact => {
-                    let mut builder = PathBuilder::fill();
-                    builder.move_to(Point {
-                        x: px(x + 0.25 * w),
-                        y: px(y + 0.3 * h),
-                    });
-                    builder.line_to(Point {
-                        x: px(x + 0.75 * w),
-                        y: px(y + 0.3 * h),
-                    });
-                    builder.line_to(Point {
-                        x: px(x + 0.75 * w),
-                        y: px(y + 0.7 * h),
-                    });
-                    builder.line_to(Point {
-                        x: px(x + 0.25 * w),
-                        y: px(y + 0.7 * h),
-                    });
-                    builder.close();
-                    if let Ok(rect) = builder.build() {
-                        window.paint_path(rect, c);
-                    }
-                }
-                Tool::Icon => {
-                    path(
-                        &[
-                            (0.5, 0.15),
-                            (0.6, 0.38),
-                            (0.85, 0.4),
-                            (0.67, 0.57),
-                            (0.72, 0.82),
-                            (0.5, 0.69),
-                            (0.28, 0.82),
-                            (0.33, 0.57),
-                            (0.15, 0.4),
-                            (0.4, 0.38),
-                        ],
-                        true,
-                        1.7,
-                    );
-                }
-            }
-        },
-    )
-    .size_full()
-    .into_any_element()
+    let color = if active {
+        rgb(0xffffff).into()
+    } else {
+        rgb(0xd0d0d6).into()
+    };
+    crate::ui::chrome_icon(tool.icon_slug(), 20.0, color)
 }
 
 #[cfg(test)]

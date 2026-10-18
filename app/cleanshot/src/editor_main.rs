@@ -13,6 +13,7 @@ mod platform;
 mod save_dialog;
 mod settings;
 mod shortcut;
+mod ui;
 
 fn main() {
     #[cfg(windows)]
