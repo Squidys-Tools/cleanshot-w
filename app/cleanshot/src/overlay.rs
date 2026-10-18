@@ -8,11 +8,11 @@
 use gpui::{
     Bounds, Context, CursorStyle, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent,
     MouseUpEvent, PathBuilder, Pixels, Point, Render, Window, WindowBackgroundAppearance,
-    WindowBounds, WindowId, WindowKind, WindowOptions, actions, canvas, div, prelude::*, px, rgb,
-    size,
+    WindowBounds, WindowId, WindowKind, WindowOptions, actions, canvas, div, prelude::*, px, size,
 };
 
 use crate::flow;
+use crate::theme::Theme;
 
 actions!(overlay, [CancelSelection]);
 
@@ -81,8 +81,26 @@ pub fn open(cx: &mut gpui::App, screen: Bounds<Pixels>) -> Result<WindowId, Stri
 }
 
 impl Render for Overlay {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let selection = self.selection_bounds();
+        let theme_accent = Theme::current(cx).accent;
+        let dims_badge = selection.map(|sel| {
+            let scale = window.scale_factor();
+            let w = (f32::from(sel.size.width) * scale).round() as i64;
+            let h = (f32::from(sel.size.height) * scale).round() as i64;
+            div()
+                .absolute()
+                .left(sel.origin.x + sel.size.width / 2.0)
+                .top(sel.bottom() + px(12.0))
+                .px_2()
+                .py(px(2.0))
+                .rounded(px(6.0))
+                .bg(Theme::current(cx).bg_toolbar)
+                .text_size(px(11.0))
+                .text_color(Theme::current(cx).text_1)
+                .font_family(crate::ui::font_family())
+                .child(format!("{w} × {h}"))
+        });
 
         div()
             .id("overlay")
@@ -93,45 +111,48 @@ impl Render for Overlay {
             .on_action(cx.listener(|_, _: &CancelSelection, window, cx| {
                 flow::cancel_capture(window, cx);
             }))
-            // Dim scrim so the selection area reads clearly against the screen.
-            .bg(rgb(0x000000).alpha(0.15))
+            // No root scrim: the canvas paints four quads around the
+            // selection so its interior shows the live, un-dimmed screen.
+            .children(dims_badge)
             .child(
                 canvas(
-                    move |_, _, _| {},
-                    move |_, _, window, _| {
-                        let Some(sel) = selection else { return };
+                    move |_, _, _| theme_accent,
+                    move |bounds, accent, window, _| {
+                        let Some(sel) = selection else {
+                            // No selection yet: dim the whole screen.
+                            paint_scrim(window, bounds, gpui::black().alpha(0.45));
+                            return;
+                        };
 
-                        // Filled interior via a quad.
-                        window.paint_quad(gpui::quad(
-                            sel,
-                            px(0.),
-                            rgb(0x3B82F6).alpha(0.08),
-                            px(0.),
-                            gpui::transparent_black(),
-                            Default::default(),
-                        ));
+                        // Dim everything except the selection so its interior
+                        // shows the live, un-dimmed screen through the
+                        // transparent window.
+                        for side in scrim_sides(bounds, &sel) {
+                            paint_scrim(window, side, gpui::black().alpha(0.45));
+                        }
 
-                        // Border via a stroked path (PathBuilder + paint_path).
-                        let mut builder = PathBuilder::stroke(px(2.));
-                        builder.move_to(Point {
-                            x: sel.origin.x,
-                            y: sel.origin.y,
-                        });
-                        builder.line_to(Point {
-                            x: sel.right(),
-                            y: sel.origin.y,
-                        });
-                        builder.line_to(Point {
-                            x: sel.right(),
-                            y: sel.bottom(),
-                        });
-                        builder.line_to(Point {
-                            x: sel.origin.x,
-                            y: sel.bottom(),
-                        });
-                        builder.close();
-                        if let Ok(path) = builder.build() {
-                            window.paint_path(path, rgb(0x3B82F6));
+                        // 4 px accent glow behind the 1 px accent frame.
+                        if let Some(path) = rect_outline(sel, px(4.0)) {
+                            window.paint_path(path, accent.alpha(0.35));
+                        }
+                        if let Some(path) = rect_outline(sel, px(1.0)) {
+                            window.paint_path(path, accent);
+                        }
+
+                        // Corner handles: 8x8, white with an accent border.
+                        for corner in handle_points(&sel) {
+                            let handle_bounds = Bounds {
+                                origin: gpui::point(corner.x - px(4.0), corner.y - px(4.0)),
+                                size: size(px(8.0), px(8.0)),
+                            };
+                            window.paint_quad(gpui::quad(
+                                handle_bounds,
+                                px(1.0),
+                                gpui::white(),
+                                px(1.0),
+                                accent,
+                                Default::default(),
+                            ));
                         }
                     },
                 )
@@ -180,4 +201,72 @@ impl Render for Overlay {
 /// Keystroke bindings for the overlay window.
 pub fn keybindings() -> Vec<KeyBinding> {
     vec![KeyBinding::new("escape", CancelSelection, None)]
+}
+
+/// The four screen regions around the selection, for the see-through scrim.
+fn scrim_sides(full: Bounds<Pixels>, sel: &Bounds<Pixels>) -> Vec<Bounds<Pixels>> {
+    vec![
+        Bounds {
+            origin: full.origin,
+            size: size(full.size.width, sel.origin.y - full.origin.y),
+        },
+        Bounds {
+            origin: gpui::point(full.origin.x, sel.bottom()),
+            size: size(full.size.width, full.bottom() - sel.bottom()),
+        },
+        Bounds {
+            origin: gpui::point(full.origin.x, sel.origin.y),
+            size: size(sel.origin.x - full.origin.x, sel.size.height),
+        },
+        Bounds {
+            origin: sel.top_right(),
+            size: size(full.right() - sel.right(), sel.size.height),
+        },
+    ]
+}
+
+fn paint_scrim(window: &mut Window, region: Bounds<Pixels>, color: gpui::Hsla) {
+    if f32::from(region.size.width) <= 0.0 || f32::from(region.size.height) <= 0.0 {
+        return;
+    }
+    window.paint_quad(gpui::quad(
+        region,
+        px(0.),
+        color,
+        px(0.),
+        gpui::transparent_black(),
+        Default::default(),
+    ));
+}
+
+/// A closed rectangular outline path centered on the given bounds.
+fn rect_outline(bounds: Bounds<Pixels>, stroke: Pixels) -> Option<gpui::Path<Pixels>> {
+    let mut builder = PathBuilder::stroke(stroke);
+    builder.move_to(Point {
+        x: bounds.origin.x,
+        y: bounds.origin.y,
+    });
+    builder.line_to(Point {
+        x: bounds.right(),
+        y: bounds.origin.y,
+    });
+    builder.line_to(Point {
+        x: bounds.right(),
+        y: bounds.bottom(),
+    });
+    builder.line_to(Point {
+        x: bounds.origin.x,
+        y: bounds.bottom(),
+    });
+    builder.close();
+    builder.build().ok()
+}
+
+fn handle_points(sel: &Bounds<Pixels>) -> Vec<Point<Pixels>> {
+    vec![
+        gpui::point(sel.origin.x, sel.origin.y),
+        gpui::point(sel.right(), sel.origin.y),
+        gpui::point(sel.origin.x, sel.bottom()),
+        gpui::point(sel.right(), sel.bottom()),
+    ]
 }

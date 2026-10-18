@@ -57,6 +57,7 @@ fn main() {
 
     gpui_platform::application().run(move |cx: &mut gpui::App| {
         cx.set_global(flow::AppState::default());
+        crate::theme::init_from_settings(cx);
         cx.bind_keys(
             overlay::keybindings()
                 .into_iter()

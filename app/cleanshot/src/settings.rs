@@ -6,6 +6,7 @@
 //! no canonical `Snipsy` directory exists.
 
 use crate::library::{app_data_root, write_atomic};
+use crate::theme::Scheme;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -20,6 +21,8 @@ pub struct AppSettings {
     pub include_cursor: bool,
     #[serde(default)]
     pub launch_at_startup: bool,
+    #[serde(default)]
+    pub theme: Scheme,
 }
 
 #[derive(Serialize)]
@@ -36,6 +39,7 @@ impl Default for AppSettings {
             capture_hotkey: DEFAULT_CAPTURE_HOTKEY.to_string(),
             include_cursor: false,
             launch_at_startup: false,
+            theme: Scheme::Dark,
         }
     }
 }
