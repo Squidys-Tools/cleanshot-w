@@ -1,0 +1,74 @@
+/* Snipsy design tokens — CleanShot X–inspired.
+   These mirror the GPUI-side constants in design-spec.md 1:1.
+   The mockups read the same values the implementation should ship. */
+
+:root {
+  /* Type ramp — Segoe UI Variable on Windows */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+
+  /* Radii */
+  --r-window: 12px;   /* window shell */
+  --r-panel: 10px;    /* cards, side panels, popovers */
+  --r-pill: 16px;     /* floating toolbar */
+  --r-btn: 8px;       /* buttons, tool buttons */
+  --r-input: 6px;     /* text inputs, hotkey chips */
+  --r-thumb: 6px;     /* capture thumbnails */
+  --r-round: 999px;   /* counter badges, pills */
+
+  /* Spacing scale (GPUI: px constants) */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px;
+
+  /* Toolbar geometry */
+  --toolbar-h: 52px;
+  --tool-btn: 36px;
+  --selectionbar-h: 44px;
+  --rail-w: 232px;
+}
+
+/* ---- Dark (default) ---- */
+.theme-dark {
+  --bg-window: #1f1f23;          /* app shell */
+  --bg-surface: #26262b;         /* panels, cards */
+  --bg-elevated: #2e2e34;        /* inputs, secondary buttons */
+  --bg-canvas: #17171a;          /* editor backdrop behind the shot */
+  --bg-toolbar: rgba(34, 34, 39, 0.98); /* floating toolbar pill (no blur in GPUI) */
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(255, 255, 255, 0.10);
+  --text-1: #f2f2f4;
+  --text-2: #a0a0aa;
+  --text-3: #6e6e78;
+  --accent: #4c8dff;
+  --accent-hover: #5c98ff;
+  --accent-soft: rgba(76, 141, 255, 0.16);
+  --accent-text: #ffffff;
+  --hairline: rgba(255, 255, 255, 0.08);
+  --hairline-strong: rgba(255, 255, 255, 0.14);
+  --danger: #e5484d;
+  --shadow-floating: 0 12px 40px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-panel: 0 8px 28px rgba(0, 0, 0, 0.40), 0 1px 4px rgba(0, 0, 0, 0.30);
+  --selection-border: #4c8dff;
+}
+
+/* ---- Light ---- */
+.theme-light {
+  --bg-window: #f6f6f8;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f0f0f3;
+  --bg-canvas: #e8e8ec;
+  --bg-toolbar: rgba(255, 255, 255, 0.98);
+  --bg-hover: rgba(0, 0, 0, 0.05);
+  --bg-active: rgba(0, 0, 0, 0.09);
+  --text-1: #1d1d21;
+  --text-2: #6e6e78;
+  --text-3: #a0a0aa;
+  --accent: #2f6fed;
+  --accent-hover: #245fd8;
+  --accent-soft: rgba(47, 111, 237, 0.12);
+  --accent-text: #ffffff;
+  --hairline: rgba(0, 0, 0, 0.08);
+  --hairline-strong: rgba(0, 0, 0, 0.14);
+  --danger: #c94a3c;
+  --shadow-floating: 0 12px 40px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-panel: 0 8px 28px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08);
+  --selection-border: #2f6fed;
+}
