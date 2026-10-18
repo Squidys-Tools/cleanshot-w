@@ -8,6 +8,7 @@
 //   src/, src-tauri/, public/, tests/, bun.lock, package-lock.json,
 //   package.json      the legacy Tauri app and its manifests; deleted
 //                     wholesale by the cleanup PR that drops the dead app
+//   this file         names the banned packs to ban them
 //
 // Usage: node scripts/check-no-legacy-icons.mjs
 
@@ -15,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 const FORBIDDEN = /lucide|phosphor|tabler|heroicons|remix/i;
+const SELF = /check-no-legacy-icons\.mjs$/;
 const SKIP = [
   /^mockups\//,
   /^docs\//,
@@ -37,7 +39,7 @@ if (tracked.status !== 0) {
 const offenders = tracked.stdout
   .split("\n")
   .filter(Boolean)
-  .filter((path) => !SKIP.some((skip) => skip.test(path)))
+  .filter((path) => !SELF.test(path) && !SKIP.some((skip) => skip.test(path)))
   .filter((path) => FORBIDDEN.test(path) || FORBIDDEN.test(readFileSync(path, "utf8")));
 
 if (offenders.length > 0) {
