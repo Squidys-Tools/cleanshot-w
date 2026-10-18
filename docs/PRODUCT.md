@@ -4,8 +4,7 @@
 
 ## Platform
 
-Windows desktop. The browser editor remains useful for development and image
-intake, but Windows is the only supported end-user platform for now.
+Windows desktop. The GPUI app is the only supported end-user platform for now.
 
 ## Users
 
@@ -14,50 +13,47 @@ be easier to annotate, share, organize, and work with in general.
 
 ## Product purpose
 
-Snipsy is a local-first screenshot and annotation app. It lets people
-capture an area, window, or full screen; mark up the image; recognize text;
-copy or export the result; and find captures again later. The goal is a simple
-workflow that does not require an account or cloud service.
+Snipsy is a local-first screenshot and annotation app. It lets people capture
+an area, window, or full screen; mark up the image; copy or export the result;
+and find captures again later. The goal is a simple workflow that does not
+require an account or cloud service.
 
 ## Positioning
 
 Snipsy is a private desktop screenshot workflow that combines capture,
-annotation, OCR, export, and local history in one place. It is not a hosted
-sharing or collaboration product. Sharing happens through local clipboard and
-file exports.
+annotation, export, and local history in one place. It is not a hosted sharing
+or collaboration product. Sharing happens through local clipboard and file
+exports.
 
 ## Operating context
 
 - The supported end-user host is Windows 10 and 11.
-- The application runs as a Tauri desktop shell with a React/Vite editor in
-  WebView2.
+- The application is a native GPUI desktop app written in Rust.
 - People can start area, window, or full-screen capture from the app, tray, or
   configurable global shortcut.
-- People can also paste, drop, or choose an image in the editor.
-- Captures can be annotated, copied, saved as PNG, processed with local OCR,
-  pinned above other windows, and reopened from History.
+- Captures can be annotated, copied, saved as PNG, pinned above other windows,
+  and reopened from History. OCR is a separate local tool and is not integrated
+  into the editor.
 
 ## Capabilities and constraints
 
 - Current capabilities include editable drawing, shapes, arrows, text,
   counters, highlights, blur, pixelation, redaction, zoom, pan, undo/redo,
-  OCR, clipboard/file export through a dedicated export page, capture history,
+  clipboard/file export, capture history,
   title editing and search, always-on-top pins, tray controls, a configurable
   capture hotkey, cursor inclusion, and optional per-user startup.
 - Capture history, annotations, images, titles, and settings are stored locally
-  in the browser or under `%LOCALAPPDATA%\Snipsy` in the native app.
+  under `%LOCALAPPDATA%\Snipsy`.
 - The product is local-first. No account, cloud sync, telemetry, or network
-  dependency is required for capture, annotation, export, library use, or OCR.
-  OCR assets are bundled locally.
+  dependency is required for capture, annotation, export, or library use.
 - The app is designed for standard-user operation and per-user installation.
   Administrator elevation is not required.
 - The current release is unreleased. Remaining Windows acceptance work includes
   representative hardware validation, especially mixed-DPI and multi-monitor
-  capture, clipboard interoperability, packaged OCR assets, WebView2 behavior,
-  and tray, startup, and pin lifecycle.
+  capture, clipboard interoperability, and tray, startup, and pin lifecycle.
 - V1 does not promise video or GIF recording, cloud sync, accounts, hosted
   sharing URLs, macOS or Linux support, auto-update, or code signing.
-- Scrolling capture, native OCR, richer library search, and a user-facing
+- Scrolling capture, editor-integrated OCR, richer library search, and a user-facing
   project-file format remain future work rather than current promises.
 
 ## Product principles
@@ -66,8 +62,7 @@ file exports.
 - Keep capture and editing in one coherent local workflow.
 - Preserve privacy by default through local storage and offline-capable
   features.
-- Make results immediately useful through clipboard, file, PNG, and OCR
-  outputs.
+- Make results immediately useful through clipboard, file, and PNG outputs.
 - Be honest about current platform support and unreleased or planned behavior.
 
 ## Brand commitments
@@ -75,8 +70,8 @@ file exports.
 - The product name is **Snipsy**. It replaced the earlier working name
   CleanShot W, which collided with the macOS CleanShot product.
 - The visual system is documented in [the design system](DESIGN.md): a neutral
-  screenshot-first editor, text-led command bar, detached annotation dock, and
-  separate capture overlay.
+  screenshot-first editor, bottom toolbar, side panels, and separate capture
+  overlay.
 
 ## Scope legend
 
@@ -92,7 +87,7 @@ file exports.
 | Reference capability | Status | Current scope / follow-up |
 |---|---|---|
 | Crop tool with aspect ratio and edge snapping | Partial | A crop flow exists: the toolbar's crop button opens a region overlay that crops the capture, drops annotations outside the selection, and repositions the rest. Aspect-ratio locking and edge snapping are not implemented. |
-| Arrow, rectangle, filled rectangle, ellipse, and line | Implemented | Available through the tldraw editor; arrow shape and fill/stroke preferences are persisted. |
+| Arrow, rectangle, filled rectangle, ellipse, and line | Implemented | Available through the GPUI editor; shape and fill/stroke preferences are persisted. |
 | Curved arrow styles | Partial | Curved and elbow arrow kinds are supported by the editor model; the reference product's exact four-style catalog is not a v1 promise. |
 | Pixelate and blur | Implemented | Both are editable annotation effects and are flattened on export. Secure/randomized pixelation is not currently promised. |
 | Spotlight | Planned | No dedicated spotlight tool exists yet. |
@@ -100,22 +95,22 @@ file exports.
 | Pencil / freehand drawing | Implemented | Freehand drawing is available through the editor. Product-specific auto-smoothing is not separately specified. |
 | Highlighter | Implemented | Translucent highlight annotations are supported. |
 | Text tool | Partial | Text annotations work; the reference product's seven predefined text styles are not yet implemented. |
-| Combine multiple images in one annotation document | Planned | Dropping or pasting another image currently creates a new capture rather than adding an image layer to the open document. |
-| Editable Snipsy project file format | Partial | Annotations persist in the local browser/native library, but there is no user-facing project-file export/import format. |
+| Combine multiple images in one annotation document | Planned | The editor does not yet support adding a second image layer to the open document. |
+| Editable Snipsy project file format | Partial | Annotations persist in the local library, but there is no user-facing project-file export/import format. |
 
 ## Background tool
 
 | Reference capability | Status | Current scope / follow-up |
 |---|---|---|
-| Background presets, custom backgrounds, padding, alignment, aspect ratio, and Auto Balance | Planned | No background composition tool exists yet. Scope it as a post-M2 editor feature. |
+| Background presets, custom backgrounds, padding, alignment, aspect ratio, and Auto Balance | Planned | No background composition tool exists yet. |
 
 ## Editor actions
 
 | Reference capability | Status | Current scope / follow-up |
 |---|---|---|
-| Copy, save, annotate, OCR, pin, new, and close actions | Implemented | The main command bar exposes capture, export, OCR, pin, history, settings, and close actions; a Done action opens the export page. Annotation tools live in the detached bottom dock. |
+| Copy, save, and annotate actions | Implemented | The editor provides annotation tools, undo and redo, copy, and save actions. Capture and pin actions are available from the app and tray. |
 | Capture metadata and drag/drop to another app | Partial | Capture title and history metadata exist; external drag/drop from the overlay is not implemented. |
-| Corner popup, restore recently closed overlay, position/size controls, auto-close, swipe gestures, temporary hide | Planned | These are separate overlay UX capabilities and are not part of the current M2 shell. |
+| Corner popup, restore recently closed overlay, position/size controls, auto-close, swipe gestures, temporary hide | Planned | These are separate overlay UX capabilities and are not implemented. |
 | Multi-display overlay support | Partial | Native capture uses the virtual desktop and is designed for multiple displays; the full overlay positioning and behavior matrix still requires Windows validation. |
 
 ## Capture
@@ -123,7 +118,7 @@ file exports.
 | Reference capability | Status | Current scope / follow-up |
 |---|---|---|
 | Area, window, and full-screen capture | Implemented | Native Windows capture is implemented; verify it with [the roadmap and status](ROADMAP.md). |
-| Scrolling capture | Planned | First M3 feature; ship behind an explicit beta flow with cancel, failure handling, and stitching tests. |
+| Scrolling capture | Planned | If added, ship behind an explicit beta flow with cancel, failure handling, and stitching tests. |
 | Self-timer | Planned | Not implemented. Consider after scrolling capture if capture workflow expansion remains in scope. |
 | PixelSnap integration | Out of scope | This is an external product integration and is not part of the local-first v1 plan. |
 | Crosshair and magnifier/loupe | Implemented | The native selection overlay includes a physical-pixel selection readout and loupe/crosshair. |
@@ -153,23 +148,16 @@ file exports.
 
 | Reference capability | Status | Current scope / follow-up |
 |---|---|---|
-| On-device text recognition and clipboard output | Implemented | Bundled tesseract.js assets run locally without a network connection. |
-| OCR on a selected region with word-level interaction | Partial | The command menu offers "OCR selected region", which crops the dragged region before recognition. Word bounding boxes are returned by the OCR layer, but the result panel renders recognized text only, so per-word interaction is still missing. |
+| On-device text recognition and clipboard output | Planned | A standalone local Rust OCR tool exists in `ocr/`, but the editor does not invoke it yet. |
+| OCR on a selected region with word-level interaction | Planned | Region selection and OCR interaction are not integrated into the editor. |
 
 ## History and settings
 
 | Reference capability | Status | Current scope / follow-up |
 |---|---|---|
-| Capture history, thumbnails, reopen, delete, title editing, and title search | Implemented | Browser IndexedDB and native disk-backed history support these workflows. |
+| Capture history, thumbnails, reopen, delete, title editing, and title search | Implemented | The local disk-backed library supports these workflows. |
 | Filter by capture type and automatic one-month retention | Planned | Current history search is title-based and does not implement the reference retention or filter rules. |
 | Customizable capture behavior | Partial | Hotkey, cursor inclusion, and Windows startup are configurable; the broader settings catalog in the reference product is not yet implemented. |
 
-## Delivery order
-
-1. Complete and record the M2 Windows release gate.
-2. Implement scrolling capture as the first M3 beta feature.
-3. Revisit editor composition features: crop, combine images, backgrounds, and
-   richer text and command-bar behavior.
-4. Decide whether a future milestone should include recording, cloud, or a
-   user-facing project-file format. None should be implied by the v1 docs until
-   that decision is made.
+See the [roadmap](ROADMAP.md) for the current delivery sequence. This brief
+defines product scope and does not set implementation order.

@@ -1,18 +1,18 @@
 version: 2
 
 updates:
-  - package-ecosystem: bun
-    directory: /
+  - package-ecosystem: cargo
+    directory: /app
     schedule:
       interval: weekly
     open-pull-requests-limit: 1
     groups:
-      bun-dependencies:
+      rust-dependencies:
         patterns:
           - "*"
 
   - package-ecosystem: cargo
-    directory: /src-tauri
+    directory: /ocr
     schedule:
       interval: weekly
     open-pull-requests-limit: 1

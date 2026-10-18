@@ -3,210 +3,71 @@
 This is the stable implementation reference for contributors. Planned work
 belongs in [the roadmap](ROADMAP.md), completed changes belong in [the
 changelog](CHANGELOG.md), product decisions belong in [the product brief](PRODUCT.md),
-visual rules belong in [the design system](DESIGN.md), and current release
-evidence belongs in [the roadmap and status](ROADMAP.md).
+and visual rules belong in [the design system](DESIGN.md).
 
-## Stack and boundaries
+## Workspaces
 
-- **Frontend:** React 19, Vite 8, TypeScript 7, tldraw, and plain CSS.
-- **OCR:** tesseract.js with local assets under `public/tessdata`.
-- **Native shell:** Tauri 2, Rust 2021, WebView2, `arboard`, and Windows APIs
-  through `windows-sys`.
-- **Browser persistence:** IndexedDB for capture images, thumbnails, annotations,
-  timestamps, and titles.
-- **Native persistence:** JSON and PNG files under
-  `%LOCALAPPDATA%\Snipsy\library`.
+- `app/` is the GPUI desktop application workspace. Its `snipsy` binary runs the
+  capture app, and `snipsy-editor` opens an image in the same editor window for
+  standalone testing.
+- `ocr/` is a separate Rust OCR evaluation CLI. It supports Tesseract and a
+  Windows OCR comparison backend, but the editor does not invoke it yet.
+- `spikes/` contains standalone GPUI experiments and is built by its own
+  workflow.
 
-The editor talks to a typed `HostBridge` in `src/lib/bridge.ts`. The browser
-host uses IndexedDB and browser APIs. The native host translates the same
-operations to Tauri commands. Keep UI code independent of storage and capture
-backends.
+The desktop app stores captures, annotations, settings, and history locally
+under `%LOCALAPPDATA%\Snipsy`. Its Rust modules separate screen capture,
+virtual-screen geometry, hotkeys, tray integration, pin windows, the capture
+library, and the editor. GPUI owns the windows and UI; Windows APIs provide
+capture, DPI awareness, global shortcuts, and startup registration.
 
-TypeScript 7 uses `moduleResolution: "bundler"` with
-`resolvePackageJsonExports: false` in `tsconfig.json`. tldraw, declared as
-`^5.4.2`, ships its declaration files beside its `main` entry but does not
-publish a `types` condition in its package export map. The setting keeps the
-compiler on TypeScript 7 while allowing it to resolve those declarations.
+## Capture and editor flow
 
-## Runtime architecture
+The app snapshots the virtual desktop before showing the selection overlay, so
+the overlay cannot appear in a capture. A selection is converted from GPUI
+logical coordinates to physical pixels, cropped, encoded as PNG, saved in the
+local library, and opened in the editor. Window capture uses `PrintWindow` with
+a GDI fallback.
 
-Snipsy uses one React editor in two host environments:
+The editor stores an app-owned, versioned JSON document beside each capture.
+Shapes use original image coordinates, and undo/redo stores document snapshots.
+Export rasterizes the image and annotations at the capture's original
+dimensions before saving or copying the result. Older annotation documents
+using the former format are not imported; those captures open without their
+annotations.
 
-```text
-React editor
-  ├─ browser host: IndexedDB, browser clipboard, paste/drop/file intake
-  └─ native host: Tauri commands, Windows capture, disk library, clipboard
-```
-
-The main window and capture overlay are separate surfaces. The main window owns
-annotation, export, OCR, history, and settings. The overlay owns screen
-selection and returns a captured crop. A capture never stays in the overlay for
-annotation.
-
-The browser host remains useful for development. It accepts pasted, dropped, or
-selected image files without requiring native capture.
-
-## Capture lifecycle
-
-1. A toolbar action, tray action, or global shortcut starts capture.
-2. Rust hides the editor and records a physical-pixel snapshot of the virtual
-   desktop.
-3. A transparent overlay displays that frozen frame and accepts a selection.
-4. Rust validates the crop, encodes a PNG, and emits `capture:completed`.
-5. The editor stores the image, creates a thumbnail, and opens the capture.
-6. Escape or Cancel restores the editor if the capture is abandoned.
-
-Window capture enumerates titled windows and uses `PrintWindow` with a GDI
-fallback. Full-screen capture uses the virtual desktop. The overlay appears
-after the source frame is captured so it cannot appear in the result.
-
-## Editor document and export
-
-The shared capture record lives in `src/types.ts` and contains:
-
-- capture id, title, creation time, and update time;
-- natural image dimensions;
-- the full image and thumbnail as `Blob`s;
-- serialized tldraw document state.
-
-The editor adds the screenshot as a locked image shape at the document origin.
-Markup is stored as tldraw shapes, including the custom counter, blur, pixelate,
-and redact shapes. The screenshot remains the visual base while the annotation
-dock and selection actions operate above it.
-
-Export asks tldraw to render the current page at the image's natural dimensions.
-The flattened PNG path feeds Save PNG, Copy image, Copy file, and pin windows.
-
-## Persistence
-
-The browser host stores capture records in IndexedDB. The native host stores the
-library under `%LOCALAPPDATA%\Snipsy`:
-
-```text
-settings.json
-library\
-  index.json
-  <capture-id>\
-    image.png
-    thumbnail.png
-    annotations.json
-```
-
-Native ids and index entries are validated before they become paths. Annotation
-autosaves are debounced, and native writes use temporary files before replacing
-the destination where the platform permits it.
-
-## Native command groups
-
-The exact command registration is in `src-tauri/src/lib.rs`:
-
-| Capability | Native implementation |
-|---|---|
-| Area capture | `start_area_capture`, `complete_area_capture`, `cancel_area_capture` |
-| Window/full-screen capture | GDI capture in `capture.rs` |
-| Clipboard | PNG/image, file, text, and image-read commands in `clipboard.rs` |
-| Library | Save, list, open, annotation update, title update, and delete in `library.rs` |
-| Settings | Hotkey, cursor, and startup settings in `hotkeys.rs` |
-| Pins | Dedicated always-on-top windows in `pin.rs` |
+The library keeps an index and per-capture image, thumbnail, and annotation
+files. It validates ids before using them as paths and writes updated data
+atomically where the platform permits.
 
 ## Windows constraints
 
-- The process uses Per-Monitor V2 DPI awareness.
-- Native crop coordinates stay in physical pixels. Convert CSS coordinates only
-  at the bridge boundary.
-- Virtual-screen origins may be negative when a monitor sits left of or above
+- The process enables Per-Monitor V2 DPI awareness before reading physical
+  display dimensions.
+- Virtual-screen origins can be negative when a monitor sits above or left of
   the primary display.
-- Capture the desktop before showing the overlay so the overlay cannot appear in
-  the captured image.
-- GDI and `PrintWindow` behavior varies by application and must be checked on
-  representative Windows hardware.
-- The UAC secure desktop and DRM-protected content cannot be captured. Return a
-  clear error instead of treating a black image as a valid result.
-- Clipboard image output must preserve RGBA data when pasted into common
-  Windows applications.
-- Native failures are returned as strings and normalized by
-  `nativeErrorMessage` before reaching the UI. A failed capture must restore
-  the editor instead of leaving the overlay or main window hidden.
+- GDI and `PrintWindow` behavior varies by application and needs hardware
+  validation. Protected content and the secure desktop cannot be captured.
+- The CI Windows build validates compilation and tests; it does not replace
+  real-device checks for DPI, clipboard interoperability, tray behavior, and
+  pin lifecycle.
 
-These behaviors need a real Windows run. The browser cannot validate DPI,
-WebView2 asset loading, GDI output, tray lifecycle, clipboard interoperability,
-or protected-content behavior.
+## Verification
 
-## OCR and packaged assets
-
-The browser OCR worker, core files, and `eng.traineddata` are bundled under
-`public/tessdata`. Use the asset script when refreshing them:
+Run the app checks from the repository root:
 
 ```sh
-bun run ocr:assets
+cargo fmt --manifest-path app/Cargo.toml -- --check
+cargo clippy --manifest-path app/Cargo.toml --all-targets -- -D warnings
+cargo test --manifest-path app/Cargo.toml
+cargo check --manifest-path app/Cargo.toml
 ```
 
-OCR runs on demand rather than for every capture. Packaged builds must be tested
-with network access disabled so the app cannot accidentally depend on a remote
-worker or language file. Native OCR remains an M3 evaluation item.
+The app workflows run Windows build and Linux checks for changes under `app/`.
+The OCR workflow separately checks `ocr/`, and the spike workflow checks
+`spikes/gpui-overlay/`. `scripts/check-rust.mjs` runs the same app formatting,
+Clippy, test, and compile checks.
 
-## Local development and verification
-
-Install dependencies with the lockfile:
-
-```sh
-bun install --frozen-lockfile
-```
-
-Frontend development and checks:
-
-```sh
-bun run dev
-bun test
-bun run typecheck
-bun run build
-```
-
-If the local Bun install does not expose the package binary, run the checker
-directly with `bunx --package typescript@7.0.2 tsc --noEmit`.
-
-The browser smoke harness uses Playwright Chromium. Start Vite in one terminal,
-then run the smoke suite in another:
-
-```sh
-bun run dev -- --host 127.0.0.1
-bun run smoke
-```
-
-Native development and checks run on Windows:
-
-```sh
-bun run tauri dev
-bun run tauri build
-bun run rust:check
-```
-
-`bun run rust:check` runs `cargo fmt --check`, Clippy with `-D warnings`, and
-`cargo test --no-default-features --lib`; there is no separate `cargo check`
-step. That test scope is narrower than CI's, so a green local run is not
-equivalent coverage: `.github/workflows/rust.yml` runs a bare
-`cargo test --manifest-path src-tauri/Cargo.toml` across the default-feature
-package and all targets. Run the full CI command before trusting the test set.
-
-The local script also skips the tests on a windows-gnu toolchain, because those
-harness executables lack the comctl32 v6 manifest Tauri embeds in the real
-binary and abort at load, so Rust tests stay on CI's msvc runner.
-
-The GitHub Actions jobs cover more than this script, and do not all mirror it:
-
-- `.github/workflows/ci.yml` - Bun tests and frontend build
-- `.github/workflows/smoke.yml` - Playwright browser smoke test
-- `.github/workflows/rust.yml` - Windows formatting, Clippy, and tests
-- `.github/workflows/release.yml` - draft Windows release on `v*` tags
-
-## Packaging and release
-
-Tauri currently targets an NSIS installer configured for `currentUser`, so the
-installer does not require elevation. The release workflow runs on Windows and
-creates a draft GitHub release when a `v*` tag is pushed. A portable ZIP and
-SHA-256 sidecars remain release-planning work. Do not document them as available
-downloads until the workflow produces them.
-
-The remaining Windows acceptance work is recorded in [the roadmap and status](ROADMAP.md).
-Run it against the packaged artifact and record the tested build, Windows and
-WebView2 versions, artifact, failures, limitations, and release decision there.
+To download the English Tesseract model for local OCR runs, execute
+`node scripts/ocr-assets.mjs`. The script writes it to `ocr/dist/tessdata`;
+pass that directory to `snipsy-ocr` with `--tessdata-dir`.

@@ -1,22 +1,10 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
-*.tsbuildinfo
-
 # Impeccable session artifacts
 .impeccable/questions/
 .impeccable/mocks/
 .impeccable/shape-payload*.json
+
+# Node-based asset generators
+node_modules/
 
 # Editor directories and files
 .vscode/*
@@ -31,3 +19,4 @@ dist-ssr
 
 # Rust spike build dirs
 spikes/**/target
+ocr/dist/
