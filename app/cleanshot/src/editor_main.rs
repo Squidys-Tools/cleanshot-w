@@ -10,6 +10,7 @@ mod editor;
 mod library;
 mod pin;
 mod platform;
+mod quick_access;
 mod save_dialog;
 mod settings;
 mod shortcut;

@@ -16,9 +16,11 @@ pub enum Scheme {
 impl Scheme {}
 
 /// Corner radii (spec §2.3), in px.
+pub const R_PANEL: f32 = 10.0;
 pub const R_PILL: f32 = 16.0;
 pub const R_BTN: f32 = 8.0;
 pub const R_INPUT: f32 = 6.0;
+pub const R_THUMB: f32 = 6.0;
 
 #[derive(Debug, Clone)]
 pub struct Theme {

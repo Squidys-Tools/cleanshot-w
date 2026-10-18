@@ -13,6 +13,7 @@ mod library;
 mod overlay;
 mod pin;
 mod platform;
+mod quick_access;
 mod save_dialog;
 mod settings;
 mod shortcut;
@@ -61,7 +62,8 @@ fn main() {
                 .into_iter()
                 .chain(pin::keybindings())
                 .chain(window_picker::keybindings())
-                .chain(editor::window::keybindings()),
+                .chain(editor::window::keybindings())
+                .chain(quick_access::keybindings()),
         );
 
         // Tray menu → app actions.
