@@ -29,6 +29,7 @@ use crate::editor::model::{
 };
 use crate::library;
 use crate::settings::{AppSettings, current_settings};
+use crate::theme::{R_BTN, R_INPUT, R_PILL, Theme};
 use crate::{platform, save_dialog};
 
 actions!(
@@ -62,7 +63,8 @@ actions!(
     ]
 );
 
-const TOOLBAR_HEIGHT: f32 = 48.0;
+const TOOLBAR_HEIGHT: f32 = 52.0;
+const TOOLBAR_BOTTOM: f32 = 18.0;
 const SELECTION_BAR_HEIGHT: f32 = 44.0;
 const SIDE_PANEL_WIDTH: f32 = 284.0;
 const ICON_CACHE_MAX_BYTES: usize = 16 * 1024 * 1024;
@@ -1465,7 +1467,7 @@ impl Render for EditorWindow {
             self.fit(viewport);
         }
 
-        let canvas_state = self.canvas_state();
+        let canvas_state = self.canvas_state(Theme::current(cx).bg_canvas);
         let focus = self.focus.clone();
         let has_selection = self.selected_index().is_some() && self.text_editing.is_none();
         let panel_open = self.panel.is_some();
@@ -1665,7 +1667,7 @@ impl Render for EditorWindow {
             .child(self.toolbar(cx))
             .children(self.selection_bar(cx))
             .children(self.side_panel(cx))
-            .child(self.zoom_indicator(viewport))
+            .child(self.zoom_indicator(viewport, cx))
             .child({
                 let _ = (canvas_bounds_for_hit, focus);
                 div()
@@ -1687,9 +1689,10 @@ fn in_chrome(
     has_selection: bool,
     panel_open: bool,
 ) -> bool {
-    let bar_height = TOOLBAR_HEIGHT
+    let bar_height = TOOLBAR_BOTTOM
+        + TOOLBAR_HEIGHT
         + if has_selection {
-            SELECTION_BAR_HEIGHT
+            12.0 + SELECTION_BAR_HEIGHT
         } else {
             0.0
         };
@@ -1703,7 +1706,7 @@ impl EditorWindow {
     }
 
     /// Everything the canvas paint closure needs, resolved at render time.
-    fn canvas_state(&mut self) -> CanvasState {
+    fn canvas_state(&mut self, backdrop: gpui::Hsla) -> CanvasState {
         let flattened_preview = self.flattened_preview();
         let shapes = self.doc.shapes.clone();
         let icons = shapes
@@ -1720,6 +1723,7 @@ impl EditorWindow {
             }
         }
         CanvasState {
+            backdrop,
             image: self.image.clone(),
             image_width: self.doc.image_width,
             image_height: self.doc.image_height,
@@ -2305,7 +2309,7 @@ impl EditorWindow {
         ))
     }
 
-    fn zoom_indicator(&self, viewport: Size<Pixels>) -> gpui::AnyElement {
+    fn zoom_indicator(&self, viewport: Size<Pixels>, cx: &Context<Self>) -> gpui::AnyElement {
         let _ = viewport;
         let percent = (self.zoom * 100.0).round() as i32;
         let right = if self.panel.is_some() {
@@ -2313,22 +2317,26 @@ impl EditorWindow {
         } else {
             12.0
         };
+        let theme = Theme::current(cx);
         div()
             .absolute()
             .right(px(right))
-            .bottom(px(TOOLBAR_HEIGHT + 8.0))
+            .bottom(px(TOOLBAR_BOTTOM + TOOLBAR_HEIGHT + 8.0))
             .px_2()
             .py_1()
-            .rounded(px(4.0))
-            .bg(rgb(0x000000).alpha(0.6))
-            .text_size(px(12.0))
-            .text_color(rgb(0xffffff))
+            .rounded(px(R_INPUT))
+            .bg(theme.bg_toolbar)
+            .border_1()
+            .border_color(theme.hairline)
+            .text_size(px(11.0))
+            .text_color(theme.text_2)
             .font_family(default_font_family())
             .child(format!("{percent}% · 0 to fit"))
             .into_any_element()
     }
 
     fn toolbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let theme = Theme::current(cx);
         let tools = [
             (Tool::Select, "1", "Select"),
             (Tool::Rectangle, "2", "Rectangle"),
@@ -2340,154 +2348,224 @@ impl EditorWindow {
             (Tool::Crop, "8", "Crop"),
             (Tool::Blur, "B", "Blur"),
             (Tool::Pixelate, "M", "Pixelate"),
-            (Tool::Redact, "⇧R", "Redact"),
+            (Tool::Redact, "Shift+R", "Redact"),
             (Tool::Icon, "I", "Icon"),
         ];
-        let mut bar = div()
-            .absolute()
-            .left(px(0.0))
-            .right(px(0.0))
-            .bottom(px(0.0))
-            .h(px(TOOLBAR_HEIGHT))
+
+        let mut pill = div()
             .flex()
             .flex_row()
             .items_center()
-            .px_2()
             .gap_1()
-            .bg(rgb(0x2b2b31))
-            .border_t_1()
-            .border_color(rgb(0x000000).alpha(0.4));
+            .h(px(TOOLBAR_HEIGHT))
+            .px(px(8.0))
+            .rounded(px(R_PILL))
+            .bg(theme.bg_toolbar)
+            .border_1()
+            .border_color(theme.hairline)
+            .shadow(theme.shadow_floating.clone());
 
         for (tool, shortcut, label) in tools {
-            let active = self.tool == tool;
-            let mut button = div()
-                .id(gpui::ElementId::Name(label.to_string().into()))
-                .w(px(38.0))
-                .h(px(38.0))
-                .rounded(px(6.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .relative()
-                .cursor(gpui::CursorStyle::PointingHand)
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
-                        this.set_tool(tool);
-                        cx.notify();
-                    }),
-                )
-                .child(icon_for(tool, active))
-                .child(
-                    div()
-                        .absolute()
-                        .right(px(2.0))
-                        .bottom(px(1.0))
-                        .text_size(px(9.0))
-                        .text_color(rgb(0xffffff).alpha(0.45))
-                        .font_family(default_font_family())
-                        .child(shortcut),
-                );
-            if active {
-                button = button.bg(rgb(0x3B82F6));
-            }
-            bar = bar.child(button);
+            pill = pill.child(self.tool_button(tool, shortcut, label, &theme, cx));
         }
 
-        bar = bar
-            .child(self.panel_button("Icons", EditorPanel::Icons, cx))
-            .child(self.panel_button("Library", EditorPanel::Library, cx))
-            .child(self.panel_button("Settings", EditorPanel::Preferences, cx));
-
-        // Export actions at the right end of the bar.
-        bar = bar
-            .child(div().flex_1())
-            .child(
-                small_button("Undo")
-                    .opacity(if self.history.can_undo() { 1.0 } else { 0.45 })
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|this, _: &MouseDownEvent, _, cx| {
-                            this.undo();
-                            cx.notify();
-                        }),
-                    ),
-            )
-            .child(
-                small_button("Redo")
-                    .opacity(if self.history.can_redo() { 1.0 } else { 0.45 })
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|this, _: &MouseDownEvent, _, cx| {
-                            this.redo();
-                            cx.notify();
-                        }),
-                    ),
-            )
-            .child(small_button("Copy").on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _: &MouseDownEvent, _, _| {
-                    this.copy_flattened();
+        pill = pill
+            .child(separator(&theme))
+            .child(self.action_icon_button(
+                "undo",
+                "Undo",
+                !self.history.can_undo(),
+                false,
+                &theme,
+                cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                    this.undo();
+                    cx.notify();
                 }),
             ))
-            .child(small_button("Save PNG").on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _: &MouseDownEvent, _, _| {
-                    this.save_flattened();
+            .child(self.action_icon_button(
+                "redo",
+                "Redo",
+                !self.history.can_redo(),
+                false,
+                &theme,
+                cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                    this.redo();
+                    cx.notify();
                 }),
-            ));
-        bar.into_any_element()
+            ))
+            .child(separator(&theme))
+            .child(self.panel_icon_button("history", "History", EditorPanel::Library, &theme, cx))
+            .child(self.panel_icon_button(
+                "preferences",
+                "Preferences",
+                EditorPanel::Preferences,
+                &theme,
+                cx,
+            ))
+            .child(separator(&theme))
+            .child(
+                text_button("Copy", false, &theme)
+                    .id("copy-button")
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _: &MouseDownEvent, _, _| {
+                            this.copy_flattened();
+                        }),
+                    ),
+            )
+            .child(
+                text_button("Save PNG", true, &theme)
+                    .id("save-button")
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _: &MouseDownEvent, _, _| {
+                            this.save_flattened();
+                        }),
+                    ),
+            );
+
+        div()
+            .absolute()
+            .left(px(0.0))
+            .right(px(0.0))
+            .bottom(px(TOOLBAR_BOTTOM))
+            .flex()
+            .justify_center()
+            .child(pill)
+            .into_any_element()
     }
 
-    fn panel_button(
+    /// A 36x36 tool button: HugeIcons icon, micro shortcut digit in the
+    /// bottom-right, tooltip on hover.
+    fn tool_button(
         &self,
+        tool: Tool,
+        shortcut: &'static str,
+        label: &'static str,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        let active = self.tool == tool;
+        let icon_color = if active { theme.accent } else { theme.text_1 };
+        let mut button = div()
+            .id(gpui::ElementId::Name(tool.icon_slug().into()))
+            .w(px(36.0))
+            .h(px(36.0))
+            .rounded(px(R_BTN))
+            .flex()
+            .items_center()
+            .justify_center()
+            .relative()
+            .cursor(gpui::CursorStyle::PointingHand)
+            .hover(move |style| style.bg(theme.bg_elevated))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                    this.set_tool(tool);
+                    cx.notify();
+                }),
+            )
+            .child(crate::ui::chrome_icon(tool.icon_slug(), 20.0, icon_color))
+            .child(
+                div()
+                    .absolute()
+                    .right(px(3.0))
+                    .bottom(px(2.0))
+                    .text_size(px(9.0))
+                    .text_color(theme.text_3)
+                    .font_family(default_font_family())
+                    .child(shortcut),
+            );
+        if active {
+            button = button.bg(theme.accent_soft);
+        }
+        tooltip(button, tooltip_text(label, Some(shortcut)))
+    }
+
+    /// A 36x36 icon button for bar actions (undo, redo, panel toggles).
+    #[allow(clippy::too_many_arguments)]
+    fn action_icon_button(
+        &self,
+        slug: &'static str,
+        label: &'static str,
+        disabled: bool,
+        active: bool,
+        theme: &Theme,
+        handler: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+    ) -> gpui::Stateful<gpui::Div> {
+        let icon_color = if active { theme.accent } else { theme.text_1 };
+        let mut button = div()
+            .id(gpui::ElementId::Name(label.to_lowercase().into()))
+            .w(px(36.0))
+            .h(px(36.0))
+            .rounded(px(R_BTN))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor(gpui::CursorStyle::PointingHand)
+            .hover(move |style| style.bg(theme.bg_elevated))
+            .on_mouse_down(MouseButton::Left, handler)
+            .child(crate::ui::chrome_icon(slug, 18.0, icon_color));
+        if disabled {
+            button = button.opacity(0.45);
+        }
+        if active {
+            button = button.bg(theme.accent_soft);
+        }
+        tooltip(button, tooltip_text(label, None))
+    }
+
+    fn panel_icon_button(
+        &self,
+        slug: &'static str,
         label: &'static str,
         panel: EditorPanel,
+        theme: &Theme,
         cx: &mut Context<Self>,
-    ) -> gpui::Div {
-        let active = self.panel == Some(panel);
-        let mut button = small_button(label).on_mouse_down(
-            MouseButton::Left,
+    ) -> gpui::Stateful<gpui::Div> {
+        self.action_icon_button(
+            slug,
+            label,
+            false,
+            self.panel == Some(panel),
+            theme,
             cx.listener(move |this, _: &MouseDownEvent, _, cx| {
                 this.show_panel(panel);
                 cx.notify();
             }),
-        );
-        if active {
-            button = button.bg(rgb(0x3B82F6));
-        }
-        button
+        )
     }
 
-    /// Color / width / z-order / delete bar shown while a shape is selected.
+    /// Color / width / z-order / delete strip shown while a shape is
+    /// selected: a floating pill 12 px above the toolbar (spec §5.2).
     fn selection_bar(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
         if self.selected_index().is_none() || self.text_editing.is_some() {
             return None;
         }
+        let theme = Theme::current(cx);
         let selected_color_index = self.selected_color_index();
         let selected_width_index = self.selected_width_index();
-        let mut bar = div()
-            .absolute()
-            .left(px(0.0))
-            .right(px(0.0))
-            .bottom(px(TOOLBAR_HEIGHT))
-            .h(px(SELECTION_BAR_HEIGHT))
+
+        let mut pill = div()
             .flex()
             .flex_row()
             .items_center()
-            .px_3()
             .gap_2()
-            .bg(rgb(0x2b2b31).alpha(0.95))
-            .border_t_1()
-            .border_color(rgb(0x000000).alpha(0.4));
+            .h(px(SELECTION_BAR_HEIGHT))
+            .px(px(8.0))
+            .rounded(px(R_PILL))
+            .bg(theme.bg_toolbar)
+            .border_1()
+            .border_color(theme.hairline)
+            .shadow(theme.shadow_floating.clone());
 
         for (index, color) in PALETTE.iter().enumerate() {
             let swatch = rgb(parse_hex(color));
             let mut chip = div()
                 .id(gpui::ElementId::Name(format!("color-{index}").into()))
-                .w(px(20.0))
-                .h(px(20.0))
-                .rounded(px(4.0))
+                .w(px(18.0))
+                .h(px(18.0))
+                .rounded_full()
                 .bg(swatch)
                 .cursor(gpui::CursorStyle::PointingHand)
                 .on_mouse_down(
@@ -2498,29 +2576,29 @@ impl EditorWindow {
                     }),
                 );
             if selected_color_index == Some(index) {
-                chip = chip.border_2().border_color(rgb(0xffffff));
+                chip = chip.border_2().border_color(theme.accent);
+            } else {
+                chip = chip.border_1().border_color(theme.hairline_strong);
             }
-            bar = bar.child(chip);
+            pill = pill.child(chip);
         }
 
-        bar = bar.child(div().w(px(8.0)).h(px(0.0)));
-
         if selected_width_index.is_some() {
+            pill = pill.child(separator(&theme));
             for (index, label) in ["S", "M", "L", "XL"].iter().enumerate() {
                 let active = selected_width_index == Some(index);
                 let mut chip = div()
                     .id(gpui::ElementId::Name(format!("width-{index}").into()))
-                    .px_2()
-                    .py_1()
-                    .rounded(px(4.0))
+                    .w(px(24.0))
+                    .h(px(24.0))
+                    .rounded(px(R_INPUT))
+                    .flex()
+                    .items_center()
+                    .justify_center()
                     .cursor(gpui::CursorStyle::PointingHand)
-                    .text_size(px(12.0))
+                    .text_size(px(11.0))
                     .font_family(default_font_family())
-                    .text_color(if active {
-                        rgb(0xffffff)
-                    } else {
-                        rgb(0xffffff).alpha(0.55)
-                    })
+                    .text_color(if active { theme.text_1 } else { theme.text_3 })
                     .child(*label)
                     .on_mouse_down(
                         MouseButton::Left,
@@ -2530,36 +2608,85 @@ impl EditorWindow {
                         }),
                     );
                 if active {
-                    chip = chip.bg(rgb(0x3B82F6));
+                    chip = chip.bg(theme.accent_soft).text_color(theme.accent);
                 }
-                bar = bar.child(chip);
+                pill = pill.child(chip);
             }
         }
 
-        bar = bar
-            .child(div().flex_1())
-            .child(small_button("◀ Back").on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _: &MouseDownEvent, _, cx| {
-                    this.reorder_selected(false);
-                    cx.notify();
-                }),
-            ))
-            .child(small_button("Forward ▶").on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _: &MouseDownEvent, _, cx| {
-                    this.reorder_selected(true);
-                    cx.notify();
-                }),
-            ))
-            .child(small_button("× Delete").on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _: &MouseDownEvent, _, cx| {
-                    this.delete_selected();
-                    cx.notify();
-                }),
-            ));
-        Some(bar.into_any_element())
+        let z_order = self.selected_index().is_some();
+        if z_order {
+            pill = pill
+                .child(separator(&theme))
+                .child(self.selection_icon_button(
+                    "send_backward",
+                    "Send backward",
+                    &theme,
+                    cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                        this.reorder_selected(false);
+                        cx.notify();
+                    }),
+                ))
+                .child(self.selection_icon_button(
+                    "bring_forward",
+                    "Bring forward",
+                    &theme,
+                    cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                        this.reorder_selected(true);
+                        cx.notify();
+                    }),
+                ))
+                .child(separator(&theme))
+                .child(self.selection_icon_button(
+                    "delete",
+                    "Delete",
+                    &theme,
+                    cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                        this.delete_selected();
+                        cx.notify();
+                    }),
+                ));
+        }
+
+        Some(
+            div()
+                .absolute()
+                .left(px(0.0))
+                .right(px(0.0))
+                .bottom(px(TOOLBAR_BOTTOM + TOOLBAR_HEIGHT + 12.0))
+                .flex()
+                .justify_center()
+                .child(pill)
+                .into_any_element(),
+        )
+    }
+
+    /// An icon button inside the selection strip; delete is tinted danger.
+    fn selection_icon_button(
+        &self,
+        slug: &'static str,
+        label: &'static str,
+        theme: &Theme,
+        handler: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+    ) -> gpui::Stateful<gpui::Div> {
+        let icon_color = if slug == "delete" {
+            theme.danger
+        } else {
+            theme.text_1
+        };
+        let button = div()
+            .id(gpui::ElementId::Name(slug.into()))
+            .w(px(32.0))
+            .h(px(32.0))
+            .rounded(px(R_BTN))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor(gpui::CursorStyle::PointingHand)
+            .hover(move |style| style.bg(theme.bg_elevated))
+            .on_mouse_down(MouseButton::Left, handler)
+            .child(crate::ui::chrome_icon(slug, 18.0, icon_color));
+        tooltip(button, label)
     }
 
     /// The palette index of the selected shape's color, if it matches one.
@@ -2592,6 +2719,60 @@ impl EditorWindow {
             .iter()
             .position(|candidate| (*candidate - width).abs() < 0.01)
     }
+}
+
+/// A 1px vertical hairline between toolbar groups.
+fn separator(theme: &Theme) -> gpui::Div {
+    div().w(px(1.0)).h(px(24.0)).bg(theme.hairline_strong)
+}
+
+/// Attach a hover tooltip to a stateful div.
+fn tooltip(element: gpui::Stateful<gpui::Div>, text: &'static str) -> gpui::Stateful<gpui::Div> {
+    crate::ui::with_tooltip(element, text)
+}
+
+fn tooltip_text(label: &'static str, shortcut: Option<&'static str>) -> &'static str {
+    match (label, shortcut) {
+        ("Select", Some("1")) => "Select (1)",
+        ("Rectangle", Some("2")) => "Rectangle (2)",
+        ("Ellipse", Some("3")) => "Ellipse (3)",
+        ("Arrow", Some("4")) => "Arrow (4)",
+        ("Pen", Some("5")) => "Pen (5)",
+        ("Text", Some("6")) => "Text (6)",
+        ("Counter", Some("7")) => "Counter (7)",
+        ("Crop", Some("8")) => "Crop (8)",
+        ("Blur", Some("B")) => "Blur (B)",
+        ("Pixelate", Some("M")) => "Pixelate (M)",
+        ("Redact", Some("Shift+R")) => "Redact (Shift+R)",
+        ("Icon", Some("I")) => "Icon (I)",
+        _ => label,
+    }
+}
+
+/// A toolbar text button (Copy, Save PNG).
+fn text_button(label: &'static str, accent_fill: bool, theme: &Theme) -> gpui::Div {
+    let mut button = div()
+        .h(px(36.0))
+        .px(px(12.0))
+        .rounded(px(R_BTN))
+        .flex()
+        .items_center()
+        .gap_1()
+        .text_size(px(12.0))
+        .font_family(default_font_family())
+        .cursor(gpui::CursorStyle::PointingHand)
+        .child(label);
+    if accent_fill {
+        button = button
+            .bg(theme.accent)
+            .text_color(gpui::white())
+            .child(crate::ui::chrome_icon("save", 16.0, gpui::white()));
+    } else {
+        button = button
+            .text_color(theme.text_1)
+            .hover(move |style| style.bg(theme.bg_elevated));
+    }
+    button
 }
 
 fn small_button(label: &'static str) -> gpui::Div {
@@ -2692,6 +2873,7 @@ fn parse_gpui_color(color: &str) -> gpui::Hsla {
 // ---- canvas painting -----------------------------------------------------
 
 struct CanvasState {
+    backdrop: gpui::Hsla,
     image: Arc<RenderImage>,
     image_width: u32,
     image_height: u32,
@@ -2708,11 +2890,11 @@ struct CanvasState {
 }
 
 fn paint_canvas(bounds: Bounds<Pixels>, state: &CanvasState, window: &mut Window) {
-    // Canvas background behind the image.
+    // Canvas background behind the image (always dark-neutral, both schemes).
     window.paint_quad(gpui::quad(
         bounds,
         px(0.),
-        rgb(0x1e1e22),
+        state.backdrop,
         px(0.),
         gpui::transparent_black(),
         Default::default(),
@@ -3182,15 +3364,6 @@ fn shape_color(shape: &Shape) -> gpui::Hsla {
         Shape::Counter(shape) => rgb(parse_hex(&shape.color)).into(),
         Shape::Icon(shape) => rgb(parse_hex(&shape.color)).into(),
     }
-}
-/// Toolbar tool icon via the bundled HugeIcons chrome set.
-fn icon_for(tool: Tool, active: bool) -> gpui::AnyElement {
-    let color = if active {
-        rgb(0xffffff).into()
-    } else {
-        rgb(0xd0d0d6).into()
-    };
-    crate::ui::chrome_icon(tool.icon_slug(), 20.0, color)
 }
 
 #[cfg(test)]

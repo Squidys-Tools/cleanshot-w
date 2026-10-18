@@ -16,6 +16,7 @@ mod platform;
 mod save_dialog;
 mod settings;
 mod shortcut;
+mod theme;
 #[cfg(windows)]
 mod tray;
 mod ui;
