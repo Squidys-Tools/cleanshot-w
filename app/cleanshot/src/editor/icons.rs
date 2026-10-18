@@ -1,3 +1,7 @@
+//! The sticker icon set: one curated HugeIcons library (see
+//! `mockups/snipsy-ui-redesign/icon-mapping.md`). Icons render on the canvas
+//! from pre-rasterized 512px PNGs, tinted at runtime by alpha replacement.
+
 use image::{RgbaImage, imageops};
 use serde::{Deserialize, Serialize};
 
@@ -5,37 +9,6 @@ pub(super) const MIN_ICON_SIZE: f32 = 8.0;
 pub(super) const MAX_ICON_SIZE: f32 = 1024.0;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum IconPack {
-    #[default]
-    Lucide,
-    Phosphor,
-    Tabler,
-    Heroicons,
-    Remix,
-}
-
-impl IconPack {
-    pub const ALL: [Self; 5] = [
-        Self::Lucide,
-        Self::Phosphor,
-        Self::Tabler,
-        Self::Heroicons,
-        Self::Remix,
-    ];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Lucide => "Lucide",
-            Self::Phosphor => "Phosphor",
-            Self::Tabler => "Tabler",
-            Self::Heroicons => "Heroicons",
-            Self::Remix => "Remix",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum IconGlyph {
     ArrowRight,
@@ -44,16 +17,29 @@ pub enum IconGlyph {
     Info,
     Warning,
     Question,
+    #[default]
     Star,
     Heart,
     Lock,
     Eye,
-    Camera,
     User,
+    Camera,
+    Flag,
+    PinSticker,
+    ThumbsUp,
+    Clock,
+    Mail,
+    Smile,
+    Bookmark,
+    CheckCircle,
+    CrossCircle,
+    Plus,
+    Minus,
+    Scissors,
 }
 
 impl IconGlyph {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 24] = [
         Self::ArrowRight,
         Self::Check,
         Self::Close,
@@ -64,8 +50,20 @@ impl IconGlyph {
         Self::Heart,
         Self::Lock,
         Self::Eye,
-        Self::Camera,
         Self::User,
+        Self::Camera,
+        Self::Flag,
+        Self::PinSticker,
+        Self::ThumbsUp,
+        Self::Clock,
+        Self::Mail,
+        Self::Smile,
+        Self::Bookmark,
+        Self::CheckCircle,
+        Self::CrossCircle,
+        Self::Plus,
+        Self::Minus,
+        Self::Scissors,
     ];
 
     pub fn label(self) -> &'static str {
@@ -80,30 +78,35 @@ impl IconGlyph {
             Self::Heart => "Heart",
             Self::Lock => "Lock",
             Self::Eye => "Eye",
-            Self::Camera => "Camera",
             Self::User => "Person",
+            Self::Camera => "Camera",
+            Self::Flag => "Flag",
+            Self::PinSticker => "Pin",
+            Self::ThumbsUp => "Thumbs up",
+            Self::Clock => "Clock",
+            Self::Mail => "Mail",
+            Self::Smile => "Smile",
+            Self::Bookmark => "Bookmark",
+            Self::CheckCircle => "Check circle",
+            Self::CrossCircle => "Cross circle",
+            Self::Plus => "Plus",
+            Self::Minus => "Minus",
+            Self::Scissors => "Scissors",
         }
     }
 }
 
 include!("icon_assets.rs");
 
-pub fn rasterize(
-    pack: IconPack,
-    glyph: IconGlyph,
-    color: &str,
-    size: f32,
-) -> Result<RgbaImage, String> {
+pub fn rasterize(glyph: IconGlyph, color: &str, size: f32) -> Result<RgbaImage, String> {
     if !size.is_finite() || !(MIN_ICON_SIZE..=MAX_ICON_SIZE).contains(&size) {
         return Err("The icon size is invalid.".to_string());
     }
     let color = parse_color(color)?;
     let bytes = ICON_ASSETS
         .iter()
-        .find_map(|(asset_pack, asset_glyph, bytes)| {
-            (*asset_pack == pack && *asset_glyph == glyph).then_some(*bytes)
-        })
-        .ok_or_else(|| format!("The {pack:?} icon {glyph:?} is not bundled."))?;
+        .find_map(|(asset_glyph, bytes)| (*asset_glyph == glyph).then_some(*bytes))
+        .ok_or_else(|| format!("The {glyph:?} icon is not bundled."))?;
     let source = image::load_from_memory(bytes)
         .map_err(|error| format!("Could not load the bundled icon: {error}"))?
         .into_rgba8();
@@ -131,38 +134,33 @@ fn parse_color(color: &str) -> Result<[u8; 3], String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ICON_ASSETS, IconGlyph, IconPack, rasterize};
+    use super::{ICON_ASSETS, IconGlyph, rasterize};
 
     #[test]
-    fn every_pack_contains_every_glyph_and_tints_transparent_pngs() {
-        assert_eq!(
-            ICON_ASSETS.len(),
-            IconPack::ALL.len() * IconGlyph::ALL.len()
-        );
-        for pack in IconPack::ALL {
-            for glyph in IconGlyph::ALL {
-                let image = rasterize(pack, glyph, "#e03131", 32.0).unwrap();
-                assert_eq!(image.dimensions(), (32, 32));
-                assert!(image.pixels().any(|pixel| pixel.0[3] > 0));
-                assert!(
-                    image
-                        .pixels()
-                        .filter(|pixel| pixel.0[3] > 0)
-                        .all(|pixel| pixel.0[..3] == [0xe0, 0x31, 0x31])
-                );
-            }
+    fn every_glyph_is_bundled_and_tints_transparent_pngs() {
+        assert_eq!(ICON_ASSETS.len(), IconGlyph::ALL.len());
+        for glyph in IconGlyph::ALL {
+            let image = rasterize(glyph, "#e03131", 32.0).unwrap();
+            assert_eq!(image.dimensions(), (32, 32));
+            assert!(image.pixels().any(|pixel| pixel.0[3] > 0));
+            assert!(
+                image
+                    .pixels()
+                    .filter(|pixel| pixel.0[3] > 0)
+                    .all(|pixel| pixel.0[..3] == [0xe0, 0x31, 0x31])
+            );
         }
     }
 
     #[test]
-    fn icon_pack_json_is_stable_and_defaults_to_lucide() {
+    fn glyph_json_is_stable() {
         assert_eq!(
-            serde_json::to_string(&IconPack::default()).unwrap(),
-            "\"lucide\""
+            serde_json::to_string(&IconGlyph::ArrowRight).unwrap(),
+            "\"arrow-right\""
         );
         assert_eq!(
-            serde_json::from_str::<IconPack>("\"heroicons\"").unwrap(),
-            IconPack::Heroicons
+            serde_json::from_str::<IconGlyph>("\"pin-sticker\"").unwrap(),
+            IconGlyph::PinSticker
         );
     }
 }

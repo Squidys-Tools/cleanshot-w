@@ -21,7 +21,7 @@ use crate::clipboard;
 use crate::editor::flatten::flatten_to_png;
 use crate::editor::history::History;
 use crate::editor::hit_test::{Handle, handle_at, hit_test};
-use crate::editor::icons::{IconGlyph, IconPack};
+use crate::editor::icons::IconGlyph;
 use crate::editor::model::{
     ArrowShape, COUNTER_DIAMETER, CounterShape, DEFAULT_TEXT_SIZE, Document, EffectKind,
     EffectShape, EllipseShape, IconShape, PALETTE, PenShape, Rect, RectShape, STROKE_WIDTHS, Shape,
@@ -199,7 +199,6 @@ pub struct EditorWindow {
     tool: Tool,
     color_index: usize,
     stroke_width_index: usize,
-    icon_pack: IconPack,
     icon_glyph: IconGlyph,
     panel: Option<EditorPanel>,
     captures: Vec<library::CaptureMetadata>,
@@ -209,7 +208,7 @@ pub struct EditorWindow {
     settings: AppSettings,
     settings_notice: Option<String>,
     capturing_shortcut: bool,
-    icon_image_cache: HashMap<(IconPack, IconGlyph, String, u32), Arc<RenderImage>>,
+    icon_image_cache: HashMap<(IconGlyph, String, u32), Arc<RenderImage>>,
     icon_image_cache_bytes: usize,
     selected: Option<ShapeId>,
     zoom: f32,
@@ -356,7 +355,6 @@ impl EditorWindow {
             tool: Tool::Select,
             color_index: 4,
             stroke_width_index: 1,
-            icon_pack: settings.default_icon_pack,
             icon_glyph: IconGlyph::Star,
             panel: None,
             captures,
@@ -709,7 +707,6 @@ impl EditorWindow {
         self.history.begin(&self.doc, None);
         self.doc.shapes.push(Shape::Icon(IconShape {
             id: next_shape_id("icon"),
-            pack: self.icon_pack,
             glyph: self.icon_glyph,
             x: ix - size / 2.0,
             y: iy - size / 2.0,
@@ -1074,12 +1071,6 @@ impl EditorWindow {
             self.pending_delete = None;
         }
         self.panel = next;
-    }
-
-    fn set_icon_pack(&mut self, pack: IconPack) {
-        self.icon_pack = pack;
-        self.settings.default_icon_pack = pack;
-        self.persist_settings();
     }
 
     fn persist_settings(&mut self) {
@@ -1749,21 +1740,20 @@ impl EditorWindow {
     }
 
     fn cached_icon_image(&mut self, icon: &IconShape) -> Option<Arc<RenderImage>> {
-        self.cached_icon_asset(icon.pack, icon.glyph, &icon.color, icon.size)
+        self.cached_icon_asset(icon.glyph, &icon.color, icon.size)
     }
 
     fn cached_icon_asset(
         &mut self,
-        pack: IconPack,
         glyph: IconGlyph,
         color: &str,
         size: f32,
     ) -> Option<Arc<RenderImage>> {
-        let key = (pack, glyph, color.to_string(), size.round() as u32);
+        let key = (glyph, color.to_string(), size.round() as u32);
         if let Some(image) = self.icon_image_cache.get(&key) {
             return Some(image.clone());
         }
-        let raster = super::icons::rasterize(pack, glyph, color, size).ok()?;
+        let raster = super::icons::rasterize(glyph, color, size).ok()?;
         let image_bytes = raster.as_raw().len();
         if self.icon_image_cache_bytes + image_bytes > ICON_CACHE_MAX_BYTES {
             self.icon_image_cache.clear();
@@ -2095,41 +2085,13 @@ impl EditorWindow {
             div()
                 .text_size(px(11.0))
                 .text_color(rgb(0xb8b8c0))
-                .child("Pick a pack and symbol, then click the canvas."),
+                .child("Pick a symbol, then click the canvas."),
         );
-        let mut packs = div().flex().flex_row().gap_1();
-        for pack in IconPack::ALL {
-            let mut button = div()
-                .flex_1()
-                .px_1()
-                .py_2()
-                .rounded(px(4.0))
-                .text_size(px(10.0))
-                .text_color(rgb(0xffffff))
-                .cursor(gpui::CursorStyle::PointingHand)
-                .child(pack.label())
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
-                        this.set_icon_pack(pack);
-                        this.set_tool(Tool::Icon);
-                        cx.notify();
-                    }),
-                );
-            if self.icon_pack == pack {
-                button = button.bg(rgb(0x3B82F6));
-            } else {
-                button = button.bg(rgb(0x3a3a42));
-            }
-            packs = packs.child(button);
-        }
-        panel = panel.child(packs);
-        let pack = self.icon_pack;
         let color = self.current_color();
         for glyphs in IconGlyph::ALL.chunks(2) {
             let mut row = div().flex().flex_row().gap_1();
             for &glyph in glyphs {
-                let preview = self.cached_icon_asset(pack, glyph, &color, 24.0);
+                let preview = self.cached_icon_asset(glyph, &color, 24.0);
                 let mut button = div()
                     .id(gpui::ElementId::Name(
                         format!("glyph-{}", glyph.label()).into(),
@@ -2334,23 +2296,7 @@ impl EditorWindow {
                     this.persist_settings();
                     cx.notify();
                 }),
-            ))
-            .child(panel_label("Default icon pack"));
-        let mut packs = div().flex().flex_col().gap_1();
-        for pack in IconPack::ALL {
-            let mut button = small_button(pack.label()).on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
-                    this.set_icon_pack(pack);
-                    cx.notify();
-                }),
-            );
-            if self.settings.default_icon_pack == pack {
-                button = button.bg(rgb(0x3B82F6));
-            }
-            packs = packs.child(button);
-        }
-        panel = panel.child(packs);
+            ));
         if let Some(notice) = &self.settings_notice {
             panel = panel.child(panel_message(notice, 0xe4a756));
         }

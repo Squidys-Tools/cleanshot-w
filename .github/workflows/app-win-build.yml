@@ -57,6 +57,9 @@ jobs:
       - name: Check compile
         run: cargo check --manifest-path app/Cargo.toml
 
+      - name: No legacy icon packs
+        run: node scripts/check-no-legacy-icons.mjs
+
       - name: Cross-check the Windows cfg code (mingw, check only)
         run: |
           rustup target add x86_64-pc-windows-gnu

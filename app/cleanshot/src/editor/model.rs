@@ -10,7 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::icons::{IconGlyph, IconPack, MAX_ICON_SIZE, MIN_ICON_SIZE};
+use super::icons::{IconGlyph, MAX_ICON_SIZE, MIN_ICON_SIZE};
 
 pub const DOCUMENT_VERSION: u32 = 1;
 
@@ -332,12 +332,28 @@ pub struct EffectShape {
 #[serde(rename_all = "camelCase")]
 pub struct IconShape {
     pub id: ShapeId,
-    pub pack: IconPack,
+    /// Docs saved before the icon-pack purge stored `pack` too; serde ignores
+    /// it now, and unknown glyph ids fall back to Star (`deserialize_glyph`).
+    #[serde(default, deserialize_with = "deserialize_glyph")]
     pub glyph: IconGlyph,
     pub x: f32,
     pub y: f32,
     pub size: f32,
     pub color: String,
+}
+
+/// Old documents may carry glyph ids that are no longer bundled; they render
+/// as the closest fallback (Star) instead of failing the whole document.
+fn deserialize_glyph<'de, D>(deserializer: D) -> Result<IconGlyph, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let name = String::deserialize(deserializer)?;
+    Ok(IconGlyph::ALL
+        .iter()
+        .copied()
+        .find(|glyph| serde_json::to_string(glyph).is_ok_and(|json| json.trim_matches('"') == name))
+        .unwrap_or_default())
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -962,7 +978,6 @@ mod tests {
         let mut document = Document::new(100, 80);
         document.shapes.push(Shape::Icon(IconShape {
             id: "icon".to_string(),
-            pack: IconPack::Heroicons,
             glyph: IconGlyph::ArrowRight,
             x: 10.0,
             y: 20.0,
@@ -991,7 +1006,6 @@ mod tests {
         let mut document = Document::new(2400, 1600);
         document.shapes.push(Shape::Icon(IconShape {
             id: "icon".to_string(),
-            pack: IconPack::Heroicons,
             glyph: IconGlyph::ArrowRight,
             x: 10.0,
             y: 20.0,
@@ -1012,14 +1026,27 @@ mod tests {
     }
 
     #[test]
-    fn unknown_icon_pack_or_glyph_is_rejected_at_parse_time() {
+    fn legacy_icon_shapes_parse_without_the_pack_and_fallback_to_star() {
         for icon in [
-            r##"{"type":"icon","id":"icon","pack":"next","glyph":"arrow-right","x":0,"y":0,"size":32,"color":"#1971c2"}"##,
-            r##"{"type":"icon","id":"icon","pack":"lucide","glyph":"not-bundled","x":0,"y":0,"size":32,"color":"#1971c2"}"##,
+            // Old documents: pack field present, glyph still bundled.
+            r##"{"type":"icon","id":"icon","pack":"legacy","glyph":"arrow-right","x":0,"y":0,"size":32,"color":"#1971c2"}"##,
+            // Unknown glyph id from a newer or corrupted document: Star.
+            r##"{"type":"icon","id":"icon","glyph":"not-bundled","x":0,"y":0,"size":32,"color":"#1971c2"}"##,
+            // Missing glyph entirely: Star.
+            r##"{"type":"icon","id":"icon","x":0,"y":0,"size":32,"color":"#1971c2"}"##,
         ] {
             let bytes =
                 format!(r#"{{"version":1,"imageWidth":10,"imageHeight":10,"shapes":[{icon}]}}"#);
-            assert!(Document::from_bytes(bytes.as_bytes()).is_err());
+            let document = Document::from_bytes(bytes.as_bytes()).unwrap();
+            let Shape::Icon(shape) = &document.shapes[0] else {
+                panic!("expected an icon shape");
+            };
+            let expected = if icon.contains("arrow-right") {
+                IconGlyph::ArrowRight
+            } else {
+                IconGlyph::Star
+            };
+            assert_eq!(shape.glyph, expected);
         }
     }
 }

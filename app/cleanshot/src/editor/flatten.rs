@@ -397,9 +397,7 @@ fn draw_shape(pixmap: &mut Pixmap, shape: &Shape, painter: &dyn TextPainter) {
         }
         Shape::Effect(_) => {}
         Shape::Icon(icon) => {
-            if let Ok(image) =
-                super::icons::rasterize(icon.pack, icon.glyph, &icon.color, icon.size)
-            {
+            if let Ok(image) = super::icons::rasterize(icon.glyph, &icon.color, icon.size) {
                 composite_image(pixmap, &image, icon.x, icon.y);
             }
         }
@@ -623,7 +621,6 @@ mod tests {
     fn bundled_icon_is_tinted_and_flattened_into_the_export() {
         let size = 28.0;
         let icon_image = super::super::icons::rasterize(
-            super::super::icons::IconPack::Lucide,
             super::super::icons::IconGlyph::ArrowRight,
             "#e03131",
             size,
@@ -636,7 +633,6 @@ mod tests {
         let mut document = Document::new(40, 40);
         document.shapes.push(Shape::Icon(IconShape {
             id: "icon".to_string(),
-            pack: super::super::icons::IconPack::Lucide,
             glyph: super::super::icons::IconGlyph::ArrowRight,
             x: 4.0,
             y: 4.0,
