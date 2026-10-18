@@ -28,6 +28,7 @@ pub const PALETTE: [&str; 8] = [
 
 /// Stroke widths in image pixels, old-app S/M/L/XL.
 pub const STROKE_WIDTHS: [f32; 4] = [2.0, 4.0, 8.0, 14.0];
+pub const ARROW_STROKE_WIDTHS: [f32; 4] = [3.0, 5.0, 8.0, 12.0];
 
 /// Default text size in image pixels.
 pub const DEFAULT_TEXT_SIZE: f32 = 24.0;
@@ -42,6 +43,8 @@ fn default_counter_diameter() -> f32 {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
+    /// Early documents omitted the header and are treated as version 1.
+    #[serde(default = "document_version_default")]
     pub version: u32,
     /// The capture-library id whose `image.png` this annotation document
     /// edits. None is allowed for transient/test documents, but persisted
@@ -52,6 +55,11 @@ pub struct Document {
     pub image_height: u32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub shapes: Vec<Shape>,
+}
+
+fn document_version_default() -> u32 {
+    tracing::debug!(target: "snipsy::annotations", "Annotation document is missing `version`; assuming version 1");
+    DOCUMENT_VERSION
 }
 
 impl Document {
@@ -66,9 +74,8 @@ impl Document {
         }
     }
 
-    /// Parse document bytes. Only version 1 is read — anything else (including
-    /// the old tldraw format) is an error, and callers fall back to an empty
-    /// document over the image.
+    /// Parse version 1 document bytes; a missing version defaults to 1, while
+    /// foreign formats and versions remain errors.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
         let document: Document = serde_json::from_slice(bytes)
             .map_err(|error| format!("Could not parse the annotation document: {error}"))?;
@@ -708,6 +715,20 @@ mod tests {
     fn foreign_document_versions_are_rejected() {
         let bytes = br#"{"version": 99, "imageWidth": 10, "imageHeight": 10, "shapes": []}"#;
         assert!(Document::from_bytes(bytes).is_err());
+    }
+
+    #[test]
+    fn versionless_documents_default_to_version_1_and_round_trip() {
+        // Docs from the earliest builds carried no version header; they load
+        // and re-save stamped, instead of refusing the capture's annotations.
+        let bytes =
+            br##"{"imageWidth": 10, "imageHeight": 10, "shapes": [{"type": "rectangle", "id": "a", "x": 0, "y": 0, "w": 5, "h": 5, "color": "#e03131", "strokeWidth": 2}]}"##;
+        let parsed = Document::from_bytes(bytes).unwrap();
+        assert_eq!(parsed.version, 1);
+        assert_eq!(parsed.shapes.len(), 1);
+        let reloaded = Document::from_bytes(&parsed.to_bytes().unwrap()).unwrap();
+        assert_eq!(reloaded, parsed);
+        assert_eq!(reloaded.version, 1);
     }
 
     #[test]

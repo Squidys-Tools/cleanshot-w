@@ -1,6 +1,6 @@
 //! The quick-access card (design-spec §5.4): a small floating card showing
 //! the most recent capture — thumbnail from the library store, Copy and Save
-//! as prominent actions, annotate / pin / delete / close as icons. It is a
+//! as prominent actions, annotate / delete / close as icons. It is a
 //! real window (not a tray menu item), toggled from the tray menu, the
 //! `--quick-access` dev-loop flag, or Escape to dismiss.
 
@@ -23,7 +23,6 @@ actions!(
         QuickAccessCopy,
         QuickAccessSave,
         QuickAccessAnnotate,
-        QuickAccessPin,
         QuickAccessDelete
     ]
 );
@@ -142,14 +141,10 @@ impl QuickAccessCard {
     }
 
     fn close(&self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(handle) = cx
-            .try_global::<QuickAccessSession>()
-            .and_then(|session| session.window)
-        {
+        if cx.has_global::<QuickAccessSession>() {
             cx.global_mut::<QuickAccessSession>().window = None;
-            let _ = handle.update(cx, |_, window, _| window.remove_window());
         }
-        let _ = window;
+        window.remove_window();
     }
 
     fn copy(&mut self, cx: &mut Context<Self>) {
@@ -203,30 +198,6 @@ impl QuickAccessCard {
         }
     }
 
-    fn pin_capture(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.content.png.is_empty() {
-            return;
-        }
-        let scale = platform::primary_scale_factor();
-        let virtual_origin = platform::gpui_virtual_screen_bounds(cx).origin;
-        let result = pin::open_for_capture(
-            cx,
-            self.content.png.clone(),
-            &self.content.title,
-            self.content.width,
-            self.content.height,
-            scale,
-            virtual_origin,
-        );
-        match result {
-            Ok(()) => self.close(window, cx),
-            Err(error) => {
-                self.notice = Some(error);
-                cx.notify();
-            }
-        }
-    }
-
     fn delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(id) = self.content.id.clone() else {
             return;
@@ -236,17 +207,18 @@ impl QuickAccessCard {
             cx.notify();
             return;
         }
-        self.notice = Some(match library::delete_capture(&id) {
+        match library::delete_capture(&id) {
             Ok(()) => {
-                self.content.png.clear();
-                self.image = None;
-                "Capture deleted.".to_string()
+                self.pending_delete = false;
+                // A deleted capture leaves nothing to show; dismiss cleanly.
+                self.close(window, cx);
             }
-            Err(error) => error,
-        });
-        self.pending_delete = false;
-        let _ = window;
-        cx.notify();
+            Err(error) => {
+                self.notice = Some(error);
+                self.pending_delete = false;
+                cx.notify();
+            }
+        }
     }
 
     fn icon_button(
@@ -281,6 +253,43 @@ impl Render for QuickAccessCard {
         let image = self.image.clone();
         let image_dims = self.content.image_dimensions();
 
+        if self.content.png.is_empty() {
+            return div()
+                .id("quick-access-empty")
+                .size_full()
+                .key_context("QuickAccessCard")
+                .track_focus(&self.focus)
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .gap_2()
+                .p_3()
+                .rounded(px(R_PANEL))
+                .bg(theme.bg_toolbar)
+                .border_1()
+                .border_color(theme.hairline)
+                .shadow(theme.shadow_floating.clone())
+                .on_action(cx.listener(|this, _: &DismissQuickAccess, window, cx| {
+                    this.close(window, cx);
+                }))
+                .child(
+                    div()
+                        .text_size(px(12.0))
+                        .text_color(theme.text_2)
+                        .font_family(crate::ui::font_family())
+                        .child("No captures yet"),
+                )
+                .child(self.icon_button(
+                    "close",
+                    "Close",
+                    &theme,
+                    theme.text_1,
+                    cx.listener(|this, _: &MouseDownEvent, window, cx| this.close(window, cx)),
+                    cx,
+                ));
+        }
+
         let mut card = div()
             .id("quick-access-card")
             .size_full()
@@ -302,9 +311,6 @@ impl Render for QuickAccessCard {
             .on_action(cx.listener(|this, _: &QuickAccessSave, _, cx| this.save(cx)))
             .on_action(cx.listener(|this, _: &QuickAccessAnnotate, window, cx| {
                 this.annotate(window, cx);
-            }))
-            .on_action(cx.listener(|this, _: &QuickAccessPin, window, cx| {
-                this.pin_capture(window, cx);
             }))
             .on_action(cx.listener(|this, _: &QuickAccessDelete, window, cx| {
                 this.delete(window, cx);
@@ -497,14 +503,6 @@ impl Render for QuickAccessCard {
                 cx,
             ))
             .child(self.icon_button(
-                "pin",
-                "Pin",
-                &theme,
-                icon_color,
-                cx.listener(|this, _: &MouseDownEvent, window, cx| this.pin_capture(window, cx)),
-                cx,
-            ))
-            .child(self.icon_button(
                 "delete",
                 "Delete",
                 &theme,
@@ -540,4 +538,44 @@ impl CardContent {
 /// Keybindings for the quick-access card.
 pub fn keybindings() -> Vec<KeyBinding> {
     vec![KeyBinding::new("escape", DismissQuickAccess, None)]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CardContent, QuickAccessCard};
+    use crate::editor::window::EditorWindow;
+    use gpui::{AppContext, TestAppContext, WindowOptions};
+
+    #[gpui::test]
+    async fn annotate_opens_the_capture_in_the_editor_and_dismisses_the_card() {
+        let cx = TestAppContext::single();
+        let png = crate::capture::encode_png(2, 2, &[0x5a; 16]).unwrap();
+        let card = cx.update(|cx| {
+            cx.open_window(WindowOptions::default(), |window, cx| {
+                cx.new(|cx| {
+                    QuickAccessCard::new(
+                        CardContent {
+                            id: None,
+                            title: "Quick capture".to_string(),
+                            width: 2,
+                            height: 2,
+                            png,
+                        },
+                        window,
+                        cx,
+                    )
+                })
+            })
+            .unwrap()
+        });
+
+        cx.update(|cx| {
+            card.update(cx, |card, window, cx| card.annotate(window, cx))
+                .unwrap();
+        });
+
+        let windows = cx.windows();
+        assert_eq!(windows.len(), 1);
+        windows[0].downcast::<EditorWindow>().unwrap();
+    }
 }

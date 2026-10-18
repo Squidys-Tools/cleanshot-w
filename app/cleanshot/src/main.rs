@@ -24,6 +24,10 @@ mod ui;
 mod window_picker;
 
 fn main() {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("snipsy=info"));
+    let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
+
     capture::configure_dpi_awareness();
 
     #[cfg(windows)]

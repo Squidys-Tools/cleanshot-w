@@ -20,12 +20,14 @@ use gpui::{
 use crate::clipboard;
 use crate::editor::flatten::flatten_to_png;
 use crate::editor::history::History;
-use crate::editor::hit_test::{Handle, handle_at, hit_test};
+use crate::editor::hit_test::{
+    ArrowEndpoint, Handle, arrow_endpoint_at, handle_at, hit_test, shapes_intersecting,
+};
 use crate::editor::icons::IconGlyph;
 use crate::editor::model::{
-    ArrowShape, COUNTER_DIAMETER, CounterShape, DEFAULT_TEXT_SIZE, Document, EffectKind,
-    EffectShape, EllipseShape, IconShape, PALETTE, PenShape, Rect, RectShape, STROKE_WIDTHS, Shape,
-    ShapeId, TextShape,
+    ARROW_STROKE_WIDTHS, ArrowShape, COUNTER_DIAMETER, CounterShape, DEFAULT_TEXT_SIZE, Document,
+    EffectKind, EffectShape, EllipseShape, IconShape, PALETTE, PenShape, Rect, RectShape,
+    STROKE_WIDTHS, Shape, ShapeId, TextShape,
 };
 use crate::library;
 use crate::settings::{AppSettings, current_settings};
@@ -143,6 +145,19 @@ enum Drag {
         original: Shape,
         start: (f32, f32),
     },
+    MoveMany {
+        originals: Vec<Shape>,
+        start: (f32, f32),
+    },
+    ArrowEndpoint {
+        id: ShapeId,
+        original: ArrowShape,
+        endpoint: ArrowEndpoint,
+    },
+    Marquee {
+        start: (f32, f32),
+        current: (f32, f32),
+    },
     /// Resizing a shape from its original geometry.
     Resize {
         id: ShapeId,
@@ -216,7 +231,7 @@ pub struct EditorWindow {
     history_search_active: bool,
     search_focus: gpui::FocusHandle,
     icon_image_cache_bytes: usize,
-    selected: Option<ShapeId>,
+    selected: Vec<ShapeId>,
     zoom: f32,
     pan: Point<Pixels>,
     drag: Drag,
@@ -377,7 +392,7 @@ impl EditorWindow {
             history_search: String::new(),
             history_search_active: false,
             search_focus: cx.focus_handle(),
-            selected: None,
+            selected: Vec::new(),
             zoom: 0.0,
             pan: Point::default(),
             drag: Drag::None,
@@ -410,7 +425,7 @@ impl EditorWindow {
         self.tool = Tool::Select;
         self.color_index = 4;
         self.stroke_width_index = 1;
-        self.selected = None;
+        self.selected.clear();
         self.zoom = 0.0;
         self.pan = Point::default();
         self.drag = Drag::None;
@@ -464,7 +479,7 @@ pub fn keybindings() -> Vec<KeyBinding> {
         KeyBinding::new("ctrl-[", SendBackwardShape, Some("EditorWindow")),
         KeyBinding::new("=", ZoomIn, Some("EditorWindow")),
         KeyBinding::new("-", ZoomOut, Some("EditorWindow")),
-        KeyBinding::new("0", ZoomFit, Some("EditorWindow")),
+        KeyBinding::new("shift-0", ZoomFit, Some("EditorWindow")),
         KeyBinding::new("ctrl-w", CloseEditor, Some("EditorWindow")),
     ]
 }
@@ -519,11 +534,15 @@ impl EditorWindow {
     }
 
     fn current_stroke_width(&self) -> f32 {
-        STROKE_WIDTHS[self.stroke_width_index]
+        if self.tool == Tool::Arrow {
+            ARROW_STROKE_WIDTHS[self.stroke_width_index]
+        } else {
+            STROKE_WIDTHS[self.stroke_width_index]
+        }
     }
 
     fn selected_index(&self) -> Option<usize> {
-        let selected = self.selected.as_ref()?;
+        let selected = self.selected.first()?;
         self.doc.index_of(selected)
     }
 
@@ -572,12 +591,9 @@ impl EditorWindow {
             });
         if empty {
             self.doc.delete(&id);
-            self.selected = None;
+            self.selected.retain(|selected| selected != &id);
         }
         self.commit();
-        if self.selected.is_none() {
-            self.selected = None;
-        }
     }
 
     fn end_flattened_png(&self) -> Result<Vec<u8>, String> {
@@ -635,38 +651,71 @@ impl EditorWindow {
     }
 
     fn select_mouse_down(&mut self, ix: f32, iy: f32) {
-        // Resize handles win over everything.
-        if let Some(index) = self.selected_index()
-            && let Some(handle) = handle_at(
-                &self.doc.shapes[index].bounds(),
-                ix,
-                iy,
-                HANDLE_SCREEN_SIZE / self.zoom,
-            )
+        if self.selected.len() == 1
+            && let Some(index) = self.selected_index()
         {
-            self.history.begin(&self.doc, None);
-            self.drag = Drag::Resize {
-                id: self.doc.shapes[index].id().clone(),
-                original: self.doc.shapes[index].clone(),
-                handle,
-            };
-            return;
+            match &self.doc.shapes[index] {
+                Shape::Arrow(arrow) => {
+                    if let Some(endpoint) =
+                        arrow_endpoint_at(arrow, ix, iy, HANDLE_SCREEN_SIZE / self.zoom)
+                    {
+                        self.history.begin(&self.doc, None);
+                        self.drag = Drag::ArrowEndpoint {
+                            id: arrow.id.clone(),
+                            original: arrow.clone(),
+                            endpoint,
+                        };
+                        return;
+                    }
+                }
+                shape => {
+                    if let Some(handle) =
+                        handle_at(&shape.bounds(), ix, iy, HANDLE_SCREEN_SIZE / self.zoom)
+                    {
+                        self.history.begin(&self.doc, None);
+                        self.drag = Drag::Resize {
+                            id: shape.id().clone(),
+                            original: shape.clone(),
+                            handle,
+                        };
+                        return;
+                    }
+                }
+            }
         }
         match hit_test(&self.doc, ix, iy, 4.0 / self.zoom) {
             Some(index) => {
                 let id = self.doc.shapes[index].id().clone();
-                if self.selected.as_ref() != Some(&id) {
-                    self.selected = Some(id.clone());
+                if self.selected.len() > 1 && self.selected.contains(&id) {
+                    let originals = self
+                        .selected
+                        .iter()
+                        .filter_map(|selected| {
+                            self.doc
+                                .index_of(selected)
+                                .map(|index| self.doc.shapes[index].clone())
+                        })
+                        .collect();
+                    self.history.begin(&self.doc, None);
+                    self.drag = Drag::MoveMany {
+                        originals,
+                        start: (ix, iy),
+                    };
+                } else {
+                    self.selected = vec![id.clone()];
+                    self.history.begin(&self.doc, None);
+                    self.drag = Drag::Move {
+                        id,
+                        original: self.doc.shapes[index].clone(),
+                        start: (ix, iy),
+                    };
                 }
-                self.history.begin(&self.doc, None);
-                self.drag = Drag::Move {
-                    id,
-                    original: self.doc.shapes[index].clone(),
-                    start: (ix, iy),
-                };
             }
             None => {
-                self.selected = None;
+                self.drag = Drag::Marquee {
+                    start: (ix, iy),
+                    current: (ix, iy),
+                };
             }
         }
     }
@@ -676,7 +725,7 @@ impl EditorWindow {
             && matches!(&self.doc.shapes[index], Shape::Text(_))
         {
             let id = self.doc.shapes[index].id().clone();
-            self.selected = Some(id.clone());
+            self.selected = vec![id.clone()];
             self.history.begin(&self.doc, None);
             self.begin_text_editing(id);
             return;
@@ -692,7 +741,7 @@ impl EditorWindow {
             color: self.current_color(),
         };
         self.doc.shapes.push(Shape::Text(shape));
-        self.selected = Some(id.clone());
+        self.selected = vec![id.clone()];
         self.begin_text_editing(id);
     }
 
@@ -710,7 +759,12 @@ impl EditorWindow {
         }));
         self.commit();
         // Counters stay selected so the palette applies to them.
-        self.selected = self.doc.shapes.last().map(|shape| shape.id().clone());
+        self.selected = self
+            .doc
+            .shapes
+            .last()
+            .map(|shape| vec![shape.id().clone()])
+            .unwrap_or_default();
     }
 
     fn place_icon(&mut self, ix: f32, iy: f32) {
@@ -724,7 +778,12 @@ impl EditorWindow {
             size,
             color: self.current_color(),
         }));
-        self.selected = self.doc.shapes.last().map(|shape| shape.id().clone());
+        self.selected = self
+            .doc
+            .shapes
+            .last()
+            .map(|shape| vec![shape.id().clone()])
+            .unwrap_or_default();
         self.commit();
     }
 
@@ -786,6 +845,42 @@ impl EditorWindow {
                     shape.translate(ix - start.0, iy - start.1);
                 }
             }
+            Drag::MoveMany { originals, start } => {
+                let (ix, iy) = self.to_image(position);
+                for original in originals {
+                    if let Some(shape) = self
+                        .doc
+                        .shapes
+                        .iter_mut()
+                        .find(|shape| shape.id() == original.id())
+                    {
+                        *shape = original.clone();
+                        shape.translate(ix - start.0, iy - start.1);
+                    }
+                }
+            }
+            Drag::ArrowEndpoint {
+                id,
+                original,
+                endpoint,
+            } => {
+                let (ix, iy) = self.to_image(position);
+                if let Some(Shape::Arrow(arrow)) =
+                    self.doc.shapes.iter_mut().find(|shape| shape.id() == &id)
+                {
+                    *arrow = original;
+                    match endpoint {
+                        ArrowEndpoint::Start => (arrow.x1, arrow.y1) = (ix, iy),
+                        ArrowEndpoint::End => (arrow.x2, arrow.y2) = (ix, iy),
+                    }
+                }
+            }
+            Drag::Marquee { start, .. } => {
+                self.drag = Drag::Marquee {
+                    start,
+                    current: self.to_image(position),
+                };
+            }
             Drag::Resize {
                 id,
                 original,
@@ -840,13 +935,31 @@ impl EditorWindow {
                         color: self.current_color(),
                         stroke_width: self.current_stroke_width(),
                     }));
-                    self.selected = self.doc.shapes.last().map(|shape| shape.id().clone());
+                    self.selected = self
+                        .doc
+                        .shapes
+                        .last()
+                        .map(|shape| vec![shape.id().clone()])
+                        .unwrap_or_default();
                     self.commit();
                 } else {
                     let _ = self.history.cancel();
                 }
             }
-            Drag::Move { .. } | Drag::Resize { .. } => self.commit(),
+            Drag::Move { .. }
+            | Drag::MoveMany { .. }
+            | Drag::ArrowEndpoint { .. }
+            | Drag::Resize { .. } => self.commit(),
+            Drag::Marquee { start, .. } => {
+                let current = self.to_image(event.position);
+                let selection = Rect::new(
+                    start.0.min(current.0),
+                    start.1.min(current.1),
+                    (start.0 - current.0).abs(),
+                    (start.1 - current.1).abs(),
+                );
+                self.selected = shapes_intersecting(&self.doc, &selection);
+            }
             Drag::CropNew { .. } | Drag::CropMove { .. } | Drag::CropResize { .. } => {
                 let _ = event;
             }
@@ -919,7 +1032,12 @@ impl EditorWindow {
             _ => unreachable!("finish_draw only runs for drawing tools"),
         };
         self.doc.shapes.push(shape);
-        self.selected = self.doc.shapes.last().map(|shape| shape.id().clone());
+        self.selected = self
+            .doc
+            .shapes
+            .last()
+            .map(|shape| vec![shape.id().clone()])
+            .unwrap_or_default();
         self.commit();
     }
 
@@ -1109,7 +1227,7 @@ impl EditorWindow {
         if tool != Tool::Select {
             // Keep the selection visible but drop it when switching to a
             // drawing tool, so the next stroke is not a surprise resize.
-            self.selected = None;
+            self.selected.clear();
         }
     }
 
@@ -1214,9 +1332,12 @@ impl EditorWindow {
         if self.text_editing.is_some() {
             return;
         }
-        if let Some(id) = self.selected.take() {
+        if !self.selected.is_empty() {
+            let selected = std::mem::take(&mut self.selected);
             self.history.begin(&self.doc, None);
-            self.doc.delete(&id);
+            for id in selected {
+                self.doc.delete(&id);
+            }
             self.commit();
         }
     }
@@ -1275,8 +1396,12 @@ impl EditorWindow {
         if self.text_editing.is_some() {
             return;
         }
-        let width = self.current_stroke_width();
         if let Some(index) = self.selected_index() {
+            let width = if matches!(&self.doc.shapes[index], Shape::Arrow(_)) {
+                ARROW_STROKE_WIDTHS[width_index]
+            } else {
+                STROKE_WIDTHS[width_index]
+            };
             self.history.begin(&self.doc, None);
             match &mut self.doc.shapes[index] {
                 Shape::Rectangle(shape) => shape.stroke_width = width,
@@ -1305,11 +1430,8 @@ impl EditorWindow {
                     eprintln!("Snipsy: {error}");
                 }
             }
-            if let Some(selected) = &self.selected
-                && self.doc.index_of(selected).is_none()
-            {
-                self.selected = None;
-            }
+            self.selected
+                .retain(|selected| self.doc.index_of(selected).is_some());
             self.persist();
         }
     }
@@ -1330,11 +1452,8 @@ impl EditorWindow {
                     eprintln!("Snipsy: {error}");
                 }
             }
-            if let Some(selected) = &self.selected
-                && self.doc.index_of(selected).is_none()
-            {
-                self.selected = None;
-            }
+            self.selected
+                .retain(|selected| self.doc.index_of(selected).is_some());
             self.persist();
         }
     }
@@ -1407,7 +1526,7 @@ impl EditorWindow {
         }
 
         self.tool = Tool::Select;
-        self.selected = None;
+        self.selected.clear();
         self.fit(viewport);
     }
 
@@ -1452,11 +1571,8 @@ impl EditorWindow {
             }
         }
         self.drag = Drag::None;
-        if let Some(selected) = &self.selected
-            && self.doc.index_of(selected).is_none()
-        {
-            self.selected = None;
-        }
+        self.selected
+            .retain(|selected| self.doc.index_of(selected).is_some());
         self.persist();
     }
 
@@ -1550,7 +1666,7 @@ impl Render for EditorWindow {
         let theme = Theme::current(cx);
         let canvas_state = self.canvas_state(theme.bg_canvas);
         let focus = self.focus.clone();
-        let has_selection = self.selected_index().is_some() && self.text_editing.is_none();
+        let has_selection = !self.selected.is_empty() && self.text_editing.is_none();
         let panel_open = self.panel.is_some();
 
         let mut root = div()
@@ -1815,6 +1931,15 @@ impl EditorWindow {
             flattened_preview,
             preview: self.preview_shape(),
             selected: self.selected.clone(),
+            marquee: match &self.drag {
+                Drag::Marquee { start, current } => Some(Rect::new(
+                    start.0.min(current.0),
+                    start.1.min(current.1),
+                    (start.0 - current.0).abs(),
+                    (start.1 - current.1).abs(),
+                )),
+                _ => None,
+            },
             space_or_pan: self.space_held,
             crop: if self.tool == Tool::Crop {
                 self.crop
@@ -2157,6 +2282,7 @@ impl EditorWindow {
                             .child(title),
                     )
                     .child(self.icon_button_plain(
+                        format!("history-panel-close-{panel:?}"),
                         "close",
                         "Close panel",
                         &theme,
@@ -2171,13 +2297,16 @@ impl EditorWindow {
     /// A bare 28x28 icon button used inside panels.
     fn icon_button_plain(
         &self,
+        element_id: String,
         slug: &'static str,
         label: &'static str,
         theme: &Theme,
         handler: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     ) -> gpui::Stateful<gpui::Div> {
+        let debug_selector = element_id.clone();
         let button = div()
-            .id(gpui::ElementId::Name(format!("panel-{slug}").into()))
+            .id(gpui::ElementId::Name(element_id.into()))
+            .debug_selector(move || debug_selector.clone())
             .w(px(28.0))
             .h(px(28.0))
             .rounded(px(R_BTN))
@@ -2346,6 +2475,7 @@ impl EditorWindow {
             );
         if !self.history_search.is_empty() {
             field = field.child(self.icon_button_plain(
+                "history-search-clear".to_string(),
                 "close",
                 "Clear search",
                 &theme,
@@ -2461,11 +2591,13 @@ impl EditorWindow {
         } else {
             let open_id = id.clone();
             actions = actions.child(self.icon_button_plain(
+                format!("history-action-open-{id}"),
                 "pen",
                 "Open in editor",
                 theme,
                 cx.listener(move |this, _: &MouseDownEvent, window, cx| {
                     this.open_library_capture(&open_id, window, cx);
+                    cx.stop_propagation();
                     cx.notify();
                 }),
             ));
@@ -2481,23 +2613,27 @@ impl EditorWindow {
                         .child("Delete?"),
                 )
                 .child(self.icon_button_plain(
+                    format!("history-action-confirm-delete-{id}"),
                     "delete",
                     "Confirm delete",
                     theme,
                     cx.listener(move |this, _: &MouseDownEvent, _, cx| {
                         this.delete_library_capture(&confirm_id, cx);
+                        cx.stop_propagation();
                         cx.notify();
                     }),
                 ));
         } else if !current {
             let delete_id = id.clone();
             actions = actions.child(self.icon_button_plain(
+                format!("history-action-delete-{id}"),
                 "delete",
                 "Delete",
                 theme,
                 cx.listener(move |this, _: &MouseDownEvent, _, cx| {
                     this.pending_delete = Some(delete_id.clone());
                     this.library_notice = None;
+                    cx.stop_propagation();
                     cx.notify();
                 }),
             ));
@@ -2593,8 +2729,7 @@ impl EditorWindow {
         cx.notify();
     }
 
-    fn zoom_indicator(&self, viewport: Size<Pixels>, cx: &Context<Self>) -> gpui::AnyElement {
-        let _ = viewport;
+    fn zoom_indicator(&self, viewport: Size<Pixels>, cx: &mut Context<Self>) -> gpui::AnyElement {
         let percent = (self.zoom * 100.0).round() as i32;
         let right = if self.panel.is_some() {
             SIDE_PANEL_WIDTH + 12.0
@@ -2602,11 +2737,75 @@ impl EditorWindow {
             12.0
         };
         let theme = Theme::current(cx);
+        let button_hover = theme.bg_elevated;
+        let button_text = theme.text_1;
+        let zoom_out = div()
+            .id("zoom-out")
+            .debug_selector(|| "zoom-out".to_string())
+            .w(px(24.0))
+            .h(px(24.0))
+            .rounded(px(R_BTN))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor(gpui::CursorStyle::PointingHand)
+            .hover(move |style| style.bg(button_hover))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                    this.zoom_at(1.0 / 1.2, size_to_point(viewport));
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            )
+            .child(crate::ui::chrome_icon("zoom_out", 16.0, button_text));
+        let zoom_in = div()
+            .id("zoom-in")
+            .debug_selector(|| "zoom-in".to_string())
+            .w(px(24.0))
+            .h(px(24.0))
+            .rounded(px(R_BTN))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor(gpui::CursorStyle::PointingHand)
+            .hover(move |style| style.bg(button_hover))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                    this.zoom_at(1.2, size_to_point(viewport));
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            )
+            .child(crate::ui::chrome_icon("zoom_in", 16.0, button_text));
+        let fit = div()
+            .id("zoom-fit")
+            .debug_selector(|| "zoom-fit".to_string())
+            .px_1()
+            .text_size(px(10.0))
+            .text_color(theme.text_2)
+            .font_family(default_font_family())
+            .cursor(gpui::CursorStyle::PointingHand)
+            .hover(move |style| style.text_color(button_text))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                    this.fit(viewport);
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            )
+            .child("Fit · ⇧0");
         div()
             .absolute()
             .right(px(right))
-            .bottom(px(TOOLBAR_BOTTOM + TOOLBAR_HEIGHT + 8.0))
-            .px_2()
+            .top(px(12.0))
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_1()
+            .px_1()
             .py_1()
             .rounded(px(R_INPUT))
             .bg(theme.bg_toolbar)
@@ -2615,7 +2814,10 @@ impl EditorWindow {
             .text_size(px(11.0))
             .text_color(theme.text_2)
             .font_family(default_font_family())
-            .child(format!("{percent}% · 0 to fit"))
+            .child(crate::ui::with_tooltip(zoom_out, "Zoom out (-)"))
+            .child(format!("{percent}%"))
+            .child(crate::ui::with_tooltip(zoom_in, "Zoom in (+)"))
+            .child(fit)
             .into_any_element()
     }
 
@@ -2708,19 +2910,17 @@ impl EditorWindow {
                     ),
             );
 
-        div()
+        let mut toolbar = div()
+            .debug_selector(|| "editor-toolbar".to_string())
             .absolute()
-            .left(px(if self.panel.is_some() {
-                SIDE_PANEL_WIDTH / 2.0
-            } else {
-                0.0
-            }))
-            .right(px(0.0))
+            .left(px(8.0))
+            .right(px(8.0))
             .bottom(px(TOOLBAR_BOTTOM))
             .flex()
-            .justify_center()
-            .child(pill)
-            .into_any_element()
+            .justify_center();
+        toolbar.style().overflow.x = Some(gpui::Overflow::Scroll);
+        toolbar.style().overflow.y = Some(gpui::Overflow::Hidden);
+        toolbar.child(pill).into_any_element()
     }
 
     /// A 36x36 tool button: HugeIcons icon, micro shortcut digit in the
@@ -2753,8 +2953,12 @@ impl EditorWindow {
                     cx.notify();
                 }),
             )
-            .child(crate::ui::chrome_icon(tool.icon_slug(), 20.0, icon_color))
-            .child(
+            .child(crate::ui::chrome_icon(tool.icon_slug(), 20.0, icon_color));
+        if active {
+            button = button.bg(theme.accent_soft);
+        }
+        if shortcut.chars().count() == 1 {
+            button = button.child(
                 div()
                     .absolute()
                     .right(px(3.0))
@@ -2764,8 +2968,6 @@ impl EditorWindow {
                     .font_family(default_font_family())
                     .child(shortcut),
             );
-        if active {
-            button = button.bg(theme.accent_soft);
         }
         tooltip(button, tooltip_text(label, Some(shortcut)))
     }
@@ -2827,7 +3029,7 @@ impl EditorWindow {
     /// Color / width / z-order / delete strip shown while a shape is
     /// selected: a floating pill 12 px above the toolbar (spec §5.2).
     fn selection_bar(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
-        if self.selected_index().is_none() || self.text_editing.is_some() {
+        if self.selected.len() != 1 || self.text_editing.is_some() {
             return None;
         }
         let theme = Theme::current(cx);
@@ -2939,11 +3141,7 @@ impl EditorWindow {
         Some(
             div()
                 .absolute()
-                .left(px(if self.panel.is_some() {
-                    SIDE_PANEL_WIDTH / 2.0
-                } else {
-                    0.0
-                }))
+                .left(px(0.0))
                 .right(px(0.0))
                 .bottom(px(TOOLBAR_BOTTOM + TOOLBAR_HEIGHT + 12.0))
                 .flex()
@@ -3007,9 +3205,18 @@ impl EditorWindow {
             Shape::Pen(shape) => shape.stroke_width,
             Shape::Text(_) | Shape::Counter(_) | Shape::Icon(_) | Shape::Effect(_) => return None,
         };
-        STROKE_WIDTHS
+        let widths = if matches!(&self.doc.shapes[index], Shape::Arrow(_)) {
+            &ARROW_STROKE_WIDTHS
+        } else {
+            &STROKE_WIDTHS
+        };
+        widths
             .iter()
-            .position(|candidate| (*candidate - width).abs() < 0.01)
+            .enumerate()
+            .min_by(|(_, left), (_, right)| {
+                (*left - width).abs().total_cmp(&(*right - width).abs())
+            })
+            .map(|(index, _)| index)
     }
 }
 
@@ -3321,7 +3528,8 @@ struct CanvasState {
     icon_images: HashMap<ShapeId, Arc<RenderImage>>,
     flattened_preview: Option<Arc<RenderImage>>,
     preview: Option<Shape>,
-    selected: Option<ShapeId>,
+    selected: Vec<ShapeId>,
+    marquee: Option<Rect>,
     #[allow(dead_code)]
     space_or_pan: bool,
     crop: Option<Rect>,
@@ -3387,17 +3595,37 @@ fn paint_canvas(bounds: Bounds<Pixels>, state: &CanvasState, window: &mut Window
         }
     } else {
         for shape in state.shapes.iter().chain(state.preview.as_ref()) {
-            let selected = state.selected.as_deref() == Some(shape.id().as_str());
+            let selected = state.selected.iter().any(|id| id == shape.id());
             paint_shape(bounds, state, window, shape, selected);
         }
     }
 
-    // Selection outline + handles.
-    if let Some(id) = &state.selected
-        && let Some(shape) = state.shapes.iter().find(|shape| shape.id() == id)
-    {
-        let screen = shape_bounds_to_screen(shape, state, bounds);
-        paint_selection_ui(window, &screen, state.zoom);
+    if state.selected.len() == 1 {
+        if let Some(shape) = state
+            .shapes
+            .iter()
+            .find(|shape| shape.id() == &state.selected[0])
+        {
+            if let Shape::Arrow(arrow) = shape {
+                paint_arrow_selection_ui(bounds, state, window, arrow);
+            } else {
+                let screen = shape_bounds_to_screen(shape, state, bounds);
+                paint_selection_ui(window, &screen, true);
+            }
+        }
+    } else if state.selected.len() > 1 {
+        for shape in state
+            .shapes
+            .iter()
+            .filter(|shape| state.selected.iter().any(|id| id == shape.id()))
+        {
+            let screen = shape_bounds_to_screen(shape, state, bounds);
+            paint_selection_ui(window, &screen, false);
+        }
+    }
+
+    if let Some(marquee) = state.marquee {
+        paint_marquee(bounds, state, window, marquee);
     }
 
     // Crop overlay.
@@ -3632,7 +3860,7 @@ fn ellipse_screen_path(
     builder.build().ok()
 }
 
-fn paint_selection_ui(window: &mut Window, screen_bounds: &Rect, _zoom: f32) {
+fn paint_selection_ui(window: &mut Window, screen_bounds: &Rect, handles: bool) {
     let handle_screen = px(HANDLE_SCREEN_SIZE);
     // Outline.
     let mut builder = PathBuilder::stroke(px(1.5));
@@ -3656,6 +3884,9 @@ fn paint_selection_ui(window: &mut Window, screen_bounds: &Rect, _zoom: f32) {
     if let Ok(path) = builder.build() {
         window.paint_path(path, rgb(0x3B82F6));
     }
+    if !handles {
+        return;
+    }
     // Handles: white squares with a blue border.
     for handle in Handle::ALL {
         let (hx, hy) = handle.position(screen_bounds);
@@ -3678,6 +3909,54 @@ fn paint_selection_ui(window: &mut Window, screen_bounds: &Rect, _zoom: f32) {
             Default::default(),
         ));
     }
+}
+
+fn paint_arrow_selection_ui(
+    bounds: Bounds<Pixels>,
+    state: &CanvasState,
+    window: &mut Window,
+    arrow: &ArrowShape,
+) {
+    let handle_size = px(HANDLE_SCREEN_SIZE + 2.0);
+    for (x, y) in [(arrow.x1, arrow.y1), (arrow.x2, arrow.y2)] {
+        let center = image_to_screen(state, bounds, x, y);
+        let handle_bounds = Bounds {
+            origin: Point {
+                x: center.x - handle_size / 2.0,
+                y: center.y - handle_size / 2.0,
+            },
+            size: Size {
+                width: handle_size,
+                height: handle_size,
+            },
+        };
+        window.paint_quad(gpui::quad(
+            handle_bounds,
+            handle_size / 2.0,
+            rgb(0xffffff),
+            px(1.5),
+            rgb(0x3B82F6),
+            Default::default(),
+        ));
+    }
+}
+
+fn paint_marquee(bounds: Bounds<Pixels>, state: &CanvasState, window: &mut Window, rect: Rect) {
+    let screen_bounds = Bounds {
+        origin: image_to_screen(state, bounds, rect.x, rect.y),
+        size: Size {
+            width: px(rect.w * state.zoom),
+            height: px(rect.h * state.zoom),
+        },
+    };
+    window.paint_quad(gpui::quad(
+        screen_bounds,
+        px(0.0),
+        rgb(0x3B82F6).alpha(0.12),
+        px(1.0),
+        rgb(0x3B82F6),
+        Default::default(),
+    ));
 }
 
 fn paint_crop_overlay(
@@ -3784,7 +4063,7 @@ fn paint_crop_overlay(
         }
     }
     let crop_bounds = Rect::new(left, top, right - left, bottom - top);
-    paint_selection_ui(window, &crop_bounds, state.zoom);
+    paint_selection_ui(window, &crop_bounds, true);
 }
 
 fn shape_color(shape: &Shape) -> gpui::Hsla {
@@ -3807,8 +4086,11 @@ fn shape_color(shape: &Shape) -> gpui::Hsla {
 #[cfg(test)]
 mod tests {
     use super::{EditorSource, EditorWindow, open, shortcut_from_keys};
-    use crate::library::AnnotationSource;
-    use gpui::TestAppContext;
+    use crate::editor::model::{ARROW_STROKE_WIDTHS, ArrowShape, RectShape, Shape};
+    use crate::library::{AnnotationSource, CaptureMetadata, ImageSize};
+    use gpui::{
+        MouseButton, MouseMoveEvent, MouseUpEvent, TestAppContext, VisualTestContext, point, px,
+    };
 
     fn source(title: &str, width: u32, height: u32) -> EditorSource {
         EditorSource {
@@ -3821,6 +4103,18 @@ mod tests {
             title: title.to_string(),
             annotations: AnnotationSource::Transient,
         }
+    }
+
+    fn rectangle(id: &str, x: f32, y: f32) -> Shape {
+        Shape::Rectangle(RectShape {
+            id: id.to_string(),
+            x,
+            y,
+            w: 20.0,
+            h: 20.0,
+            color: "#e03131".to_string(),
+            stroke_width: 2.0,
+        })
     }
 
     #[test]
@@ -3897,5 +4191,253 @@ mod tests {
                 })
                 .unwrap();
         });
+    }
+
+    #[gpui::test]
+    async fn marquee_tracks_the_cursor_selects_intersections_and_moves_them_together() {
+        let cx = TestAppContext::single();
+        cx.update(|cx| open(cx, source("Marquee", 200, 200)).unwrap());
+        let handle = cx.windows()[0].downcast::<EditorWindow>().unwrap();
+
+        cx.update(|cx| {
+            handle
+                .update(cx, |editor, _, _| {
+                    editor.zoom = 1.0;
+                    editor.pan = Default::default();
+                    editor.doc.shapes.push(rectangle("one", 10.0, 10.0));
+                    editor.doc.shapes.push(rectangle("two", 45.0, 45.0));
+                    editor.doc.shapes.push(rectangle("outside", 110.0, 110.0));
+
+                    editor.select_mouse_down(0.0, 0.0);
+                    editor.on_canvas_mouse_move(&MouseMoveEvent {
+                        position: point(px(70.0), px(70.0)),
+                        pressed_button: Some(MouseButton::Left),
+                        modifiers: Default::default(),
+                    });
+                    assert!(matches!(
+                        &editor.drag,
+                        super::Drag::Marquee { current, .. } if *current == (70.0, 70.0)
+                    ));
+                    editor.on_canvas_mouse_up(&MouseUpEvent {
+                        position: point(px(70.0), px(70.0)),
+                        button: MouseButton::Left,
+                        ..Default::default()
+                    });
+                    assert_eq!(editor.selected, vec!["one", "two"]);
+
+                    editor.select_mouse_down(10.0, 20.0);
+                    assert!(matches!(editor.drag, super::Drag::MoveMany { .. }));
+                    editor.on_canvas_mouse_move(&MouseMoveEvent {
+                        position: point(px(20.0), px(30.0)),
+                        pressed_button: Some(MouseButton::Left),
+                        modifiers: Default::default(),
+                    });
+                    editor.on_canvas_mouse_up(&MouseUpEvent {
+                        position: point(px(20.0), px(30.0)),
+                        button: MouseButton::Left,
+                        ..Default::default()
+                    });
+                    assert_eq!(editor.doc.shapes[0].bounds().x, 20.0);
+                    assert_eq!(editor.doc.shapes[0].bounds().y, 20.0);
+                    assert_eq!(editor.doc.shapes[1].bounds().x, 55.0);
+                    assert_eq!(editor.doc.shapes[1].bounds().y, 55.0);
+                })
+                .unwrap();
+        });
+    }
+
+    #[gpui::test]
+    async fn arrow_selection_uses_endpoint_handles_and_shaft_drag_not_a_box() {
+        let cx = TestAppContext::single();
+        cx.update(|cx| open(cx, source("Arrow", 200, 200)).unwrap());
+        let handle = cx.windows()[0].downcast::<EditorWindow>().unwrap();
+
+        cx.update(|cx| {
+            handle
+                .update(cx, |editor, _, _| {
+                    editor.zoom = 1.0;
+                    editor.pan = Default::default();
+                    editor.doc.shapes.push(Shape::Arrow(ArrowShape {
+                        id: "arrow".to_string(),
+                        x1: 20.0,
+                        y1: 20.0,
+                        x2: 120.0,
+                        y2: 80.0,
+                        color: "#1a1a1a".to_string(),
+                        stroke_width: 4.0,
+                    }));
+                    editor.selected = vec!["arrow".to_string()];
+                    editor.apply_width_to_selection(3);
+                    let Shape::Arrow(arrow) = &editor.doc.shapes[0] else {
+                        unreachable!();
+                    };
+                    assert_eq!(arrow.stroke_width, ARROW_STROKE_WIDTHS[3]);
+
+                    editor.select_mouse_down(20.0, 20.0);
+                    assert!(matches!(
+                        editor.drag,
+                        super::Drag::ArrowEndpoint {
+                            endpoint: super::ArrowEndpoint::Start,
+                            ..
+                        }
+                    ));
+                    editor.on_canvas_mouse_move(&MouseMoveEvent {
+                        position: point(px(30.0), px(40.0)),
+                        pressed_button: Some(MouseButton::Left),
+                        modifiers: Default::default(),
+                    });
+                    editor.on_canvas_mouse_up(&MouseUpEvent {
+                        position: point(px(30.0), px(40.0)),
+                        button: MouseButton::Left,
+                        ..Default::default()
+                    });
+                    let Shape::Arrow(arrow) = &editor.doc.shapes[0] else {
+                        unreachable!();
+                    };
+                    assert_eq!(
+                        (arrow.x1, arrow.y1, arrow.x2, arrow.y2),
+                        (30.0, 40.0, 120.0, 80.0)
+                    );
+
+                    editor.select_mouse_down(75.0, 60.0);
+                    assert!(matches!(editor.drag, super::Drag::Move { .. }));
+                    editor.on_canvas_mouse_move(&MouseMoveEvent {
+                        position: point(px(85.0), px(70.0)),
+                        pressed_button: Some(MouseButton::Left),
+                        modifiers: Default::default(),
+                    });
+                    editor.on_canvas_mouse_up(&MouseUpEvent {
+                        position: point(px(85.0), px(70.0)),
+                        button: MouseButton::Left,
+                        ..Default::default()
+                    });
+                    let Shape::Arrow(arrow) = &editor.doc.shapes[0] else {
+                        unreachable!();
+                    };
+                    assert_eq!(
+                        (arrow.x1, arrow.y1, arrow.x2, arrow.y2),
+                        (40.0, 50.0, 130.0, 90.0)
+                    );
+
+                    editor.select_mouse_down(85.0, 50.0);
+                    assert!(matches!(editor.drag, super::Drag::Marquee { .. }));
+                })
+                .unwrap();
+        });
+    }
+
+    #[gpui::test]
+    async fn history_delete_action_does_not_bubble_into_the_row_open_action() {
+        let cx = TestAppContext::single();
+        cx.update(|cx| open(cx, source("History", 200, 200)).unwrap());
+        let window = cx.windows()[0];
+        let handle = window.downcast::<EditorWindow>().unwrap();
+        cx.update(|cx| {
+            handle
+                .update(cx, |editor, _, cx| {
+                    editor.captures = vec![CaptureMetadata {
+                        id: "row-test".to_string(),
+                        title: "History row".to_string(),
+                        created_at: 1,
+                        updated_at: 2,
+                        image: ImageSize {
+                            width: 20,
+                            height: 20,
+                        },
+                    }];
+                    editor.panel = Some(super::EditorPanel::Library);
+                    cx.notify();
+                })
+                .unwrap();
+        });
+
+        let mut visual = VisualTestContext::from_window(window, &cx);
+        visual.run_until_parked();
+        let bounds = visual
+            .debug_bounds("history-action-delete-row-test")
+            .expect("delete action should be laid out");
+        let center = point(
+            bounds.origin.x + bounds.size.width / 2.0,
+            bounds.origin.y + bounds.size.height / 2.0,
+        );
+        visual.simulate_mouse_move(center, None, Default::default());
+        visual.run_until_parked();
+        visual.simulate_mouse_down(center, MouseButton::Left, Default::default());
+        visual.simulate_mouse_up(center, MouseButton::Left, Default::default());
+        visual.run_until_parked();
+
+        let state = handle
+            .read_with(&cx, |editor, _| {
+                (editor.pending_delete.clone(), editor.library_notice.clone())
+            })
+            .unwrap();
+        assert_eq!(state.0.as_deref(), Some("row-test"));
+        assert_eq!(state.1, None);
+
+        let open_bounds = visual
+            .debug_bounds("history-action-open-row-test")
+            .expect("open action should be laid out");
+        let open_center = point(
+            open_bounds.origin.x + open_bounds.size.width / 2.0,
+            open_bounds.origin.y + open_bounds.size.height / 2.0,
+        );
+        visual.simulate_mouse_move(open_center, None, Default::default());
+        visual.run_until_parked();
+        visual.simulate_mouse_down(open_center, MouseButton::Left, Default::default());
+        visual.simulate_mouse_up(open_center, MouseButton::Left, Default::default());
+        visual.run_until_parked();
+        let open_result = handle
+            .read_with(&cx, |editor, _| editor.library_notice.clone())
+            .unwrap();
+        assert!(open_result.is_some());
+    }
+
+    #[gpui::test]
+    async fn zoom_controls_work_and_toolbar_does_not_shift_with_the_history_panel() {
+        let cx = TestAppContext::single();
+        cx.update(|cx| open(cx, source("Toolbar", 200, 200)).unwrap());
+        let window = cx.windows()[0];
+        let handle = window.downcast::<EditorWindow>().unwrap();
+        cx.update(|cx| {
+            handle
+                .update(cx, |editor, _, cx| {
+                    editor.zoom = 1.0;
+                    editor.pan = Default::default();
+                    cx.notify();
+                })
+                .unwrap();
+        });
+
+        let mut visual = VisualTestContext::from_window(window, &cx);
+        visual.run_until_parked();
+        let before = visual
+            .debug_bounds("editor-toolbar")
+            .expect("toolbar should be laid out");
+        let zoom_in = visual
+            .debug_bounds("zoom-in")
+            .expect("zoom control should be laid out");
+        let center = point(
+            zoom_in.origin.x + zoom_in.size.width / 2.0,
+            zoom_in.origin.y + zoom_in.size.height / 2.0,
+        );
+        visual.simulate_mouse_down(center, MouseButton::Left, Default::default());
+        visual.simulate_mouse_up(center, MouseButton::Left, Default::default());
+        visual.run_until_parked();
+        assert_eq!(handle.read_with(&cx, |editor, _| editor.zoom).unwrap(), 1.2);
+
+        cx.update(|cx| {
+            handle
+                .update(cx, |editor, _, cx| {
+                    editor.panel = Some(super::EditorPanel::Library);
+                    cx.notify();
+                })
+                .unwrap();
+        });
+        visual.run_until_parked();
+        let after = visual
+            .debug_bounds("editor-toolbar")
+            .expect("toolbar should remain laid out with the rail open");
+        assert_eq!(before.origin.x, after.origin.x);
+        assert_eq!(before.size.width, after.size.width);
     }
 }
