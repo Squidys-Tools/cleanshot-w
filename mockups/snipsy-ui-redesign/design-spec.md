@@ -1,6 +1,6 @@
 # Snipsy design spec — CleanShot X–inspired UI overhaul
 
-Phase 1 deliverable · 2026-10-17 · written from the audit of main @ 387dd66.
+Phase 1 deliverable · 2026-10-17 · video + future-surfaces sections are forward design (§7–8) · written from the audit of main @ 387dd66.
 Companion files: [icon-mapping.md](icon-mapping.md) (licensing verdict, full icon mapping,
 purge list), [index.html](index.html) (interactive mockups, light + dark, all surfaces).
 Mockup CSS tokens in [tokens.css](tokens.css) mirror the GPUI constants here 1:1.
@@ -231,7 +231,118 @@ Full licensing verdict, per-icon mapping, and the purge list live in
 - The legacy Tauri tree (`src/`, `src-tauri/`) still holds old icon assets; it's untouched in
   this phase — finish the purge when the tree is dropped.
 
-## 7. Verified vs assumed
+## 7. Forward design — video / screen recording mode
+
+> **Forward design only.** Snipsy does not record today, and nothing here is scheduled for
+> implementation. This section exists so the design language already covers where the product
+> is going (Christopher, 2026-10-17: study cleanshot.com/features and design video mode ahead
+> of a future feature). Recording mechanics — encoder, GIF support, audio — are engineering
+> decisions out of scope; everything below is only what the *UI* would add.
+
+CleanShot's recording surfaces, verified from the features page: region/window/fullscreen
+capture, video or GIF output, MP4 H.264, microphone + computer audio, "do not disturb" while
+recording, **click capture** (configurable color, size, outline/filled style, animation),
+**keystroke capture** (position, size, dark/light style, all-keys vs command-keys-only),
+**camera bubble** (position, size, shape, fullscreen), a menu-bar recording timer, and a
+native video editor with **smart zooms** (cursor-following), smoothed cursor movement,
+cursor appearance styling, backgrounds, motion blur, and landscape/square/vertical exports.
+
+Snipsy's video UI reuses the phase-1 language wholesale — same pills, tokens, radii, icons;
+recording adds one new accent (see below) and one new surface class (the timeline).
+
+**New token: `rec` accent.** Recording is signaled in red-orange, never the blue accent:
+`#e5484d` (dark scheme) / `#c94a3c` (light) — same values as `danger`, reused so the palettes
+stay identical. A pulsing 8 px dot + `micro` elapsed timer is the recording motif everywhere.
+
+### 7.1 Recording region dressing (capture overlay variant)
+
+Same transparent full-screen overlay, same dim, same 1 px frame + glow — but the frame and
+glow use `rec` instead of `selection-border`, and the floating pill above the region (where
+the dimensions badge sits for screenshots) carries: rec dot, elapsed time, and the region's
+dimensions. Bottom-center below the region: the **arming pill** (52 px, `r-pill`,
+shadow-floating) with Cancel (`Cancel01Icon`), a size/readout chip (`1280 × 800 · 30 FPS`),
+source toggles (region/window/fullscreen as `MonitorIcon`-family icons), and one accent
+**Record** button (34 px, `rec` fill, `TickIcon`-family circle). Esc cancels; Enter arms.
+CleanShot's overlay stays empty; so does this one — the arming pill dismisses the moment
+recording starts.
+
+### 7.2 During recording
+
+- **Control pill** (same geometry as 7.1's arming pill, pinned below the region or docked
+  bottom-center for fullscreen): Stop (`rec`-filled square), Pause/Resume, Cancel; rec dot +
+  timer in the pill's left end. Fades to 45% opacity after 3 s idle, returns on hover — the
+  recording chrome must never leak into the video, which on Windows means the pill lives in
+  its own transparent always-on-top window excluded from capture (engineering note for the
+  future implementer; the spike already proved click-through and always-on-top).
+- **Tray indicator**: the tray icon swaps to its `rec`-tinted variant and the tray tooltip
+  shows the timer (CleanShot uses a menu-bar timer; Windows' equivalent is the tray).
+- **Click capture dressing**: a 40 px `rec` ring at the cursor, quick scale-fade — the same
+  ring flattened into the video. Style variants (outline/filled, size) are prefs rows under a
+  future Recording page, exactly the §5.6 row pattern.
+- **Keystroke dressing**: a kbd chip (the §5.6 hotkey-chip style, dark/light variants) fades
+  in bottom-left of the frame. Position/size are prefs rows.
+- **Camera bubble**: rounded-rect PIP (`r-panel` radius, hairline, shadow-panel), snapped to
+  one of the four corners with a 24 px margin, resized by a single chip (S/M/L) — no free
+  resize in v1 of the design.
+
+### 7.3 Video editor (future window)
+
+Same shell as the image editor (§2.1, floating toolbar) with the canvas showing the video and
+one new surface: the **timeline**, bottom-docked, 64 px tall.
+
+- **Timeline styling**: bg-surface strip with hairline top; the clip renders as a filmstrip
+  of 40 px thumbnails (`r-thumb`); the playhead is a 2 px accent line with a small chip head;
+  trim handles are 12 px wide `r-input` chips that highlight accent on hover, with the
+  trimmed-away region dimmed 40%. Zoom segments ("smart zooms") render as accent-soft
+  brackets spanning their time range, draggable, with `+` adding one at the playhead
+  (`ZoomInIcon`).
+- **Floating toolbar variant**: tools become editor actions — Trim (`ScissorsIcon`), Zoom
+  (`ZoomInIcon`), Cursor (`CursorRectangleSelectionIcon`, for smoothing/appearance), Audio
+  (`WebcamIcon`), Undo/Redo, and export. No annotation tools in the video toolbar in v1.
+- **Cursor/appearance and motion-blur controls** open a small popover (the selection-pill
+  pattern, §5.2) — sliders and the S/M/L chip row, never a second window.
+- **Export sheet**: a `r-panel` popover with format presets as chips (Landscape / Square /
+  Vertical), quality S/M/L, and one accent Export button (`Download04Icon`). Progress renders
+  in the sheet as a 4 px accent bar — no modal dialogs anywhere in the language.
+
+### 7.4 Quick access card, video variant
+
+Identical to §5.4 with two changes: the thumbnail area plays the video muted on hover, and
+the meta row shows duration + size (`0:42 · 8.4 MB`). Copy/Save keep their positions.
+
+## 8. Future surfaces (forward design, one paragraph each)
+
+These feature areas on cleanshot.com/features imply new UI when (and if) Snipsy grows them.
+Each already has a home in the phase-1 language, which is the point of recording them now.
+
+- **Cloud / share links.** One-click upload from the quick-access card and the editor toolbar
+  (a `Share08Icon` button next to Save) that turns into a copyable link chip once uploaded;
+  history-rail rows gain a small shared-state badge; a Preferences → Sharing page (§5.6
+  pattern) holds destination, link-expiry, and password rows. No new surface class — share is
+  a button state, a chip, and a prefs page.
+- **Scrolling capture.** An overlay variant: after region selection, the dressing swaps to a
+  progress state — the region frame stays, a caption pill ("Scroll down · capturing…") with a
+  thin accent progress bar replaces the arming pill, Esc cancels. The result opens in the
+  normal editor; no dedicated surface.
+- **Background tool (social dressing).** An editor panel (the §5.3 rail pattern, left side
+  this time) with padding, aspect-ratio, and background presets — 20 built-ins as thumbnail
+  chips plus custom color/image — and an "Auto Balance" action row. Renders as canvas chrome,
+  flattens like any other edit; zero new window classes.
+- **All-in-one mode.** A single hotkey opens the capture overlay with the arming pill extended
+  by an aspect-lock chip and a "retake last selection" row; the last region persists as a
+  dashed `hairline-strong` ghost frame before selection. Still the one overlay surface.
+- **OCR / text recognition.** Snipsy already ships OCR (snipsy-ocr-eval → app). The only UI
+  it needs in this language: after region selection in the overlay, a small HUD chip
+  ("Text copied") in the dimensions-badge style; plus a Prefs → Capture row for "copy text
+  instead of image". No new surface.
+- **Capture history retention & filters.** The history rail (§5.3) gains type-filter chips
+  (Screenshots / Videos / Pinned) above the list and a retention row in Preferences →
+  History ("Keep 30 days" as a select chip). Same surface, no new patterns.
+- **Self-timer & freeze.** Timer is a countdown chip (the dimensions-badge style, 3-2-1)
+  centered in the overlay; "freeze screen" is an arming-pill toggle that swaps the live
+  region for a frozen bitmap. Overlay-internal states only.
+
+## 9. Verified vs assumed
 
 **Verified** (read in repo or vendored source): all current icon locations and the 5-pack
 `IconPack` system; hand-drawn `icon_for` paths; text-glyph buttons; overlay scrim 0.15; gpui
