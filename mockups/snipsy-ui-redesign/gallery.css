@@ -1,0 +1,27 @@
+/* Mockup plumbing for the Snipsy redesign gallery. */
+.hi svg { display: block; }
+
+/* Gallery chrome */
+body { margin: 0; background: #101014; color: #eee; font-family: var(--font-ui, system-ui, sans-serif); }
+.gallery-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; background: #18181c; border-bottom: 1px solid #26262b;
+  position: sticky; top: 0; z-index: 50;
+}
+.gallery-bar .logo { font-weight: 700; font-size: 13px; letter-spacing: .2px; margin-right: 12px; }
+.gallery-bar .logo span { color: #4c8dff; }
+.tab-btn {
+  border: 0; background: transparent; color: #a0a0aa; font: 500 12px var(--font-ui);
+  padding: 6px 12px; border-radius: 8px; cursor: pointer;
+}
+.tab-btn:hover { background: #26262b; color: #eee; }
+.tab-btn.on { background: rgba(76,141,255,.16); color: #9cc0ff; }
+.theme-btn {
+  margin-left: auto; border: 1px solid #33333a; background: #26262b; color: #eee;
+  font: 500 12px var(--font-ui); padding: 6px 14px; border-radius: 8px; cursor: pointer;
+}
+.stage { padding: 28px; display: grid; place-items: start center; min-height: calc(100vh - 53px); }
+.surface { display: none; }
+.surface.on { display: block; }
+.note { max-width: 920px; margin: 0 auto 18px; color: #8a8a94; font-size: 12px; line-height: 1.6; }
+.note b { color: #c8c8d0; }

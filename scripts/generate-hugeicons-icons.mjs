@@ -1,0 +1,145 @@
+// Generates the Snipsy icon assets from HugeIcons' free MIT set.
+//
+// Outputs, all committed:
+//   app/cleanshot/assets/icons/hugeicons/<name>.svg      chrome icons (gpui svg element)
+//   app/cleanshot/assets/icons/hugeicons/<name>.png      sticker PNGs at 512px (canvas + flatten)
+//   app/cleanshot/src/editor/icon_assets.rs              the Rust include_bytes! table
+//
+// Usage: bun install (or npm i) then `node scripts/generate-hugeicons-icons.mjs`.
+// PNG rasterization uses the repository's Playwright Chromium, same as the old generator.
+// Icons here are MIT-licensed (see app/cleanshot/assets/icons/hugeicons.LICENSE);
+// never point this script at HugeIcons Pro data.
+
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import * as HugeIcons from "@hugeicons/core-free-icons";
+import { chromium } from "playwright";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const output = resolve(root, "app/cleanshot/assets/icons/hugeicons");
+const rustTable = resolve(root, "app/cleanshot/src/editor/icon_assets.rs");
+
+// The single source of truth for what Snipsy bundles.
+// Tool chrome:
+const chrome = {
+  select: "CursorRectangleSelectionIcon",
+  rectangle: "SquareIcon",
+  ellipse: "CircleIcon",
+  arrow: "ArrowUpRight01Icon",
+  pen: "Pen01Icon",
+  text: "TypeIcon",
+  counter: "OneSquareIcon",
+  crop: "CropIcon",
+  blur: "BlurIcon",
+  pixelate: "Grid2x2Icon",
+  redact: "MaskIcon",
+  sticker: "StickerIcon",
+  undo: "UndoIcon",
+  redo: "RedoIcon",
+  copy: "Copy01Icon",
+  save: "Download04Icon",
+  history: "HistoryIcon",
+  preferences: "Settings01Icon",
+  send_backward: "LayerSendBackwardIcon",
+  bring_forward: "LayerBringForwardIcon",
+  delete: "Delete02Icon",
+  close: "Cancel01Icon",
+  zoom_in: "ZoomInIcon",
+  zoom_out: "ZoomOutIcon",
+  fit: "Maximize01Icon",
+  apply: "TickIcon",
+  refresh: "RefreshIcon",
+  search: "Search01Icon",
+  monitor: "MonitorIcon",
+  webcam: "WebcamIcon",
+  opacity_up: "AddCircleIcon",
+  opacity_down: "MinusSignIcon",
+  click_through: "MouseIcon",
+  pin: "PinIcon",
+};
+// Canvas sticker library (also user-visible labels in the picker):
+const stickers = {
+  arrow_right: ["ArrowRight01Icon", "Arrow right"],
+  check: ["TickIcon", "Check"],
+  close: ["Cancel01Icon", "Close"],
+  info: ["InformationCircleIcon", "Information"],
+  warning: ["Alert02Icon", "Warning"],
+  question: ["HelpCircleIcon", "Question"],
+  star: ["StarIcon", "Star"],
+  heart: ["HeartIcon", "Heart"],
+  lock: ["LockIcon", "Lock"],
+  eye: ["ViewIcon", "Eye"],
+  user: ["UserIcon", "Person"],
+  camera: ["Camera01Icon", "Camera"],
+  flag: ["Flag01Icon", "Flag"],
+  pin_sticker: ["PinIcon", "Pin"],
+  thumbs_up: ["ThumbsUpIcon", "Thumbs up"],
+  clock: ["Clock01Icon", "Clock"],
+  mail: ["Mail01Icon", "Mail"],
+  smile: ["SmileIcon", "Smile"],
+  bookmark: ["BookmarkIcon", "Bookmark"],
+  check_circle: ["CheckmarkCircleIcon", "Check circle"],
+  cross_circle: ["CancelCircleIcon", "Cross circle"],
+  plus: ["AddCircleIcon", "Plus"],
+  minus: ["MinusSignIcon", "Minus"],
+  scissors: ["ScissorsIcon", "Scissors"],
+};
+
+function toSvg(elements) {
+  const body = elements
+    .map(([tag, props]) => {
+      const attrs = Object.entries(props)
+        .map(([k, v]) => `${k.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase())}="${v}"`)
+        .join(" ");
+      return `<${tag} ${attrs}/>`;
+    })
+    .join("");
+  return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
+}
+
+function resolveIcon(name) {
+  const value = HugeIcons[name];
+  if (!value) throw new Error(`Icon ${name} is not in @hugeicons/core-free-icons`);
+  return value;
+}
+
+await mkdir(output, { recursive: true });
+const written = [];
+
+for (const [slug, name] of Object.entries({ ...chrome, ...Object.fromEntries(Object.entries(stickers).map(([k, [n]]) => [k, n])) })) {
+  const svg = toSvg(resolveIcon(name));
+  await writeFile(resolve(output, `${slug}.svg`), svg);
+  written.push([slug, name]);
+}
+
+// Sticker PNGs at 512px: render each SVG in Chromium and screenshot it (alpha-preserving).
+const pngTargets = Object.entries(stickers);
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 512, height: 512 }, deviceScaleFactor: 1 });
+for (const [slug] of pngTargets) {
+  const svg = toSvg(resolveIcon(stickers[slug][0]));
+  await page.setContent(
+    `<!doctype html><html><body style="margin:0;width:512px;height:512px">
+     <div style="width:512px;height:512px;color:#000">${svg.replace('width="24" height="24"', 'width="512" height="512"')}</div>
+     </body></html>`,
+    { waitUntil: "load" }
+  );
+  await page.locator("div").screenshot({ path: resolve(output, `${slug}.png`), omitBackground: true });
+}
+await browser.close();
+
+// Rust table: stickers are the only runtime-rasterized assets.
+let rust = `// Generated by scripts/generate-hugeicons-icons.mjs — do not edit by hand.\n`;
+rust += `pub(super) const ICON_ASSETS: &[(IconGlyph, &[u8])] = &[\n`;
+for (const [slug] of pngTargets) {
+  const variant = slug
+    .split("_")
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join("");
+  rust += `    (IconGlyph::${variant}, include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/hugeicons/${slug}.png"))),\n`;
+}
+rust += "];\n";
+await writeFile(rustTable, rust);
+
+console.log(`Wrote ${written.length} SVGs, ${pngTargets.length} sticker PNGs, and the Rust table.`);

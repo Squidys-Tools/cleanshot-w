@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snipsy UI redesign — CleanShot X–style mockups</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="gallery.css">
+<script src="hugeicons.js"></script>
+<style>
+/* ===================== shared surface styles ===================== */
+.surface-frame { background: var(--bg-window); color: var(--text-1); border-radius: var(--r-window);
+  box-shadow: var(--shadow-panel); border: 1px solid var(--hairline); overflow: hidden; }
+
+/* ===================== editor ===================== */
+.editor { width: 960px; height: 620px; position: relative; display: flex; flex-direction: column; }
+.editor-titlebar { height: 34px; display: flex; align-items: center; padding: 0 12px; gap: 8px; flex: none; }
+.editor-titlebar .t { font-size: 11px; color: var(--text-3); }
+.editor-titlebar .win-btns { margin-left: auto; display: flex; gap: 6px; }
+.editor-titlebar .win-btns i { width: 10px; height: 10px; border-radius: 50%; background: var(--text-3); opacity: .35; }
+.editor-canvas-area { flex: 1; position: relative; background: var(--bg-canvas); display: grid; place-items: center; padding-bottom: 64px; }
+.shot { width: 560px; height: 340px; border-radius: 6px; box-shadow: 0 18px 50px rgba(0,0,0,.5), 0 2px 10px rgba(0,0,0,.4);
+  background: linear-gradient(135deg,#dfe7f2 0%,#cdd8e8 40%,#b8c6dd 100%); position: relative; }
+.shot .mock-head { position:absolute; top:0; left:0; right:0; height:34px; background:#ffffff; border-radius:6px 6px 0 0; display:flex; align-items:center; gap:6px; padding:0 12px; }
+.shot .mock-head i { width:8px; height:8px; border-radius:50%; background:#d4dae3; }
+.shot .mock-body { position:absolute; top:34px; left:0; right:0; bottom:0; border-radius:0 0 6px 6px; background:#fff; padding:14px; }
+.mock-body .ln { height:10px; border-radius:4px; background:#e7ebf1; margin-bottom:9px; }
+.mock-body .ln.w60 { width:60%; } .mock-body .ln.w80 { width:80%; } .mock-body .ln.w40 { width:40%; }
+/* an annotated shape with selection handles */
+.shot .sel-rect { position:absolute; left:210px; top:120px; width:180px; height:90px; border:2px solid var(--selection-border); border-radius:2px; }
+.shot .sel-rect .h { position:absolute; width:8px; height:8px; background:#fff; border:1.5px solid var(--selection-border); border-radius:2px; }
+.h.nw{left:-5px;top:-5px}.h.ne{right:-5px;top:-5px}.h.sw{left:-5px;bottom:-5px}.h.se{right:-5px;bottom:-5px}
+
+/* floating toolbar pill */
+.floating-toolbar {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 18px;
+  height: var(--toolbar-h); display: flex; align-items: center; gap: 2px; padding: 0 8px;
+  background: var(--bg-toolbar); border: 1px solid var(--hairline); border-radius: var(--r-pill);
+  box-shadow: var(--shadow-floating);
+}
+.tool-btn { width: var(--tool-btn); height: var(--tool-btn); border-radius: var(--r-btn); display: grid; place-items: center;
+  color: var(--text-2); position: relative; cursor: default; }
+.tool-btn:hover { background: var(--bg-hover); color: var(--text-1); }
+.tool-btn.on { background: var(--accent-soft); color: var(--accent); }
+.tool-btn .kbd { position: absolute; right: 3px; bottom: 2px; font-size: 8px; color: var(--text-3); }
+.tb-sep { width: 1px; height: 24px; background: var(--hairline-strong); margin: 0 6px; }
+.tb-btn { height: 32px; padding: 0 12px; display: flex; align-items: center; gap: 6px; border-radius: var(--r-btn);
+  color: var(--text-2); font-size: 12px; cursor: default; white-space: nowrap; }
+.tb-btn:hover { background: var(--bg-hover); color: var(--text-1); }
+.tb-btn.dim { opacity: .4; }
+.tb-btn.primary { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+.tb-btn.primary:hover { background: var(--accent-hover); }
+.color-dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; cursor: default; }
+.color-dot.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--bg-toolbar) inset; }
+
+/* floating selection context pill (shows when a shape is selected) */
+.selection-pill {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 82px;
+  height: var(--selectionbar-h); display: flex; align-items: center; gap: 6px; padding: 0 10px;
+  background: var(--bg-toolbar); border: 1px solid var(--hairline); border-radius: var(--r-pill);
+  box-shadow: var(--shadow-floating);
+}
+.width-chip { min-width: 26px; height: 24px; display: grid; place-items: center; border-radius: var(--r-input);
+  font-size: 11px; color: var(--text-2); }
+.width-chip.on { background: var(--accent-soft); color: var(--accent); }
+.width-chip:hover { background: var(--bg-hover); }
+
+/* ===================== history rail ===================== */
+.rail { width: var(--rail-w); background: var(--bg-surface); border-left: 1px solid var(--hairline);
+  display: flex; flex-direction: column; flex: none; }
+.rail-head { padding: 12px 12px 8px; display: flex; align-items: center; gap: 8px; }
+.rail-head .ttl { font-size: 12px; font-weight: 600; }
+.rail-search { margin: 0 12px 8px; height: 26px; border-radius: var(--r-input); background: var(--bg-elevated);
+  display: flex; align-items: center; gap: 6px; padding: 0 8px; color: var(--text-3); font-size: 11px; }
+.rail-list { flex: 1; overflow: hidden; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 4px; }
+.rail-item { display: flex; gap: 8px; padding: 6px; border-radius: var(--r-panel); position: relative; }
+.rail-item:hover { background: var(--bg-hover); }
+.rail-item.on { background: var(--accent-soft); }
+.rail-thumb { width: 64px; height: 40px; border-radius: var(--r-thumb); background: linear-gradient(135deg,#dfe7f2,#b8c6dd); flex: none; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.rail-meta { min-width: 0; }
+.rail-meta .nm { font-size: 11px; color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rail-meta .sub { font-size: 10px; color: var(--text-3); margin-top: 2px; }
+.rail-item .row-actions { position: absolute; right: 6px; top: 6px; display: none; gap: 2px; padding: 2px;
+  background: var(--bg-toolbar); border: 1px solid var(--hairline); border-radius: var(--r-btn); box-shadow: var(--shadow-panel); }
+.rail-item:hover .row-actions { display: flex; }
+.rail-item .row-actions .tool-btn { width: 24px; height: 24px; }
+.rail-day { font-size: 10px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: .4px; padding: 8px 6px 2px; }
+
+/* ===================== capture overlay ===================== */
+.overlay-stage { width: 960px; height: 620px; border-radius: var(--r-window); overflow: hidden; position: relative;
+  box-shadow: var(--shadow-panel); background:
+    linear-gradient(120deg, #1e3a5f 0%, #274468 30%, #6d5a86 65%, #8a6a92 100%); }
+.fake-win { position: absolute; border-radius: 8px; background: rgba(250,250,252,.96); box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+.fake-win .bar { height: 26px; background: #eff1f5; border-radius: 8px 8px 0 0; display:flex; align-items:center; gap:5px; padding: 0 10px; }
+.fake-win .bar i { width:7px; height:7px; border-radius:50%; background:#d4dae3; }
+.overlay-scrim { position: absolute; inset: 0; background: rgba(0,0,0,.45); }
+.sel-region { position: absolute; left: 270px; top: 160px; width: 380px; height: 240px;
+  box-shadow: 0 0 0 1px var(--selection-border), 0 0 0 4px rgba(76,141,255,.18), 0 8px 30px rgba(0,0,0,.4); overflow: hidden; }
+.sel-region .bright { position:absolute; inset:0; background: linear-gradient(135deg,#fdfdfd,#eceff4); }
+.sel-region .bar { height: 26px; background:#eff1f5; display:flex; align-items:center; gap:5px; padding:0 10px; }
+.sel-region .bar i { width:7px; height:7px; border-radius:50%; background:#d4dae3; }
+.sel-region .ln { height:9px; border-radius:4px; background:#e7ebf1; margin:10px 14px 0; }
+.sel-dims { position: absolute; left: 420px; top: 416px; transform: translateX(-50%);
+  background: var(--bg-toolbar); border:1px solid var(--hairline); color: var(--text-1);
+  font-size: 11px; font-variant-numeric: tabular-nums; padding: 3px 10px; border-radius: var(--r-input);
+  box-shadow: var(--shadow-floating); }
+.sel-hint { position:absolute; left:50%; top:18px; transform:translateX(-50%);
+  background: var(--bg-toolbar); border:1px solid var(--hairline); color: var(--text-2);
+  font-size: 11px; padding: 5px 12px; border-radius: var(--r-pill); box-shadow: var(--shadow-floating);
+  display:flex; gap:8px; align-items:center; }
+.sel-hint kbd { font: 10px var(--font-ui); background: var(--bg-elevated); border:1px solid var(--hairline-strong);
+  padding: 1px 5px; border-radius: 4px; color: var(--text-1); }
+
+/* ===================== quick access (post-capture) ===================== */
+.qa-anchor { width: 960px; height: 620px; border-radius: var(--r-window); position: relative; overflow: hidden;
+  box-shadow: var(--shadow-panel); background: linear-gradient(120deg,#1e3a5f,#6d5a86); }
+.qa-card { position: absolute; right: 26px; bottom: 26px; width: 320px; border-radius: var(--r-panel);
+  background: var(--bg-toolbar); border: 1px solid var(--hairline); box-shadow: var(--shadow-floating); overflow: hidden; }
+.qa-thumb { height: 170px; background: linear-gradient(135deg,#fdfdfd,#eceff4); position: relative; }
+.qa-thumb .mini { position:absolute; inset: 18px 30px; background:#fff; border-radius:4px; box-shadow:0 4px 14px rgba(0,0,0,.15); padding: 12px; }
+.qa-actions { display: flex; gap: 6px; padding: 10px; align-items: center; }
+.qa-btn { flex: 1; height: 34px; display:flex; align-items:center; justify-content:center; gap:6px; border-radius: var(--r-btn);
+  font-size: 12px; font-weight: 600; background: var(--bg-elevated); color: var(--text-1); cursor: default; }
+.qa-btn.primary { background: var(--accent); color: var(--accent-text); }
+.qa-btn.icon { flex: none; width: 34px; padding: 0; color: var(--text-2); }
+.qa-meta { display:flex; align-items:center; gap:8px; padding: 0 12px 10px; font-size: 10px; color: var(--text-3); }
+
+/* ===================== preferences ===================== */
+.prefs { width: 780px; height: 540px; display: flex; }
+.prefs-nav { width: 190px; background: var(--bg-surface); border-right: 1px solid var(--hairline); padding: 14px 8px; flex: none; }
+.prefs-nav .app { display:flex; align-items:center; gap:8px; padding: 2px 8px 14px; font-weight: 700; font-size: 13px; }
+.prefs-nav .app .dot { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg,#4c8dff,#7aa8ff); }
+.nav-item { display:flex; align-items:center; gap:8px; padding: 7px 10px; border-radius: var(--r-btn); font-size: 12px; color: var(--text-2); }
+.nav-item:hover { background: var(--bg-hover); }
+.nav-item.on { background: var(--accent-soft); color: var(--accent); }
+.prefs-body { flex: 1; padding: 22px 24px; overflow: auto; }
+.prefs-body h2 { margin: 0 0 4px; font-size: 15px; font-weight: 600; }
+.prefs-body .desc { margin: 0 0 18px; font-size: 11px; color: var(--text-3); }
+.pref-row { display:flex; align-items:center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--hairline); }
+.pref-row .lbl { font-size: 12px; color: var(--text-1); }
+.pref-row .sub { font-size: 10px; color: var(--text-3); margin-top: 2px; max-width: 340px; }
+.toggle { width: 34px; height: 20px; border-radius: var(--r-round); background: var(--bg-elevated);
+  border: 1px solid var(--hairline-strong); position: relative; flex: none; }
+.toggle::after { content:''; position:absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--text-2); transition: all .12s ease; }
+.toggle.on { background: var(--accent); border-color: var(--accent); }
+.toggle.on::after { left: 16px; background: #fff; }
+.hotkey-chip { display:flex; align-items:center; gap:4px; }
+.hotkey-chip kbd { font: 11px var(--font-ui); background: var(--bg-elevated); border:1px solid var(--hairline-strong);
+  border-bottom-width: 2px; padding: 3px 7px; border-radius: var(--r-input); color: var(--text-1); }
+.select-chip { font-size: 11px; color: var(--text-1); background: var(--bg-elevated); border:1px solid var(--hairline-strong);
+  padding: 4px 10px; border-radius: var(--r-input); display:flex; align-items:center; gap:8px; }
+</style>
+</head>
+<body>
+<div class="gallery-bar">
+  <div class="logo">Snipsy <span>redesign</span></div>
+  <button class="tab-btn on" data-tab="editor">Editor</button>
+  <button class="tab-btn" data-tab="rail">History rail</button>
+  <button class="tab-btn" data-tab="overlay">Capture overlay</button>
+  <button class="tab-btn" data-tab="qa">Quick access</button>
+  <button class="tab-btn" data-tab="prefs">Preferences</button>
+  <button class="theme-btn" id="themeBtn">Light</button>
+</div>
+
+<div class="stage">
+
+  <!-- ============ EDITOR ============ -->
+  <div class="surface on" id="tab-editor">
+    <p class="note"><b>Editor.</b> The screenshot owns the window; chrome floats. One dark pill toolbar sits below the canvas — tools left, properties (colors) middle, undo/redo and export right. Selecting a shape raises a second pill with its color, stroke width, z-order and delete. Every icon is HugeIcons free (stroke rounded).</p>
+    <div class="surface-frame theme-dark editor" data-theme-root>
+      <div class="editor-titlebar">
+        <span class="t">Snipsy — editor.png · 1920 × 1200</span>
+        <div class="win-btns"><i></i><i></i><i></i></div>
+      </div>
+      <div class="editor-canvas-area">
+        <div class="shot">
+          <div class="mock-head"><i></i><i></i><i></i></div>
+          <div class="mock-body">
+            <div class="ln w60"></div><div class="ln w80"></div><div class="ln w80"></div><div class="ln w40"></div>
+          </div>
+          <div class="sel-rect"><i class="h nw"></i><i class="h ne"></i><i class="h sw"></i><i class="h se"></i></div>
+        </div>
+        <!-- selection pill -->
+        <div class="selection-pill">
+          <span class="color-dot on" style="background:#e5484d"></span>
+          <span class="color-dot" style="background:#f7a94b"></span>
+          <span class="color-dot" style="background:#46a758"></span>
+          <span class="color-dot" style="background:#4c8dff"></span>
+          <span class="color-dot" style="background:#f2f2f4"></span>
+          <span class="color-dot" style="background:#17171a; box-shadow:0 0 0 1px var(--hairline-strong)"></span>
+          <div class="tb-sep"></div>
+          <span class="width-chip">S</span><span class="width-chip on">M</span><span class="width-chip">L</span><span class="width-chip">XL</span>
+          <div class="tb-sep"></div>
+          <span class="tool-btn" title="Send backward"><script>document.write(hi('LayerSendBackward',18))</script></span>
+          <span class="tool-btn" title="Bring forward"><script>document.write(hi('LayerBringForward',18))</script></span>
+          <div class="tb-sep"></div>
+          <span class="tb-btn" style="color:var(--danger)"><script>document.write(hi('Delete02',16))</script> Delete</span>
+        </div>
+        <!-- main toolbar -->
+        <div class="floating-toolbar">
+          <span class="tool-btn" title="Select (1)"><script>document.write(hi('CursorRectangleSelection',20))</script><span class="kbd">1</span></span>
+          <span class="tool-btn" title="Rectangle (2)"><script>document.write(hi('Square',20))</script><span class="kbd">2</span></span>
+          <span class="tool-btn" title="Ellipse (3)"><script>document.write(hi('Circle',20))</script><span class="kbd">3</span></span>
+          <span class="tool-btn" title="Arrow (4)"><script>document.write(hi('ArrowUpRight01',20))</script><span class="kbd">4</span></span>
+          <span class="tool-btn" title="Pen (5)"><script>document.write(hi('Pen01',20))</script><span class="kbd">5</span></span>
+          <span class="tool-btn" title="Text (6)"><script>document.write(hi('Type',20))</script><span class="kbd">6</span></span>
+          <span class="tool-btn" title="Counter (7)"><script>document.write(hi('OneSquare',20))</script><span class="kbd">7</span></span>
+          <span class="tool-btn on" title="Crop (8)"><script>document.write(hi('Crop',20))</script><span class="kbd">8</span></span>
+          <span class="tool-btn" title="Blur (B)"><script>document.write(hi('Blur',20))</script><span class="kbd">B</span></span>
+          <span class="tool-btn" title="Pixelate (M)"><script>document.write(hi('Grid2x2',20))</script><span class="kbd">M</span></span>
+          <span class="tool-btn" title="Redact (Shift R)"><script>document.write(hi('Mask',20))</script><span class="kbd">⇧R</span></span>
+          <span class="tool-btn" title="Stickers (I)"><script>document.write(hi('Sticker',20))</script><span class="kbd">I</span></span>
+          <div class="tb-sep"></div>
+          <span class="tool-btn dim" title="Undo (Ctrl+Z)"><script>document.write(hi('Undo',18))</script></span>
+          <span class="tool-btn dim" title="Redo (Ctrl+Y)"><script>document.write(hi('Redo',18))</script></span>
+          <div class="tb-sep"></div>
+          <span class="tool-btn" title="History rail"><script>document.write(hi('History',18))</script></span>
+          <span class="tool-btn" title="Preferences"><script>document.write(hi('Settings01',18))</script></span>
+          <div class="tb-sep"></div>
+          <span class="tb-btn"><script>document.write(hi('Copy01',16))</script> Copy</span>
+          <span class="tb-btn primary"><script>document.write(hi('Download04',16))</script> Save PNG</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ HISTORY RAIL ============ -->
+  <div class="surface" id="tab-rail">
+    <p class="note"><b>History rail.</b> The editor gains a right-hand rail (232 px) listing captures grouped by day, with search on top. Hover raises pin / copy / delete inline; the current capture is tinted with the accent. Same shell as the editor tab otherwise.</p>
+    <div class="surface-frame theme-dark editor" data-theme-root style="display:flex; flex-direction:row;">
+      <div style="flex:1; display:flex; flex-direction:column;">
+        <div class="editor-titlebar"><span class="t">Snipsy — deploy-failure.png · 1280 × 800</span>
+          <div class="win-btns"><i></i><i></i><i></i></div></div>
+        <div class="editor-canvas-area">
+          <div class="shot" style="width:440px;height:280px;">
+            <div class="mock-head"><i></i><i></i><i></i></div>
+            <div class="mock-body"><div class="ln w60"></div><div class="ln w80"></div><div class="ln w40"></div></div>
+          </div>
+          <div class="floating-toolbar" style="bottom:14px">
+            <span class="tool-btn" title="Select"><script>document.write(hi('CursorRectangleSelection',20))</script></span>
+            <span class="tool-btn" title="Arrow"><script>document.write(hi('ArrowUpRight01',20))</script></span>
+            <span class="tool-btn" title="Pen"><script>document.write(hi('Pen01',20))</script></span>
+            <span class="tool-btn" title="Text"><script>document.write(hi('Type',20))</script></span>
+            <div class="tb-sep"></div>
+            <span class="tb-btn"><script>document.write(hi('Copy01',16))</script> Copy</span>
+            <span class="tb-btn primary"><script>document.write(hi('Download04',16))</script> Save PNG</span>
+          </div>
+        </div>
+      </div>
+      <div class="rail">
+        <div class="rail-head">
+          <span class="ttl">History</span>
+          <span class="tool-btn" style="margin-left:auto; width:26px; height:26px;" title="Refresh"><script>document.write(hi('Refresh',14))</script></span>
+        </div>
+        <div class="rail-search"><script>document.write(hi('Search01',12))</script> Search captures…</div>
+        <div class="rail-list">
+          <div class="rail-day">Today</div>
+          <div class="rail-item on">
+            <div class="rail-thumb"></div>
+            <div class="rail-meta"><div class="nm">deploy-failure.png</div><div class="sub">1280 × 800 · 14:32</div></div>
+            <div class="row-actions">
+              <span class="tool-btn" title="Copy"><script>document.write(hi('Copy01',13))</script></span>
+              <span class="tool-btn" title="Pin"><script>document.write(hi('Pin',13))</script></span>
+              <span class="tool-btn" title="Delete" style="color:var(--danger)"><script>document.write(hi('Delete02',13))</script></span>
+            </div>
+          </div>
+          <div class="rail-item">
+            <div class="rail-thumb" style="background:linear-gradient(135deg,#e8ddc8,#c9b892)"></div>
+            <div class="rail-meta"><div class="nm">checkout-flow</div><div class="sub">960 × 720 · 11:05</div></div>
+            <div class="row-actions">
+              <span class="tool-btn" title="Copy"><script>document.write(hi('Copy01',13))</script></span>
+              <span class="tool-btn" title="Pin"><script>document.write(hi('Pin',13))</script></span>
+              <span class="tool-btn" title="Delete" style="color:var(--danger)"><script>document.write(hi('Delete02',13))</script></span>
+            </div>
+          </div>
+          <div class="rail-day">Yesterday</div>
+          <div class="rail-item">
+            <div class="rail-thumb" style="background:linear-gradient(135deg,#d5e5d0,#a8c5a0)"></div>
+            <div class="rail-meta"><div class="nm">settings-bug</div><div class="sub">1600 × 900 · 18:47</div></div>
+            <div class="row-actions">
+              <span class="tool-btn" title="Copy"><script>document.write(hi('Copy01',13))</script></span>
+              <span class="tool-btn" title="Pin"><script>document.write(hi('Pin',13))</script></span>
+              <span class="tool-btn" title="Delete" style="color:var(--danger)"><script>document.write(hi('Delete02',13))</script></span>
+            </div>
+          </div>
+          <div class="rail-item">
+            <div class="rail-thumb" style="background:linear-gradient(135deg,#ddd4ea,#b0a2cc)"></div>
+            <div class="rail-meta"><div class="nm">release-notes</div><div class="sub">1024 × 640 · 09:12</div></div>
+            <div class="row-actions">
+              <span class="tool-btn" title="Copy"><script>document.write(hi('Copy01',13))</script></span>
+              <span class="tool-btn" title="Pin"><script>document.write(hi('Pin',13))</script></span>
+              <span class="tool-btn" title="Delete" style="color:var(--danger)"><script>document.write(hi('Delete02',13))</script></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ CAPTURE OVERLAY ============ -->
+  <div class="surface" id="tab-overlay">
+    <p class="note"><b>Capture overlay dressing.</b> The whole screen dims; the live region shows through untouched. A single blue 1 px frame with a soft outer glow, corner handles, and one floating dimensions badge below the selection. Esc hint top-center; nothing else — CleanShot's overlay is famously empty.</p>
+    <div class="overlay-stage">
+      <div class="fake-win" style="left:60px; top:70px; width:300px; height:200px;">
+        <div class="bar"><i></i><i></i><i></i></div>
+        <div style="padding:14px"><div class="ln w80" style="height:9px;border-radius:4px;background:#e7ebf1;margin-bottom:9px"></div><div class="ln w60" style="height:9px;border-radius:4px;background:#e7ebf1;margin-bottom:9px"></div><div class="ln w40" style="height:9px;border-radius:4px;background:#e7ebf1"></div></div>
+      </div>
+      <div class="fake-win" style="left:560px; top:110px; width:330px; height:220px;">
+        <div class="bar"><i></i><i></i><i></i></div>
+        <div style="padding:14px"><div class="ln w40" style="height:9px;border-radius:4px;background:#e7ebf1;margin-bottom:9px"></div><div class="ln w80" style="height:9px;border-radius:4px;background:#e7ebf1;margin-bottom:9px"></div></div>
+      </div>
+      <div class="overlay-scrim"></div>
+      <div class="sel-region">
+        <div class="bright">
+          <div class="bar"><i></i><i></i><i></i></div>
+          <div class="ln w80"></div><div class="ln w60"></div><div class="ln w80"></div><div class="ln w40"></div>
+        </div>
+      </div>
+      <div class="sel-dims">1280 × 800</div>
+      <div class="sel-hint"><kbd>Esc</kbd> cancel · <kbd>Shift</kbd> lock axis</div>
+    </div>
+  </div>
+
+  <!-- ============ QUICK ACCESS ============ -->
+  <div class="surface" id="tab-qa">
+    <p class="note"><b>Quick access card</b> (CleanShot's signature). Right after capture, a small floating card lands bottom-right: thumbnail on top, <b>Copy</b> and <b>Save</b> as the two big actions, Annotate and Pin as icons, capture meta beneath. It is the only surface that appears without being asked for — so it stays small, quiet, and dismissible (Esc or auto-hide).</p>
+    <div class="qa-anchor">
+      <div class="qa-card theme-dark" data-theme-root>
+        <div class="qa-thumb">
+          <div class="mini"><div class="ln w60" style="height:8px;border-radius:4px;background:#e7ebf1;margin-bottom:8px"></div><div class="ln w80" style="height:8px;border-radius:4px;background:#e7ebf1;margin-bottom:8px"></div><div class="ln w40" style="height:8px;border-radius:4px;background:#e7ebf1"></div></div>
+        </div>
+        <div class="qa-meta"><script>document.write(hi('Image01',12))</script> 1280 × 800 · 412 KB · just now</div>
+        <div class="qa-actions">
+          <span class="qa-btn"><script>document.write(hi('Copy01',15))</script> Copy</span>
+          <span class="qa-btn primary"><script>document.write(hi('Download04',15))</script> Save</span>
+          <span class="qa-btn icon" title="Annotate"><script>document.write(hi('Pen01',16))</script></span>
+          <span class="qa-btn icon" title="Pin"><script>document.write(hi('Pin',16))</script></span>
+          <span class="qa-btn icon" title="Close (Esc)"><script>document.write(hi('Cancel01',16))</script></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PREFERENCES ============ -->
+  <div class="surface" id="tab-prefs">
+    <p class="note"><b>Preferences.</b> A compact 780 × 540 window: icon + label nav on the left (General, Capture, Editor, Hotkeys, History), one section per page. Rows are label-left / control-right with a hairline between; toggles and hotkey chips are the only custom controls. The hotkey recorder shows the live binding as chips.</p>
+    <div class="surface-frame theme-dark prefs" data-theme-root>
+      <div class="prefs-nav">
+        <div class="app"><span class="dot"></span> Snipsy</div>
+        <div class="nav-item"><script>document.write(hi('Settings01',15))</script> General</div>
+        <div class="nav-item on"><script>document.write(hi('Camera01',15))</script> Capture</div>
+        <div class="nav-item"><script>document.write(hi('Pen01',15))</script> Editor</div>
+        <div class="nav-item"><script>document.write(hi('Type',15))</script> Hotkeys</div>
+        <div class="nav-item"><script>document.write(hi('History',15))</script> History</div>
+      </div>
+      <div class="prefs-body">
+        <h2>Capture</h2>
+        <p class="desc">What happens when you press the capture hotkey.</p>
+        <div class="pref-row">
+          <div><div class="lbl">Region capture shortcut</div><div class="sub">Works from anywhere in Windows.</div></div>
+          <div class="hotkey-chip"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>5</kbd></div>
+        </div>
+        <div class="pref-row">
+          <div><div class="lbl">Include cursor</div><div class="sub">Draw the mouse pointer into captured shots.</div></div>
+          <div class="toggle"></div>
+        </div>
+        <div class="pref-row">
+          <div><div class="lbl">Auto-pin every capture</div><div class="sub">Open the pin window immediately after capture.</div></div>
+          <div class="toggle on"></div>
+        </div>
+        <div class="pref-row">
+          <div><div class="lbl">Show quick access card</div><div class="sub">Floating post-capture card in the screen corner.</div></div>
+          <div class="toggle on"></div>
+        </div>
+        <div class="pref-row">
+          <div><div class="lbl">After-capture default action</div><div class="sub">What the quick access card pre-selects.</div></div>
+          <div class="select-chip">Copy to clipboard <script>document.write('')</script></div>
+        </div>
+        <div class="pref-row" style="border-bottom:0">
+          <div><div class="lbl">Save location</div><div class="sub">Where Save PNG opens by default.</div></div>
+          <div class="select-chip"><script>document.write(hi('FolderOpen',13))</script> Pictures\Snipsy</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// tabs
+document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('on'));
+    document.querySelectorAll('.surface').forEach(s => s.classList.remove('on'));
+    btn.classList.add('on');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('on');
+  });
+});
+// light/dark — flips every mockup surface at once
+const themeBtn = document.getElementById('themeBtn');
+themeBtn.addEventListener('click', () => {
+  const toLight = themeBtn.textContent === 'Light';
+  document.querySelectorAll('[data-theme-root]').forEach(root => {
+    root.classList.toggle('theme-dark', !toLight);
+    root.classList.toggle('theme-light', toLight);
+  });
+  themeBtn.textContent = toLight ? 'Dark' : 'Light';
+});
+</script>
+</body>
+</html>
