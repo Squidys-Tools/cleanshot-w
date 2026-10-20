@@ -20,15 +20,18 @@ use gpui::{
 use crate::clipboard;
 use crate::editor::flatten::flatten_to_png;
 use crate::editor::history::History;
-use crate::editor::hit_test::{Handle, handle_at, hit_test};
-use crate::editor::icons::{IconGlyph, IconPack};
+use crate::editor::hit_test::{
+    ArrowEndpoint, Handle, arrow_endpoint_at, handle_at, hit_test, shapes_intersecting,
+};
+use crate::editor::icons::IconGlyph;
 use crate::editor::model::{
-    ArrowShape, COUNTER_DIAMETER, CounterShape, DEFAULT_TEXT_SIZE, Document, EffectKind,
-    EffectShape, EllipseShape, IconShape, PALETTE, PenShape, Rect, RectShape, STROKE_WIDTHS, Shape,
-    ShapeId, TextShape,
+    ARROW_STROKE_WIDTHS, ArrowShape, COUNTER_DIAMETER, CounterShape, DEFAULT_TEXT_SIZE, Document,
+    EffectKind, EffectShape, EllipseShape, IconShape, PALETTE, PenShape, Rect, RectShape,
+    STROKE_WIDTHS, Shape, ShapeId, TextShape,
 };
 use crate::library;
 use crate::settings::{AppSettings, current_settings};
+use crate::theme::{R_BTN, R_INPUT, R_PANEL, R_PILL, R_THUMB, Theme};
 use crate::{platform, save_dialog};
 
 actions!(
@@ -62,7 +65,8 @@ actions!(
     ]
 );
 
-const TOOLBAR_HEIGHT: f32 = 48.0;
+const TOOLBAR_HEIGHT: f32 = 52.0;
+const TOOLBAR_BOTTOM: f32 = 18.0;
 const SELECTION_BAR_HEIGHT: f32 = 44.0;
 const SIDE_PANEL_WIDTH: f32 = 284.0;
 const ICON_CACHE_MAX_BYTES: usize = 16 * 1024 * 1024;
@@ -94,6 +98,23 @@ enum EditorPanel {
 }
 
 impl Tool {
+    fn icon_slug(self) -> &'static str {
+        match self {
+            Tool::Select => "select",
+            Tool::Rectangle => "rectangle",
+            Tool::Ellipse => "ellipse",
+            Tool::Arrow => "arrow",
+            Tool::Pen => "pen",
+            Tool::Text => "text",
+            Tool::Counter => "counter",
+            Tool::Crop => "crop",
+            Tool::Blur => "blur",
+            Tool::Pixelate => "pixelate",
+            Tool::Redact => "redact",
+            Tool::Icon => "sticker",
+        }
+    }
+
     fn cursor(self) -> gpui::CursorStyle {
         match self {
             Tool::Select => gpui::CursorStyle::Arrow,
@@ -123,6 +144,19 @@ enum Drag {
         id: ShapeId,
         original: Shape,
         start: (f32, f32),
+    },
+    MoveMany {
+        originals: Vec<Shape>,
+        start: (f32, f32),
+    },
+    ArrowEndpoint {
+        id: ShapeId,
+        original: ArrowShape,
+        endpoint: ArrowEndpoint,
+    },
+    Marquee {
+        start: (f32, f32),
+        current: (f32, f32),
     },
     /// Resizing a shape from its original geometry.
     Resize {
@@ -182,7 +216,6 @@ pub struct EditorWindow {
     tool: Tool,
     color_index: usize,
     stroke_width_index: usize,
-    icon_pack: IconPack,
     icon_glyph: IconGlyph,
     panel: Option<EditorPanel>,
     captures: Vec<library::CaptureMetadata>,
@@ -192,9 +225,13 @@ pub struct EditorWindow {
     settings: AppSettings,
     settings_notice: Option<String>,
     capturing_shortcut: bool,
-    icon_image_cache: HashMap<(IconPack, IconGlyph, String, u32), Arc<RenderImage>>,
+    icon_image_cache: HashMap<(IconGlyph, String, u32), Arc<RenderImage>>,
+    thumbs: HashMap<String, Arc<RenderImage>>,
+    history_search: String,
+    history_search_active: bool,
+    search_focus: gpui::FocusHandle,
     icon_image_cache_bytes: usize,
-    selected: Option<ShapeId>,
+    selected: Vec<ShapeId>,
     zoom: f32,
     pan: Point<Pixels>,
     drag: Drag,
@@ -323,6 +360,7 @@ fn open_new(cx: &mut App, prepared: PreparedCapture) -> Result<(), String> {
 impl EditorWindow {
     fn from_prepared(prepared: PreparedCapture, cx: &mut Context<Self>) -> Self {
         let settings = current_settings();
+        crate::theme::set_scheme(cx, settings.theme);
         let (captures, library_error) = match library::list_captures() {
             Ok(captures) => (captures, None),
             Err(error) => (Vec::new(), Some(error)),
@@ -339,7 +377,6 @@ impl EditorWindow {
             tool: Tool::Select,
             color_index: 4,
             stroke_width_index: 1,
-            icon_pack: settings.default_icon_pack,
             icon_glyph: IconGlyph::Star,
             panel: None,
             captures,
@@ -351,7 +388,11 @@ impl EditorWindow {
             capturing_shortcut: false,
             icon_image_cache: HashMap::new(),
             icon_image_cache_bytes: 0,
-            selected: None,
+            thumbs: HashMap::new(),
+            history_search: String::new(),
+            history_search_active: false,
+            search_focus: cx.focus_handle(),
+            selected: Vec::new(),
             zoom: 0.0,
             pan: Point::default(),
             drag: Drag::None,
@@ -384,7 +425,7 @@ impl EditorWindow {
         self.tool = Tool::Select;
         self.color_index = 4;
         self.stroke_width_index = 1;
-        self.selected = None;
+        self.selected.clear();
         self.zoom = 0.0;
         self.pan = Point::default();
         self.drag = Drag::None;
@@ -394,7 +435,7 @@ impl EditorWindow {
         self.crop = None;
         self.source_revision = self.source_revision.wrapping_add(1);
         self.effect_cache = None;
-        self.refresh_library();
+        self.refresh_library(cx);
         window.activate_window();
         window.focus(&self.focus, cx);
         cx.notify();
@@ -438,7 +479,7 @@ pub fn keybindings() -> Vec<KeyBinding> {
         KeyBinding::new("ctrl-[", SendBackwardShape, Some("EditorWindow")),
         KeyBinding::new("=", ZoomIn, Some("EditorWindow")),
         KeyBinding::new("-", ZoomOut, Some("EditorWindow")),
-        KeyBinding::new("0", ZoomFit, Some("EditorWindow")),
+        KeyBinding::new("shift-0", ZoomFit, Some("EditorWindow")),
         KeyBinding::new("ctrl-w", CloseEditor, Some("EditorWindow")),
     ]
 }
@@ -493,11 +534,15 @@ impl EditorWindow {
     }
 
     fn current_stroke_width(&self) -> f32 {
-        STROKE_WIDTHS[self.stroke_width_index]
+        if self.tool == Tool::Arrow {
+            ARROW_STROKE_WIDTHS[self.stroke_width_index]
+        } else {
+            STROKE_WIDTHS[self.stroke_width_index]
+        }
     }
 
     fn selected_index(&self) -> Option<usize> {
-        let selected = self.selected.as_ref()?;
+        let selected = self.selected.first()?;
         self.doc.index_of(selected)
     }
 
@@ -546,12 +591,9 @@ impl EditorWindow {
             });
         if empty {
             self.doc.delete(&id);
-            self.selected = None;
+            self.selected.retain(|selected| selected != &id);
         }
         self.commit();
-        if self.selected.is_none() {
-            self.selected = None;
-        }
     }
 
     fn end_flattened_png(&self) -> Result<Vec<u8>, String> {
@@ -609,38 +651,71 @@ impl EditorWindow {
     }
 
     fn select_mouse_down(&mut self, ix: f32, iy: f32) {
-        // Resize handles win over everything.
-        if let Some(index) = self.selected_index()
-            && let Some(handle) = handle_at(
-                &self.doc.shapes[index].bounds(),
-                ix,
-                iy,
-                HANDLE_SCREEN_SIZE / self.zoom,
-            )
+        if self.selected.len() == 1
+            && let Some(index) = self.selected_index()
         {
-            self.history.begin(&self.doc, None);
-            self.drag = Drag::Resize {
-                id: self.doc.shapes[index].id().clone(),
-                original: self.doc.shapes[index].clone(),
-                handle,
-            };
-            return;
+            match &self.doc.shapes[index] {
+                Shape::Arrow(arrow) => {
+                    if let Some(endpoint) =
+                        arrow_endpoint_at(arrow, ix, iy, HANDLE_SCREEN_SIZE / self.zoom)
+                    {
+                        self.history.begin(&self.doc, None);
+                        self.drag = Drag::ArrowEndpoint {
+                            id: arrow.id.clone(),
+                            original: arrow.clone(),
+                            endpoint,
+                        };
+                        return;
+                    }
+                }
+                shape => {
+                    if let Some(handle) =
+                        handle_at(&shape.bounds(), ix, iy, HANDLE_SCREEN_SIZE / self.zoom)
+                    {
+                        self.history.begin(&self.doc, None);
+                        self.drag = Drag::Resize {
+                            id: shape.id().clone(),
+                            original: shape.clone(),
+                            handle,
+                        };
+                        return;
+                    }
+                }
+            }
         }
         match hit_test(&self.doc, ix, iy, 4.0 / self.zoom) {
             Some(index) => {
                 let id = self.doc.shapes[index].id().clone();
-                if self.selected.as_ref() != Some(&id) {
-                    self.selected = Some(id.clone());
+                if self.selected.len() > 1 && self.selected.contains(&id) {
+                    let originals = self
+                        .selected
+                        .iter()
+                        .filter_map(|selected| {
+                            self.doc
+                                .index_of(selected)
+                                .map(|index| self.doc.shapes[index].clone())
+                        })
+                        .collect();
+                    self.history.begin(&self.doc, None);
+                    self.drag = Drag::MoveMany {
+                        originals,
+                        start: (ix, iy),
+                    };
+                } else {
+                    self.selected = vec![id.clone()];
+                    self.history.begin(&self.doc, None);
+                    self.drag = Drag::Move {
+                        id,
+                        original: self.doc.shapes[index].clone(),
+                        start: (ix, iy),
+                    };
                 }
-                self.history.begin(&self.doc, None);
-                self.drag = Drag::Move {
-                    id,
-                    original: self.doc.shapes[index].clone(),
-                    start: (ix, iy),
-                };
             }
             None => {
-                self.selected = None;
+                self.drag = Drag::Marquee {
+                    start: (ix, iy),
+                    current: (ix, iy),
+                };
             }
         }
     }
@@ -650,7 +725,7 @@ impl EditorWindow {
             && matches!(&self.doc.shapes[index], Shape::Text(_))
         {
             let id = self.doc.shapes[index].id().clone();
-            self.selected = Some(id.clone());
+            self.selected = vec![id.clone()];
             self.history.begin(&self.doc, None);
             self.begin_text_editing(id);
             return;
@@ -666,7 +741,7 @@ impl EditorWindow {
             color: self.current_color(),
         };
         self.doc.shapes.push(Shape::Text(shape));
-        self.selected = Some(id.clone());
+        self.selected = vec![id.clone()];
         self.begin_text_editing(id);
     }
 
@@ -684,7 +759,12 @@ impl EditorWindow {
         }));
         self.commit();
         // Counters stay selected so the palette applies to them.
-        self.selected = self.doc.shapes.last().map(|shape| shape.id().clone());
+        self.selected = self
+            .doc
+            .shapes
+            .last()
+            .map(|shape| vec![shape.id().clone()])
+            .unwrap_or_default();
     }
 
     fn place_icon(&mut self, ix: f32, iy: f32) {
@@ -692,14 +772,18 @@ impl EditorWindow {
         self.history.begin(&self.doc, None);
         self.doc.shapes.push(Shape::Icon(IconShape {
             id: next_shape_id("icon"),
-            pack: self.icon_pack,
             glyph: self.icon_glyph,
             x: ix - size / 2.0,
             y: iy - size / 2.0,
             size,
             color: self.current_color(),
         }));
-        self.selected = self.doc.shapes.last().map(|shape| shape.id().clone());
+        self.selected = self
+            .doc
+            .shapes
+            .last()
+            .map(|shape| vec![shape.id().clone()])
+            .unwrap_or_default();
         self.commit();
     }
 
@@ -761,6 +845,42 @@ impl EditorWindow {
                     shape.translate(ix - start.0, iy - start.1);
                 }
             }
+            Drag::MoveMany { originals, start } => {
+                let (ix, iy) = self.to_image(position);
+                for original in originals {
+                    if let Some(shape) = self
+                        .doc
+                        .shapes
+                        .iter_mut()
+                        .find(|shape| shape.id() == original.id())
+                    {
+                        *shape = original.clone();
+                        shape.translate(ix - start.0, iy - start.1);
+                    }
+                }
+            }
+            Drag::ArrowEndpoint {
+                id,
+                original,
+                endpoint,
+            } => {
+                let (ix, iy) = self.to_image(position);
+                if let Some(Shape::Arrow(arrow)) =
+                    self.doc.shapes.iter_mut().find(|shape| shape.id() == &id)
+                {
+                    *arrow = original;
+                    match endpoint {
+                        ArrowEndpoint::Start => (arrow.x1, arrow.y1) = (ix, iy),
+                        ArrowEndpoint::End => (arrow.x2, arrow.y2) = (ix, iy),
+                    }
+                }
+            }
+            Drag::Marquee { start, .. } => {
+                self.drag = Drag::Marquee {
+                    start,
+                    current: self.to_image(position),
+                };
+            }
             Drag::Resize {
                 id,
                 original,
@@ -815,13 +935,31 @@ impl EditorWindow {
                         color: self.current_color(),
                         stroke_width: self.current_stroke_width(),
                     }));
-                    self.selected = self.doc.shapes.last().map(|shape| shape.id().clone());
+                    self.selected = self
+                        .doc
+                        .shapes
+                        .last()
+                        .map(|shape| vec![shape.id().clone()])
+                        .unwrap_or_default();
                     self.commit();
                 } else {
                     let _ = self.history.cancel();
                 }
             }
-            Drag::Move { .. } | Drag::Resize { .. } => self.commit(),
+            Drag::Move { .. }
+            | Drag::MoveMany { .. }
+            | Drag::ArrowEndpoint { .. }
+            | Drag::Resize { .. } => self.commit(),
+            Drag::Marquee { start, .. } => {
+                let current = self.to_image(event.position);
+                let selection = Rect::new(
+                    start.0.min(current.0),
+                    start.1.min(current.1),
+                    (start.0 - current.0).abs(),
+                    (start.1 - current.1).abs(),
+                );
+                self.selected = shapes_intersecting(&self.doc, &selection);
+            }
             Drag::CropNew { .. } | Drag::CropMove { .. } | Drag::CropResize { .. } => {
                 let _ = event;
             }
@@ -894,7 +1032,12 @@ impl EditorWindow {
             _ => unreachable!("finish_draw only runs for drawing tools"),
         };
         self.doc.shapes.push(shape);
-        self.selected = self.doc.shapes.last().map(|shape| shape.id().clone());
+        self.selected = self
+            .doc
+            .shapes
+            .last()
+            .map(|shape| vec![shape.id().clone()])
+            .unwrap_or_default();
         self.commit();
     }
 
@@ -932,6 +1075,10 @@ impl EditorWindow {
                         .to_string(),
                 );
             }
+            return;
+        }
+        if self.history_search_active {
+            self.handle_search_keystroke(event);
             return;
         }
         if self.text_editing.is_some() {
@@ -1033,6 +1180,40 @@ impl EditorWindow {
         }
     }
 
+    /// Keys while the history search is focused: printable characters and
+    /// backspace filter the rail, Esc exits.
+    fn handle_search_keystroke(&mut self, event: &gpui::KeyDownEvent) {
+        match event.keystroke.key.as_str() {
+            "escape" => {
+                self.history_search.clear();
+                self.history_search_active = false;
+            }
+            "backspace" => {
+                self.history_search.pop();
+            }
+            "enter" => {
+                self.history_search_active = false;
+            }
+            _ => {
+                if event.keystroke.modifiers.platform
+                    || event.keystroke.modifiers.control
+                    || event.keystroke.modifiers.alt
+                {
+                    return;
+                }
+                if let Some(character) = event
+                    .keystroke
+                    .key_char
+                    .as_deref()
+                    .and_then(|key| key.chars().next())
+                    && !character.is_control()
+                {
+                    self.history_search.push(character);
+                }
+            }
+        }
+    }
+
     // ---- actions ---------------------------------------------------------
 
     fn set_tool(&mut self, tool: Tool) {
@@ -1046,7 +1227,7 @@ impl EditorWindow {
         if tool != Tool::Select {
             // Keep the selection visible but drop it when switching to a
             // drawing tool, so the next stroke is not a surprise resize.
-            self.selected = None;
+            self.selected.clear();
         }
     }
 
@@ -1059,12 +1240,6 @@ impl EditorWindow {
         self.panel = next;
     }
 
-    fn set_icon_pack(&mut self, pack: IconPack) {
-        self.icon_pack = pack;
-        self.settings.default_icon_pack = pack;
-        self.persist_settings();
-    }
-
     fn persist_settings(&mut self) {
         self.settings_notice = Some(match crate::settings::write_settings(&self.settings) {
             Ok(()) => "Saved. Cursor applies next capture; restart to apply the hotkey. Startup registration is not wired in this GPUI shell yet.".to_string(),
@@ -1072,20 +1247,53 @@ impl EditorWindow {
         });
     }
 
-    fn refresh_library(&mut self) {
+    fn refresh_library(&mut self, cx: &mut Context<Self>) {
         match library::list_captures() {
             Ok(captures) => {
                 self.captures = captures;
                 self.library_error = None;
+                self.load_thumbnails(cx);
             }
             Err(error) => self.library_error = Some(error),
         }
     }
 
+    /// Decode 128px-wide thumbnails for the newest captures off the main
+    /// thread; rows appear as each thumbnail lands.
+    fn load_thumbnails(&mut self, cx: &mut Context<Self>) {
+        let pending: Vec<String> = self
+            .captures
+            .iter()
+            .filter(|capture| !self.thumbs.contains_key(&capture.id))
+            .take(50)
+            .map(|capture| capture.id.clone())
+            .collect();
+        if pending.is_empty() {
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            for id in pending {
+                let task_id = id.clone();
+                let thumb = cx
+                    .background_executor()
+                    .spawn(async move { decode_thumbnail(&task_id) })
+                    .await;
+                this.update(cx, |editor, cx| {
+                    if let Some(thumb) = thumb {
+                        editor.thumbs.insert(id.clone(), thumb);
+                    }
+                    cx.notify();
+                })
+                .ok();
+            }
+        })
+        .detach();
+    }
+
     fn open_library_capture(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
         let Some(capture) = self.captures.iter().find(|capture| capture.id == id) else {
             self.library_notice = Some("That capture is no longer in the library.".to_string());
-            self.refresh_library();
+            self.refresh_library(cx);
             return;
         };
         let source = EditorSource {
@@ -1093,7 +1301,7 @@ impl EditorWindow {
                 Ok(png) => png,
                 Err(error) => {
                     self.library_notice = Some(error);
-                    self.refresh_library();
+                    self.refresh_library(cx);
                     return;
                 }
             },
@@ -1106,7 +1314,7 @@ impl EditorWindow {
         }
     }
 
-    fn delete_library_capture(&mut self, id: &str) {
+    fn delete_library_capture(&mut self, id: &str, cx: &mut Context<Self>) {
         if self.doc.image_id.as_deref() == Some(id) {
             self.library_notice = Some("Close this capture before deleting it.".to_string());
             self.pending_delete = None;
@@ -1117,16 +1325,19 @@ impl EditorWindow {
             Err(error) => Some(error),
         };
         self.pending_delete = None;
-        self.refresh_library();
+        self.refresh_library(cx);
     }
 
     fn delete_selected(&mut self) {
         if self.text_editing.is_some() {
             return;
         }
-        if let Some(id) = self.selected.take() {
+        if !self.selected.is_empty() {
+            let selected = std::mem::take(&mut self.selected);
             self.history.begin(&self.doc, None);
-            self.doc.delete(&id);
+            for id in selected {
+                self.doc.delete(&id);
+            }
             self.commit();
         }
     }
@@ -1185,8 +1396,12 @@ impl EditorWindow {
         if self.text_editing.is_some() {
             return;
         }
-        let width = self.current_stroke_width();
         if let Some(index) = self.selected_index() {
+            let width = if matches!(&self.doc.shapes[index], Shape::Arrow(_)) {
+                ARROW_STROKE_WIDTHS[width_index]
+            } else {
+                STROKE_WIDTHS[width_index]
+            };
             self.history.begin(&self.doc, None);
             match &mut self.doc.shapes[index] {
                 Shape::Rectangle(shape) => shape.stroke_width = width,
@@ -1215,11 +1430,8 @@ impl EditorWindow {
                     eprintln!("Snipsy: {error}");
                 }
             }
-            if let Some(selected) = &self.selected
-                && self.doc.index_of(selected).is_none()
-            {
-                self.selected = None;
-            }
+            self.selected
+                .retain(|selected| self.doc.index_of(selected).is_some());
             self.persist();
         }
     }
@@ -1240,11 +1452,8 @@ impl EditorWindow {
                     eprintln!("Snipsy: {error}");
                 }
             }
-            if let Some(selected) = &self.selected
-                && self.doc.index_of(selected).is_none()
-            {
-                self.selected = None;
-            }
+            self.selected
+                .retain(|selected| self.doc.index_of(selected).is_some());
             self.persist();
         }
     }
@@ -1317,7 +1526,7 @@ impl EditorWindow {
         }
 
         self.tool = Tool::Select;
-        self.selected = None;
+        self.selected.clear();
         self.fit(viewport);
     }
 
@@ -1362,11 +1571,8 @@ impl EditorWindow {
             }
         }
         self.drag = Drag::None;
-        if let Some(selected) = &self.selected
-            && self.doc.index_of(selected).is_none()
-        {
-            self.selected = None;
-        }
+        self.selected
+            .retain(|selected| self.doc.index_of(selected).is_some());
         self.persist();
     }
 
@@ -1457,16 +1663,17 @@ impl Render for EditorWindow {
             self.fit(viewport);
         }
 
-        let canvas_state = self.canvas_state();
+        let theme = Theme::current(cx);
+        let canvas_state = self.canvas_state(theme.bg_canvas);
         let focus = self.focus.clone();
-        let has_selection = self.selected_index().is_some() && self.text_editing.is_none();
+        let has_selection = !self.selected.is_empty() && self.text_editing.is_none();
         let panel_open = self.panel.is_some();
 
         let mut root = div()
             .id("editor-root")
             .relative()
             .size_full()
-            .bg(rgb(0x1e1e22))
+            .bg(theme.bg_window)
             .key_context(if self.capturing_shortcut {
                 "ShortcutCapture"
             } else if self.text_editing.is_some() {
@@ -1651,13 +1858,13 @@ impl Render for EditorWindow {
                 .size_full(),
             )
             .children(self.text_overlays())
-            .children(self.crop_status())
-            .children(self.redact_warning())
-            .children(self.annotation_warning())
+            .children(self.crop_status(cx))
+            .children(self.redact_warning(cx))
+            .children(self.annotation_warning(cx))
             .child(self.toolbar(cx))
             .children(self.selection_bar(cx))
             .children(self.side_panel(cx))
-            .child(self.zoom_indicator(viewport))
+            .child(self.zoom_indicator(viewport, cx))
             .child({
                 let _ = (canvas_bounds_for_hit, focus);
                 div()
@@ -1679,9 +1886,10 @@ fn in_chrome(
     has_selection: bool,
     panel_open: bool,
 ) -> bool {
-    let bar_height = TOOLBAR_HEIGHT
+    let bar_height = TOOLBAR_BOTTOM
+        + TOOLBAR_HEIGHT
         + if has_selection {
-            SELECTION_BAR_HEIGHT
+            12.0 + SELECTION_BAR_HEIGHT
         } else {
             0.0
         };
@@ -1695,7 +1903,7 @@ impl EditorWindow {
     }
 
     /// Everything the canvas paint closure needs, resolved at render time.
-    fn canvas_state(&mut self) -> CanvasState {
+    fn canvas_state(&mut self, backdrop: gpui::Hsla) -> CanvasState {
         let flattened_preview = self.flattened_preview();
         let shapes = self.doc.shapes.clone();
         let icons = shapes
@@ -1712,6 +1920,7 @@ impl EditorWindow {
             }
         }
         CanvasState {
+            backdrop,
             image: self.image.clone(),
             image_width: self.doc.image_width,
             image_height: self.doc.image_height,
@@ -1722,6 +1931,15 @@ impl EditorWindow {
             flattened_preview,
             preview: self.preview_shape(),
             selected: self.selected.clone(),
+            marquee: match &self.drag {
+                Drag::Marquee { start, current } => Some(Rect::new(
+                    start.0.min(current.0),
+                    start.1.min(current.1),
+                    (start.0 - current.0).abs(),
+                    (start.1 - current.1).abs(),
+                )),
+                _ => None,
+            },
             space_or_pan: self.space_held,
             crop: if self.tool == Tool::Crop {
                 self.crop
@@ -1732,21 +1950,20 @@ impl EditorWindow {
     }
 
     fn cached_icon_image(&mut self, icon: &IconShape) -> Option<Arc<RenderImage>> {
-        self.cached_icon_asset(icon.pack, icon.glyph, &icon.color, icon.size)
+        self.cached_icon_asset(icon.glyph, &icon.color, icon.size)
     }
 
     fn cached_icon_asset(
         &mut self,
-        pack: IconPack,
         glyph: IconGlyph,
         color: &str,
         size: f32,
     ) -> Option<Arc<RenderImage>> {
-        let key = (pack, glyph, color.to_string(), size.round() as u32);
+        let key = (glyph, color.to_string(), size.round() as u32);
         if let Some(image) = self.icon_image_cache.get(&key) {
             return Some(image.clone());
         }
-        let raster = super::icons::rasterize(pack, glyph, color, size).ok()?;
+        let raster = super::icons::rasterize(glyph, color, size).ok()?;
         let image_bytes = raster.as_raw().len();
         if self.icon_image_cache_bytes + image_bytes > ICON_CACHE_MAX_BYTES {
             self.icon_image_cache.clear();
@@ -1956,10 +2173,11 @@ impl EditorWindow {
     }
 
     /// A small hint line while the crop tool is active.
-    fn crop_status(&self) -> Option<gpui::AnyElement> {
+    fn crop_status(&self, cx: &Context<Self>) -> Option<gpui::AnyElement> {
         if self.tool != Tool::Crop {
             return None;
         }
+        let theme = Theme::current(cx);
         Some(
             div()
                 .absolute()
@@ -1967,17 +2185,19 @@ impl EditorWindow {
                 .left(px(12.0))
                 .px_2()
                 .py_1()
-                .rounded(px(4.0))
-                .bg(rgb(0x000000).alpha(0.7))
-                .text_size(px(12.0))
-                .text_color(rgb(0xffffff))
+                .rounded(px(R_INPUT))
+                .bg(theme.bg_toolbar)
+                .border_1()
+                .border_color(theme.hairline)
+                .text_size(px(11.0))
+                .text_color(theme.text_1)
                 .font_family(default_font_family())
                 .child("Drag a region · Ctrl+Enter to crop · Esc to cancel")
                 .into_any_element(),
         )
     }
 
-    fn redact_warning(&self) -> Option<gpui::AnyElement> {
+    fn redact_warning(&self, cx: &Context<Self>) -> Option<gpui::AnyElement> {
         (self.tool == Tool::Redact
             || self.doc.shapes.iter().any(
                 |shape| {
@@ -1985,24 +2205,28 @@ impl EditorWindow {
                 },
             ))
         .then(|| {
+            let theme = Theme::current(cx);
             div()
                 .absolute()
                 .top(px(8.0))
                 .left(px(12.0))
                 .px_2()
                 .py_1()
-                .rounded(px(4.0))
-                .bg(rgb(0x382713).alpha(0.9))
+                .rounded(px(R_INPUT))
+                .bg(theme.bg_toolbar)
+                .border_1()
+                .border_color(theme.danger)
                 .text_size(px(11.0))
-                .text_color(rgb(0xffffff))
+                .text_color(theme.text_1)
                 .font_family(default_font_family())
                 .child("Redaction affects flattened exports only; the original capture remains unchanged.")
                 .into_any_element()
         })
     }
 
-    fn annotation_warning(&self) -> Option<gpui::AnyElement> {
+    fn annotation_warning(&self, cx: &Context<Self>) -> Option<gpui::AnyElement> {
         self.annotation_warning.then(|| {
+            let theme = Theme::current(cx);
             div()
                 .absolute()
                 .top(px(8.0))
@@ -2010,12 +2234,12 @@ impl EditorWindow {
                 .w(px(360.0))
                 .px_3()
                 .py_2()
-                .rounded(px(6.0))
+                .rounded(px(R_PANEL))
                 .border_1()
-                .border_color(rgb(0xe4a756))
-                .bg(rgb(0x382713).alpha(0.95))
-                .text_size(px(12.0))
-                .text_color(rgb(0xffffff))
+                .border_color(theme.danger)
+                .bg(theme.bg_toolbar)
+                .text_size(px(11.0))
+                .text_color(theme.text_1)
                 .font_family(default_font_family())
                 .child("Annotations could not be loaded. Changes won't overwrite the file; use Save PNG to keep a copy.")
                 .into_any_element()
@@ -2028,20 +2252,22 @@ impl EditorWindow {
         title: &'static str,
         cx: &mut Context<Self>,
     ) -> gpui::Div {
+        let theme = Theme::current(cx);
         div()
             .absolute()
-            .top(px(TOOLBAR_HEIGHT))
-            .right(px(0.0))
-            .bottom(px(TOOLBAR_HEIGHT))
+            .top(px(8.0))
+            .right(px(8.0))
+            .bottom(px(TOOLBAR_BOTTOM + TOOLBAR_HEIGHT + 8.0))
             .w(px(SIDE_PANEL_WIDTH))
             .flex()
             .flex_col()
             .gap_2()
-            .px_3()
-            .py_3()
-            .bg(rgb(0x28282e))
-            .border_l_1()
-            .border_color(rgb(0x000000).alpha(0.5))
+            .p_3()
+            .rounded(px(R_PANEL))
+            .bg(theme.bg_surface)
+            .border_1()
+            .border_color(theme.hairline)
+            .shadow(theme.shadow_panel.clone())
             .child(
                 div()
                     .flex()
@@ -2051,18 +2277,47 @@ impl EditorWindow {
                     .child(
                         div()
                             .font_family(default_font_family())
-                            .text_size(px(16.0))
-                            .text_color(rgb(0xffffff))
+                            .text_size(px(15.0))
+                            .text_color(theme.text_1)
                             .child(title),
                     )
-                    .child(small_button("×").on_mouse_down(
-                        MouseButton::Left,
+                    .child(self.icon_button_plain(
+                        format!("history-panel-close-{panel:?}"),
+                        "close",
+                        "Close panel",
+                        &theme,
                         cx.listener(move |this, _: &MouseDownEvent, _, cx| {
                             this.show_panel(panel);
                             cx.notify();
                         }),
                     )),
             )
+    }
+
+    /// A bare 28x28 icon button used inside panels.
+    fn icon_button_plain(
+        &self,
+        element_id: String,
+        slug: &'static str,
+        label: &'static str,
+        theme: &Theme,
+        handler: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+    ) -> gpui::Stateful<gpui::Div> {
+        let debug_selector = element_id.clone();
+        let button = div()
+            .id(gpui::ElementId::Name(element_id.into()))
+            .debug_selector(move || debug_selector.clone())
+            .w(px(28.0))
+            .h(px(28.0))
+            .rounded(px(R_BTN))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor(gpui::CursorStyle::PointingHand)
+            .hover(move |style| style.bg(theme.bg_elevated))
+            .on_mouse_down(MouseButton::Left, handler)
+            .child(crate::ui::chrome_icon(slug, 16.0, theme.text_2));
+        tooltip(button, label)
     }
 
     fn side_panel(&mut self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
@@ -2074,45 +2329,19 @@ impl EditorWindow {
     }
 
     fn icons_panel(&mut self, cx: &mut Context<Self>) -> gpui::Div {
+        let theme = Theme::current(cx);
         let mut panel = self.panel_shell(EditorPanel::Icons, "Icons", cx).child(
             div()
                 .text_size(px(11.0))
-                .text_color(rgb(0xb8b8c0))
-                .child("Pick a pack and symbol, then click the canvas."),
+                .text_color(theme.text_2)
+                .font_family(default_font_family())
+                .child("Pick a symbol, then click the canvas."),
         );
-        let mut packs = div().flex().flex_row().gap_1();
-        for pack in IconPack::ALL {
-            let mut button = div()
-                .flex_1()
-                .px_1()
-                .py_2()
-                .rounded(px(4.0))
-                .text_size(px(10.0))
-                .text_color(rgb(0xffffff))
-                .cursor(gpui::CursorStyle::PointingHand)
-                .child(pack.label())
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
-                        this.set_icon_pack(pack);
-                        this.set_tool(Tool::Icon);
-                        cx.notify();
-                    }),
-                );
-            if self.icon_pack == pack {
-                button = button.bg(rgb(0x3B82F6));
-            } else {
-                button = button.bg(rgb(0x3a3a42));
-            }
-            packs = packs.child(button);
-        }
-        panel = panel.child(packs);
-        let pack = self.icon_pack;
         let color = self.current_color();
         for glyphs in IconGlyph::ALL.chunks(2) {
             let mut row = div().flex().flex_row().gap_1();
             for &glyph in glyphs {
-                let preview = self.cached_icon_asset(pack, glyph, &color, 24.0);
+                let preview = self.cached_icon_asset(glyph, &color, 24.0);
                 let mut button = div()
                     .id(gpui::ElementId::Name(
                         format!("glyph-{}", glyph.label()).into(),
@@ -2120,13 +2349,15 @@ impl EditorWindow {
                     .flex_1()
                     .h(px(34.0))
                     .px_2()
-                    .rounded(px(4.0))
+                    .rounded(px(R_BTN))
                     .flex()
                     .items_center()
                     .gap_2()
-                    .text_size(px(12.0))
-                    .text_color(rgb(0xffffff))
+                    .text_size(px(11.0))
+                    .text_color(theme.text_1)
+                    .font_family(default_font_family())
                     .cursor(gpui::CursorStyle::PointingHand)
+                    .hover(move |style| style.bg(theme.bg_elevated))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |this, _: &MouseDownEvent, _, cx| {
@@ -2140,9 +2371,9 @@ impl EditorWindow {
                 }
                 button = button.child(glyph.label());
                 if self.icon_glyph == glyph {
-                    button = button.bg(rgb(0x3B82F6));
+                    button = button.bg(theme.accent_soft).text_color(theme.accent);
                 } else {
-                    button = button.bg(rgb(0x3a3a42));
+                    button = button.bg(theme.bg_elevated);
                 }
                 row = row.child(button);
             }
@@ -2151,121 +2382,265 @@ impl EditorWindow {
         panel
     }
 
+    /// The history rail (design-spec §5.3): search, day-grouped capture
+    /// rows with thumbnails, and inline actions revealed on hover.
     fn library_panel(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let theme = Theme::current(cx);
         let mut panel = self
-            .panel_shell(EditorPanel::Library, "Capture library", cx)
-            .child(small_button("Refresh").on_mouse_down(
-                MouseButton::Left,
+            .panel_shell(EditorPanel::Library, "History", cx)
+            .child(self.search_field(cx));
+
+        if let Some(error) = &self.library_error {
+            panel = panel.child(panel_message(error, &theme));
+        }
+        if let Some(notice) = &self.library_notice {
+            panel = panel.child(panel_message(notice, &theme));
+        }
+
+        let query = self.history_search.to_lowercase();
+        let matches = |capture: &library::CaptureMetadata| {
+            query.is_empty() || capture.title.to_lowercase().contains(&query)
+        };
+        let visible: Vec<&library::CaptureMetadata> =
+            self.captures.iter().filter(|c| matches(c)).collect();
+        if visible.is_empty() && self.library_error.is_none() {
+            panel = panel.child(panel_message(
+                if query.is_empty() {
+                    "No captures yet."
+                } else {
+                    "No captures match."
+                },
+                &theme,
+            ));
+        }
+
+        let mut entries = div()
+            .id("history-entries")
+            .flex()
+            .flex_col()
+            .flex_1()
+            .overflow_y_scroll();
+        let mut last_group = None::<String>;
+        for capture in visible {
+            let group = day_label(capture.updated_at);
+            if last_group.as_deref() != Some(group.as_str()) {
+                entries = entries.child(
+                    div()
+                        .text_size(px(9.0))
+                        .text_color(theme.text_3)
+                        .font_family(default_font_family())
+                        .pt_1()
+                        .child(group.to_uppercase()),
+                );
+                last_group = Some(group);
+            }
+            entries = entries.child(self.history_row(capture, &theme, cx));
+        }
+        panel.child(entries)
+    }
+
+    /// A 26px search input: click to focus, type to filter, Esc to clear.
+    fn search_field(&self, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let theme = Theme::current(cx);
+        let active = self.history_search_active;
+        let mut field = div()
+            .id("history-search")
+            .h(px(26.0))
+            .w_full()
+            .px_2()
+            .rounded(px(R_INPUT))
+            .bg(theme.bg_elevated)
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_2()
+            .child(crate::ui::chrome_icon("search", 14.0, theme.text_3))
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .text_color(if self.history_search.is_empty() {
+                        theme.text_3
+                    } else {
+                        theme.text_1
+                    })
+                    .font_family(default_font_family())
+                    .flex_1()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(if self.history_search.is_empty() {
+                        "Search history".to_string()
+                    } else {
+                        self.history_search.clone()
+                    }),
+            );
+        if !self.history_search.is_empty() {
+            field = field.child(self.icon_button_plain(
+                "history-search-clear".to_string(),
+                "close",
+                "Clear search",
+                &theme,
                 cx.listener(|this, _: &MouseDownEvent, _, cx| {
-                    this.library_notice = None;
-                    this.refresh_library();
+                    this.history_search.clear();
+                    this.history_search_active = false;
                     cx.notify();
                 }),
             ));
-        if let Some(error) = &self.library_error {
-            panel = panel.child(panel_message(error, 0xe4a756));
         }
-        if let Some(notice) = &self.library_notice {
-            panel = panel.child(panel_message(notice, 0xe4a756));
+        if active {
+            field = field.border_1().border_color(theme.accent);
         }
-        if self.captures.is_empty() && self.library_error.is_none() {
-            panel = panel.child(panel_message("No captures yet.", 0xb8b8c0));
+        field.on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|this, _: &MouseDownEvent, window, cx| {
+                this.history_search_active = true;
+                window.focus(&this.search_focus, cx);
+                cx.notify();
+            }),
+        )
+    }
+
+    fn history_row(
+        &self,
+        capture: &library::CaptureMetadata,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        let id = capture.id.clone();
+        let row_id = id.clone();
+        let current = self.doc.image_id.as_deref() == Some(id.as_str());
+        let pending_delete = self.pending_delete.as_deref() == Some(id.as_str());
+        let dims = format!("{} × {}", capture.image.width, capture.image.height);
+        let time = time_label(capture.updated_at);
+
+        let mut row = div()
+            .id(gpui::ElementId::Name(format!("history-{}", id).into()))
+            .group("history-row")
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_2()
+            .p_1p5()
+            .rounded(px(R_THUMB + 2.0))
+            .cursor(gpui::CursorStyle::PointingHand)
+            .hover(move |style| style.bg(theme.bg_elevated))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _: &MouseDownEvent, window, cx| {
+                    this.open_library_capture(&row_id, window, cx);
+                    cx.notify();
+                }),
+            );
+        if current {
+            row = row.bg(theme.accent_soft);
         }
-        let mut entries = div()
-            .id("library-entries")
+
+        // 64x40 thumbnail (contained) or a flat placeholder.
+        let thumb_area = div()
+            .w(px(64.0))
+            .h(px(40.0))
+            .rounded(px(R_THUMB))
+            .bg(theme.bg_elevated)
+            .flex()
+            .items_center()
+            .justify_center()
+            .overflow_hidden()
+            .child(match self.thumbs.get(&capture.id) {
+                Some(thumb) => {
+                    thumbnail_canvas(thumb.clone(), capture.image.width, capture.image.height)
+                }
+                None => div().into_any_element(),
+            });
+
+        let mut meta = div()
             .flex()
             .flex_col()
-            .gap_2()
             .flex_1()
-            .overflow_y_scroll();
-        for capture in self.captures.iter().cloned() {
-            let id = capture.id.clone();
-            let current = self.doc.image_id.as_deref() == Some(id.as_str());
-            let pending_delete = self.pending_delete.as_deref() == Some(id.as_str());
-            let mut row = div()
-                .flex()
-                .flex_col()
-                .gap_1()
-                .p_2()
-                .rounded(px(5.0))
-                .bg(rgb(0x34343b))
-                .child(
-                    div()
-                        .font_family(default_font_family())
-                        .text_size(px(12.0))
-                        .text_color(rgb(0xffffff))
-                        .overflow_hidden()
-                        .text_ellipsis()
-                        .child(capture.title),
-                )
-                .child(
-                    div()
-                        .text_size(px(10.0))
-                        .text_color(rgb(0xb8b8c0))
-                        .child(format!(
-                            "{} × {}",
-                            capture.image.width, capture.image.height
-                        )),
-                );
-            let mut actions = div().flex().flex_row().gap_1();
-            let open = if current {
-                small_button("Current")
-                    .flex_1()
-                    .opacity(0.45)
-                    .cursor(gpui::CursorStyle::Arrow)
-            } else {
-                let open_id = id.clone();
-                small_button("Open").flex_1().on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, _: &MouseDownEvent, window, cx| {
-                        this.open_library_capture(&open_id, window, cx);
-                        cx.notify();
-                    }),
-                )
-            };
-            actions = actions.child(open);
-            if pending_delete {
-                row = row.child(panel_message(
-                    "Delete this capture and its annotations?",
-                    0xe4a756,
-                ));
-                let confirm_id = id.clone();
-                actions = actions.child(
-                    small_button("Confirm delete")
-                        .bg(rgb(0x9f2d2d))
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(move |this, _: &MouseDownEvent, _, cx| {
-                                this.delete_library_capture(&confirm_id);
-                                cx.notify();
-                            }),
-                        ),
-                );
-                let cancel_id = id.clone();
-                actions = actions.child(small_button("Cancel").on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
-                        if this.pending_delete.as_deref() == Some(cancel_id.as_str()) {
-                            this.pending_delete = None;
-                        }
-                        cx.notify();
-                    }),
-                ));
-            } else if !current {
-                let delete_id = id.clone();
-                actions = actions.child(small_button("Delete").on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
-                        this.pending_delete = Some(delete_id.clone());
-                        this.library_notice = None;
-                        cx.notify();
-                    }),
-                ));
-            }
-            row = row.child(actions);
-            entries = entries.child(row);
+            .overflow_hidden()
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .text_color(theme.text_1)
+                    .font_family(default_font_family())
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(capture.title.clone()),
+            )
+            .child(
+                div()
+                    .text_size(px(9.0))
+                    .text_color(theme.text_3)
+                    .font_family(default_font_family())
+                    .child(format!("{dims} · {time}")),
+            );
+
+        // Inline actions, revealed by hover over the row.
+        let mut actions = div()
+            .flex()
+            .flex_row()
+            .gap_1()
+            .opacity(0.0)
+            .group_hover("history-row", |style| style.opacity(1.0));
+        if current {
+            actions = actions.child(
+                div()
+                    .text_size(px(9.0))
+                    .text_color(theme.accent)
+                    .font_family(default_font_family())
+                    .child("OPEN"),
+            );
+        } else {
+            let open_id = id.clone();
+            actions = actions.child(self.icon_button_plain(
+                format!("history-action-open-{id}"),
+                "pen",
+                "Open in editor",
+                theme,
+                cx.listener(move |this, _: &MouseDownEvent, window, cx| {
+                    this.open_library_capture(&open_id, window, cx);
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            ));
         }
-        panel.child(entries)
+        if pending_delete {
+            let confirm_id = id.clone();
+            actions = actions
+                .child(
+                    div()
+                        .text_size(px(9.0))
+                        .text_color(theme.danger)
+                        .font_family(default_font_family())
+                        .child("Delete?"),
+                )
+                .child(self.icon_button_plain(
+                    format!("history-action-confirm-delete-{id}"),
+                    "delete",
+                    "Confirm delete",
+                    theme,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        this.delete_library_capture(&confirm_id, cx);
+                        cx.stop_propagation();
+                        cx.notify();
+                    }),
+                ));
+        } else if !current {
+            let delete_id = id.clone();
+            actions = actions.child(self.icon_button_plain(
+                format!("history-action-delete-{id}"),
+                "delete",
+                "Delete",
+                theme,
+                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                    this.pending_delete = Some(delete_id.clone());
+                    this.library_notice = None;
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            ));
+        }
+        meta = meta.child(div().flex().flex_row().gap_1().child(actions));
+
+        row.child(thumb_area).child(meta)
     }
 
     fn preferences_panel(&self, cx: &mut Context<Self>) -> gpui::Div {
@@ -2274,21 +2649,26 @@ impl EditorWindow {
         } else {
             format!("Record · {}", self.settings.capture_hotkey)
         };
+        let theme = Theme::current(cx);
         let mut panel = self
             .panel_shell(EditorPanel::Preferences, "Preferences", cx)
-            .child(panel_label("Capture shortcut"))
+            .child(panel_label("Capture shortcut", &theme))
             .child(
                 div()
                     .px_2()
                     .py_2()
-                    .rounded(px(4.0))
+                    .rounded(px(R_INPUT))
                     .bg(if self.capturing_shortcut {
-                        rgb(0x3B82F6)
+                        theme.accent
                     } else {
-                        rgb(0x3a3a42)
+                        theme.bg_elevated
                     })
                     .text_size(px(12.0))
-                    .text_color(rgb(0xffffff))
+                    .text_color(if self.capturing_shortcut {
+                        gpui::white()
+                    } else {
+                        theme.text_1
+                    })
                     .cursor(gpui::CursorStyle::PointingHand)
                     .child(shortcut_label)
                     .on_mouse_down(
@@ -2303,6 +2683,7 @@ impl EditorWindow {
             .child(toggle_preference(
                 "Include cursor in captures",
                 self.settings.include_cursor,
+                &theme,
                 cx.listener(|this, _: &MouseDownEvent, _, cx| {
                     this.settings.include_cursor = !this.settings.include_cursor;
                     this.persist_settings();
@@ -2312,60 +2693,136 @@ impl EditorWindow {
             .child(toggle_preference(
                 "Launch at Windows startup",
                 self.settings.launch_at_startup,
+                &theme,
                 cx.listener(|this, _: &MouseDownEvent, _, cx| {
                     this.settings.launch_at_startup = !this.settings.launch_at_startup;
                     this.persist_settings();
                     cx.notify();
                 }),
             ))
-            .child(panel_label("Default icon pack"));
-        let mut packs = div().flex().flex_col().gap_1();
-        for pack in IconPack::ALL {
-            let mut button = small_button(pack.label()).on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
-                    this.set_icon_pack(pack);
-                    cx.notify();
+            .child(panel_label("Theme", &theme))
+            .child(theme_switch(
+                self.settings.theme,
+                &theme,
+                cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                    this.toggle_theme(cx);
                 }),
-            );
-            if self.settings.default_icon_pack == pack {
-                button = button.bg(rgb(0x3B82F6));
-            }
-            packs = packs.child(button);
-        }
-        panel = panel.child(packs);
+            ));
         if let Some(notice) = &self.settings_notice {
-            panel = panel.child(panel_message(notice, 0xe4a756));
+            panel = panel.child(panel_message(notice, &theme));
         }
-        panel.child(div().text_size(px(10.0)).text_color(rgb(0xb8b8c0)).child(
-            "Cursor applies to the next capture. Restart to apply the hotkey. Startup is saved but not registered by the GPUI shell yet.",
-        ))
+        panel.child(
+            div()
+                .text_size(px(10.0))
+                .text_color(theme.text_3)
+                .font_family(default_font_family())
+                .child(
+                    "Cursor applies to the next capture. Restart to apply the hotkey. Startup is saved but not registered by the GPUI shell yet.",
+                ),
+        )
     }
 
-    fn zoom_indicator(&self, viewport: Size<Pixels>) -> gpui::AnyElement {
-        let _ = viewport;
+    fn toggle_theme(&mut self, cx: &mut Context<Self>) {
+        self.settings.theme = self.settings.theme.toggled();
+        crate::theme::set_scheme(cx, self.settings.theme);
+        self.persist_settings();
+        cx.notify();
+    }
+
+    fn zoom_indicator(&self, viewport: Size<Pixels>, cx: &mut Context<Self>) -> gpui::AnyElement {
         let percent = (self.zoom * 100.0).round() as i32;
         let right = if self.panel.is_some() {
             SIDE_PANEL_WIDTH + 12.0
         } else {
             12.0
         };
+        let theme = Theme::current(cx);
+        let button_hover = theme.bg_elevated;
+        let button_text = theme.text_1;
+        let zoom_out = div()
+            .id("zoom-out")
+            .debug_selector(|| "zoom-out".to_string())
+            .w(px(24.0))
+            .h(px(24.0))
+            .rounded(px(R_BTN))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor(gpui::CursorStyle::PointingHand)
+            .hover(move |style| style.bg(button_hover))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                    this.zoom_at(1.0 / 1.2, size_to_point(viewport));
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            )
+            .child(crate::ui::chrome_icon("zoom_out", 16.0, button_text));
+        let zoom_in = div()
+            .id("zoom-in")
+            .debug_selector(|| "zoom-in".to_string())
+            .w(px(24.0))
+            .h(px(24.0))
+            .rounded(px(R_BTN))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor(gpui::CursorStyle::PointingHand)
+            .hover(move |style| style.bg(button_hover))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                    this.zoom_at(1.2, size_to_point(viewport));
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            )
+            .child(crate::ui::chrome_icon("zoom_in", 16.0, button_text));
+        let fit = div()
+            .id("zoom-fit")
+            .debug_selector(|| "zoom-fit".to_string())
+            .px_1()
+            .text_size(px(10.0))
+            .text_color(theme.text_2)
+            .font_family(default_font_family())
+            .cursor(gpui::CursorStyle::PointingHand)
+            .hover(move |style| style.text_color(button_text))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                    this.fit(viewport);
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            )
+            .child("Fit · ⇧0");
         div()
             .absolute()
             .right(px(right))
-            .bottom(px(TOOLBAR_HEIGHT + 8.0))
-            .px_2()
+            .top(px(12.0))
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap_1()
+            .px_1()
             .py_1()
-            .rounded(px(4.0))
-            .bg(rgb(0x000000).alpha(0.6))
-            .text_size(px(12.0))
-            .text_color(rgb(0xffffff))
+            .rounded(px(R_INPUT))
+            .bg(theme.bg_toolbar)
+            .border_1()
+            .border_color(theme.hairline)
+            .text_size(px(11.0))
+            .text_color(theme.text_2)
             .font_family(default_font_family())
-            .child(format!("{percent}% · 0 to fit"))
+            .child(crate::ui::with_tooltip(zoom_out, "Zoom out (-)"))
+            .child(format!("{percent}%"))
+            .child(crate::ui::with_tooltip(zoom_in, "Zoom in (+)"))
+            .child(fit)
             .into_any_element()
     }
 
     fn toolbar(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let theme = Theme::current(cx);
         let tools = [
             (Tool::Select, "1", "Select"),
             (Tool::Rectangle, "2", "Rectangle"),
@@ -2377,154 +2834,228 @@ impl EditorWindow {
             (Tool::Crop, "8", "Crop"),
             (Tool::Blur, "B", "Blur"),
             (Tool::Pixelate, "M", "Pixelate"),
-            (Tool::Redact, "⇧R", "Redact"),
+            (Tool::Redact, "Shift+R", "Redact"),
             (Tool::Icon, "I", "Icon"),
         ];
-        let mut bar = div()
-            .absolute()
-            .left(px(0.0))
-            .right(px(0.0))
-            .bottom(px(0.0))
-            .h(px(TOOLBAR_HEIGHT))
+
+        let mut pill = div()
             .flex()
             .flex_row()
             .items_center()
-            .px_2()
             .gap_1()
-            .bg(rgb(0x2b2b31))
-            .border_t_1()
-            .border_color(rgb(0x000000).alpha(0.4));
+            .h(px(TOOLBAR_HEIGHT))
+            .px(px(8.0))
+            .rounded(px(R_PILL))
+            .bg(theme.bg_toolbar)
+            .border_1()
+            .border_color(theme.hairline)
+            .shadow(theme.shadow_floating.clone());
 
         for (tool, shortcut, label) in tools {
-            let active = self.tool == tool;
-            let mut button = div()
-                .id(gpui::ElementId::Name(label.to_string().into()))
-                .w(px(38.0))
-                .h(px(38.0))
-                .rounded(px(6.0))
-                .flex()
-                .items_center()
-                .justify_center()
-                .relative()
-                .cursor(gpui::CursorStyle::PointingHand)
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
-                        this.set_tool(tool);
-                        cx.notify();
-                    }),
-                )
-                .child(icon_for(tool, active))
-                .child(
-                    div()
-                        .absolute()
-                        .right(px(2.0))
-                        .bottom(px(1.0))
-                        .text_size(px(9.0))
-                        .text_color(rgb(0xffffff).alpha(0.45))
-                        .font_family(default_font_family())
-                        .child(shortcut),
-                );
-            if active {
-                button = button.bg(rgb(0x3B82F6));
-            }
-            bar = bar.child(button);
+            pill = pill.child(self.tool_button(tool, shortcut, label, &theme, cx));
         }
 
-        bar = bar
-            .child(self.panel_button("Icons", EditorPanel::Icons, cx))
-            .child(self.panel_button("Library", EditorPanel::Library, cx))
-            .child(self.panel_button("Settings", EditorPanel::Preferences, cx));
-
-        // Export actions at the right end of the bar.
-        bar = bar
-            .child(div().flex_1())
-            .child(
-                small_button("Undo")
-                    .opacity(if self.history.can_undo() { 1.0 } else { 0.45 })
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|this, _: &MouseDownEvent, _, cx| {
-                            this.undo();
-                            cx.notify();
-                        }),
-                    ),
-            )
-            .child(
-                small_button("Redo")
-                    .opacity(if self.history.can_redo() { 1.0 } else { 0.45 })
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|this, _: &MouseDownEvent, _, cx| {
-                            this.redo();
-                            cx.notify();
-                        }),
-                    ),
-            )
-            .child(small_button("Copy").on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _: &MouseDownEvent, _, _| {
-                    this.copy_flattened();
+        pill = pill
+            .child(separator(&theme))
+            .child(self.action_icon_button(
+                "undo",
+                "Undo",
+                !self.history.can_undo(),
+                false,
+                &theme,
+                cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                    this.undo();
+                    cx.notify();
                 }),
             ))
-            .child(small_button("Save PNG").on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _: &MouseDownEvent, _, _| {
-                    this.save_flattened();
+            .child(self.action_icon_button(
+                "redo",
+                "Redo",
+                !self.history.can_redo(),
+                false,
+                &theme,
+                cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                    this.redo();
+                    cx.notify();
                 }),
-            ));
-        bar.into_any_element()
+            ))
+            .child(separator(&theme))
+            .child(self.panel_icon_button("history", "History", EditorPanel::Library, &theme, cx))
+            .child(self.panel_icon_button(
+                "preferences",
+                "Preferences",
+                EditorPanel::Preferences,
+                &theme,
+                cx,
+            ))
+            .child(separator(&theme))
+            .child(
+                text_button("Copy", false, &theme)
+                    .id("copy-button")
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _: &MouseDownEvent, _, _| {
+                            this.copy_flattened();
+                        }),
+                    ),
+            )
+            .child(
+                text_button("Save PNG", true, &theme)
+                    .id("save-button")
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _: &MouseDownEvent, _, _| {
+                            this.save_flattened();
+                        }),
+                    ),
+            );
+
+        let mut toolbar = div()
+            .debug_selector(|| "editor-toolbar".to_string())
+            .absolute()
+            .left(px(8.0))
+            .right(px(8.0))
+            .bottom(px(TOOLBAR_BOTTOM))
+            .flex()
+            .justify_center();
+        toolbar.style().overflow.x = Some(gpui::Overflow::Scroll);
+        toolbar.style().overflow.y = Some(gpui::Overflow::Hidden);
+        toolbar.child(pill).into_any_element()
     }
 
-    fn panel_button(
+    /// A 36x36 tool button: HugeIcons icon, micro shortcut digit in the
+    /// bottom-right, tooltip on hover.
+    fn tool_button(
         &self,
+        tool: Tool,
+        shortcut: &'static str,
+        label: &'static str,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        let active = self.tool == tool;
+        let icon_color = if active { theme.accent } else { theme.text_1 };
+        let mut button = div()
+            .id(gpui::ElementId::Name(tool.icon_slug().into()))
+            .w(px(36.0))
+            .h(px(36.0))
+            .rounded(px(R_BTN))
+            .flex()
+            .items_center()
+            .justify_center()
+            .relative()
+            .cursor(gpui::CursorStyle::PointingHand)
+            .hover(move |style| style.bg(theme.bg_elevated))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                    this.set_tool(tool);
+                    cx.notify();
+                }),
+            )
+            .child(crate::ui::chrome_icon(tool.icon_slug(), 20.0, icon_color));
+        if active {
+            button = button.bg(theme.accent_soft);
+        }
+        if shortcut.chars().count() == 1 {
+            button = button.child(
+                div()
+                    .absolute()
+                    .right(px(3.0))
+                    .bottom(px(2.0))
+                    .text_size(px(9.0))
+                    .text_color(theme.text_3)
+                    .font_family(default_font_family())
+                    .child(shortcut),
+            );
+        }
+        tooltip(button, tooltip_text(label, Some(shortcut)))
+    }
+
+    /// A 36x36 icon button for bar actions (undo, redo, panel toggles).
+    #[allow(clippy::too_many_arguments)]
+    fn action_icon_button(
+        &self,
+        slug: &'static str,
+        label: &'static str,
+        disabled: bool,
+        active: bool,
+        theme: &Theme,
+        handler: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+    ) -> gpui::Stateful<gpui::Div> {
+        let icon_color = if active { theme.accent } else { theme.text_1 };
+        let mut button = div()
+            .id(gpui::ElementId::Name(label.to_lowercase().into()))
+            .w(px(36.0))
+            .h(px(36.0))
+            .rounded(px(R_BTN))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor(gpui::CursorStyle::PointingHand)
+            .hover(move |style| style.bg(theme.bg_elevated))
+            .on_mouse_down(MouseButton::Left, handler)
+            .child(crate::ui::chrome_icon(slug, 18.0, icon_color));
+        if disabled {
+            button = button.opacity(0.45);
+        }
+        if active {
+            button = button.bg(theme.accent_soft);
+        }
+        tooltip(button, tooltip_text(label, None))
+    }
+
+    fn panel_icon_button(
+        &self,
+        slug: &'static str,
         label: &'static str,
         panel: EditorPanel,
+        theme: &Theme,
         cx: &mut Context<Self>,
-    ) -> gpui::Div {
-        let active = self.panel == Some(panel);
-        let mut button = small_button(label).on_mouse_down(
-            MouseButton::Left,
+    ) -> gpui::Stateful<gpui::Div> {
+        self.action_icon_button(
+            slug,
+            label,
+            false,
+            self.panel == Some(panel),
+            theme,
             cx.listener(move |this, _: &MouseDownEvent, _, cx| {
                 this.show_panel(panel);
                 cx.notify();
             }),
-        );
-        if active {
-            button = button.bg(rgb(0x3B82F6));
-        }
-        button
+        )
     }
 
-    /// Color / width / z-order / delete bar shown while a shape is selected.
+    /// Color / width / z-order / delete strip shown while a shape is
+    /// selected: a floating pill 12 px above the toolbar (spec §5.2).
     fn selection_bar(&self, cx: &mut Context<Self>) -> Option<gpui::AnyElement> {
-        if self.selected_index().is_none() || self.text_editing.is_some() {
+        if self.selected.len() != 1 || self.text_editing.is_some() {
             return None;
         }
+        let theme = Theme::current(cx);
         let selected_color_index = self.selected_color_index();
         let selected_width_index = self.selected_width_index();
-        let mut bar = div()
-            .absolute()
-            .left(px(0.0))
-            .right(px(0.0))
-            .bottom(px(TOOLBAR_HEIGHT))
-            .h(px(SELECTION_BAR_HEIGHT))
+
+        let mut pill = div()
             .flex()
             .flex_row()
             .items_center()
-            .px_3()
             .gap_2()
-            .bg(rgb(0x2b2b31).alpha(0.95))
-            .border_t_1()
-            .border_color(rgb(0x000000).alpha(0.4));
+            .h(px(SELECTION_BAR_HEIGHT))
+            .px(px(8.0))
+            .rounded(px(R_PILL))
+            .bg(theme.bg_toolbar)
+            .border_1()
+            .border_color(theme.hairline)
+            .shadow(theme.shadow_floating.clone());
 
         for (index, color) in PALETTE.iter().enumerate() {
             let swatch = rgb(parse_hex(color));
             let mut chip = div()
                 .id(gpui::ElementId::Name(format!("color-{index}").into()))
-                .w(px(20.0))
-                .h(px(20.0))
-                .rounded(px(4.0))
+                .w(px(18.0))
+                .h(px(18.0))
+                .rounded_full()
                 .bg(swatch)
                 .cursor(gpui::CursorStyle::PointingHand)
                 .on_mouse_down(
@@ -2535,29 +3066,29 @@ impl EditorWindow {
                     }),
                 );
             if selected_color_index == Some(index) {
-                chip = chip.border_2().border_color(rgb(0xffffff));
+                chip = chip.border_2().border_color(theme.accent);
+            } else {
+                chip = chip.border_1().border_color(theme.hairline_strong);
             }
-            bar = bar.child(chip);
+            pill = pill.child(chip);
         }
 
-        bar = bar.child(div().w(px(8.0)).h(px(0.0)));
-
         if selected_width_index.is_some() {
+            pill = pill.child(separator(&theme));
             for (index, label) in ["S", "M", "L", "XL"].iter().enumerate() {
                 let active = selected_width_index == Some(index);
                 let mut chip = div()
                     .id(gpui::ElementId::Name(format!("width-{index}").into()))
-                    .px_2()
-                    .py_1()
-                    .rounded(px(4.0))
+                    .w(px(24.0))
+                    .h(px(24.0))
+                    .rounded(px(R_INPUT))
+                    .flex()
+                    .items_center()
+                    .justify_center()
                     .cursor(gpui::CursorStyle::PointingHand)
-                    .text_size(px(12.0))
+                    .text_size(px(11.0))
                     .font_family(default_font_family())
-                    .text_color(if active {
-                        rgb(0xffffff)
-                    } else {
-                        rgb(0xffffff).alpha(0.55)
-                    })
+                    .text_color(if active { theme.text_1 } else { theme.text_3 })
                     .child(*label)
                     .on_mouse_down(
                         MouseButton::Left,
@@ -2567,36 +3098,85 @@ impl EditorWindow {
                         }),
                     );
                 if active {
-                    chip = chip.bg(rgb(0x3B82F6));
+                    chip = chip.bg(theme.accent_soft).text_color(theme.accent);
                 }
-                bar = bar.child(chip);
+                pill = pill.child(chip);
             }
         }
 
-        bar = bar
-            .child(div().flex_1())
-            .child(small_button("◀ Back").on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _: &MouseDownEvent, _, cx| {
-                    this.reorder_selected(false);
-                    cx.notify();
-                }),
-            ))
-            .child(small_button("Forward ▶").on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _: &MouseDownEvent, _, cx| {
-                    this.reorder_selected(true);
-                    cx.notify();
-                }),
-            ))
-            .child(small_button("× Delete").on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _: &MouseDownEvent, _, cx| {
-                    this.delete_selected();
-                    cx.notify();
-                }),
-            ));
-        Some(bar.into_any_element())
+        let z_order = self.selected_index().is_some();
+        if z_order {
+            pill = pill
+                .child(separator(&theme))
+                .child(self.selection_icon_button(
+                    "send_backward",
+                    "Send backward",
+                    &theme,
+                    cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                        this.reorder_selected(false);
+                        cx.notify();
+                    }),
+                ))
+                .child(self.selection_icon_button(
+                    "bring_forward",
+                    "Bring forward",
+                    &theme,
+                    cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                        this.reorder_selected(true);
+                        cx.notify();
+                    }),
+                ))
+                .child(separator(&theme))
+                .child(self.selection_icon_button(
+                    "delete",
+                    "Delete",
+                    &theme,
+                    cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                        this.delete_selected();
+                        cx.notify();
+                    }),
+                ));
+        }
+
+        Some(
+            div()
+                .absolute()
+                .left(px(0.0))
+                .right(px(0.0))
+                .bottom(px(TOOLBAR_BOTTOM + TOOLBAR_HEIGHT + 12.0))
+                .flex()
+                .justify_center()
+                .child(pill)
+                .into_any_element(),
+        )
+    }
+
+    /// An icon button inside the selection strip; delete is tinted danger.
+    fn selection_icon_button(
+        &self,
+        slug: &'static str,
+        label: &'static str,
+        theme: &Theme,
+        handler: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+    ) -> gpui::Stateful<gpui::Div> {
+        let icon_color = if slug == "delete" {
+            theme.danger
+        } else {
+            theme.text_1
+        };
+        let button = div()
+            .id(gpui::ElementId::Name(slug.into()))
+            .w(px(32.0))
+            .h(px(32.0))
+            .rounded(px(R_BTN))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor(gpui::CursorStyle::PointingHand)
+            .hover(move |style| style.bg(theme.bg_elevated))
+            .on_mouse_down(MouseButton::Left, handler)
+            .child(crate::ui::chrome_icon(slug, 18.0, icon_color));
+        tooltip(button, label)
     }
 
     /// The palette index of the selected shape's color, if it matches one.
@@ -2625,41 +3205,92 @@ impl EditorWindow {
             Shape::Pen(shape) => shape.stroke_width,
             Shape::Text(_) | Shape::Counter(_) | Shape::Icon(_) | Shape::Effect(_) => return None,
         };
-        STROKE_WIDTHS
+        let widths = if matches!(&self.doc.shapes[index], Shape::Arrow(_)) {
+            &ARROW_STROKE_WIDTHS
+        } else {
+            &STROKE_WIDTHS
+        };
+        widths
             .iter()
-            .position(|candidate| (*candidate - width).abs() < 0.01)
+            .enumerate()
+            .min_by(|(_, left), (_, right)| {
+                (*left - width).abs().total_cmp(&(*right - width).abs())
+            })
+            .map(|(index, _)| index)
     }
 }
 
-fn small_button(label: &'static str) -> gpui::Div {
-    div()
-        .px_2()
-        .py_1()
-        .rounded(px(4.0))
-        .bg(rgb(0x3a3a42))
+/// A 1px vertical hairline between toolbar groups.
+fn separator(theme: &Theme) -> gpui::Div {
+    div().w(px(1.0)).h(px(24.0)).bg(theme.hairline_strong)
+}
+
+/// Attach a hover tooltip to a stateful div.
+fn tooltip(element: gpui::Stateful<gpui::Div>, text: &'static str) -> gpui::Stateful<gpui::Div> {
+    crate::ui::with_tooltip(element, text)
+}
+
+fn tooltip_text(label: &'static str, shortcut: Option<&'static str>) -> &'static str {
+    match (label, shortcut) {
+        ("Select", Some("1")) => "Select (1)",
+        ("Rectangle", Some("2")) => "Rectangle (2)",
+        ("Ellipse", Some("3")) => "Ellipse (3)",
+        ("Arrow", Some("4")) => "Arrow (4)",
+        ("Pen", Some("5")) => "Pen (5)",
+        ("Text", Some("6")) => "Text (6)",
+        ("Counter", Some("7")) => "Counter (7)",
+        ("Crop", Some("8")) => "Crop (8)",
+        ("Blur", Some("B")) => "Blur (B)",
+        ("Pixelate", Some("M")) => "Pixelate (M)",
+        ("Redact", Some("Shift+R")) => "Redact (Shift+R)",
+        ("Icon", Some("I")) => "Icon (I)",
+        _ => label,
+    }
+}
+
+/// A toolbar text button (Copy, Save PNG).
+fn text_button(label: &'static str, accent_fill: bool, theme: &Theme) -> gpui::Div {
+    let mut button = div()
+        .h(px(36.0))
+        .px(px(12.0))
+        .rounded(px(R_BTN))
+        .flex()
+        .items_center()
+        .gap_1()
         .text_size(px(12.0))
-        .text_color(rgb(0xffffff))
         .font_family(default_font_family())
         .cursor(gpui::CursorStyle::PointingHand)
-        .child(label)
+        .child(label);
+    if accent_fill {
+        button = button
+            .bg(theme.accent)
+            .text_color(gpui::white())
+            .child(crate::ui::chrome_icon("save", 16.0, gpui::white()));
+    } else {
+        button = button
+            .text_color(theme.text_1)
+            .hover(move |style| style.bg(theme.bg_elevated));
+    }
+    button
 }
 
-fn panel_label(label: &'static str) -> gpui::Div {
+fn panel_label(label: &'static str, theme: &Theme) -> gpui::Div {
     div()
         .font_family(default_font_family())
         .text_size(px(12.0))
-        .text_color(rgb(0xd0d0d6))
+        .text_color(theme.text_2)
         .child(label)
 }
 
-fn panel_message(message: &str, color: u32) -> gpui::Div {
+fn panel_message(message: &str, theme: &Theme) -> gpui::Div {
     div()
         .px_2()
         .py_2()
-        .rounded(px(4.0))
-        .bg(rgb(0x3a3a42))
+        .rounded(px(R_INPUT))
+        .bg(theme.bg_elevated)
         .text_size(px(11.0))
-        .text_color(rgb(color))
+        .text_color(theme.text_2)
+        .font_family(default_font_family())
         .child(message.to_string())
 }
 
@@ -2687,23 +3318,75 @@ fn icon_preview(image: Arc<RenderImage>) -> gpui::AnyElement {
 fn toggle_preference(
     label: &'static str,
     enabled: bool,
+    theme: &Theme,
     listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
-) -> gpui::Div {
+) -> gpui::Stateful<gpui::Div> {
+    // Toggle: a 34x20 track with a knob, accent when on (spec §5.6).
+    let knob_color = if enabled { gpui::white() } else { theme.text_3 };
     div()
+        .id(gpui::ElementId::Name(label.to_lowercase().into()))
         .flex()
         .flex_row()
         .items_center()
         .justify_between()
         .px_2()
-        .py_2()
-        .rounded(px(4.0))
-        .bg(rgb(0x34343b))
+        .py_1()
+        .rounded(px(R_INPUT))
+        .bg(theme.bg_elevated)
         .text_size(px(11.0))
-        .text_color(rgb(0xffffff))
+        .text_color(theme.text_1)
+        .font_family(default_font_family())
         .cursor(gpui::CursorStyle::PointingHand)
+        .hover(move |style| style.bg(theme.hairline_strong))
         .child(label)
-        .child(if enabled { "On" } else { "Off" })
+        .child(
+            div()
+                .w(px(34.0))
+                .h(px(20.0))
+                .rounded_full()
+                .bg(if enabled {
+                    theme.accent
+                } else {
+                    theme.hairline_strong
+                })
+                .border_1()
+                .border_color(theme.hairline_strong)
+                .flex()
+                .items_center()
+                .px(px(2.0))
+                .child(div().w(px(16.0)).h(px(14.0)).rounded_full().bg(knob_color))
+                .when(enabled, |track| track.justify_end())
+                .when(!enabled, |track| track.justify_start()),
+        )
         .on_mouse_down(MouseButton::Left, listener)
+}
+
+/// A Dark / Light two-chip switch for the preferences panel.
+fn theme_switch(
+    current: crate::theme::Scheme,
+    theme: &Theme,
+    listener: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+) -> gpui::Div {
+    let mut row = div().flex().flex_row().gap_1();
+    for scheme in [crate::theme::Scheme::Dark, crate::theme::Scheme::Light] {
+        let active = scheme == current;
+        let mut chip = div()
+            .id(gpui::ElementId::Name(format!("theme-{:?}", scheme).into()))
+            .px_2()
+            .py_1()
+            .rounded(px(R_INPUT))
+            .text_size(px(11.0))
+            .font_family(default_font_family())
+            .cursor(gpui::CursorStyle::PointingHand)
+            .child(scheme.label());
+        if active {
+            chip = chip.bg(theme.accent_soft).text_color(theme.accent);
+        } else {
+            chip = chip.bg(theme.bg_elevated).text_color(theme.text_1);
+        }
+        row = row.child(chip);
+    }
+    row.on_mouse_down(MouseButton::Left, listener)
 }
 
 fn default_font_family() -> &'static str {
@@ -2715,6 +3398,112 @@ fn default_font_family() -> &'static str {
     {
         "DejaVu Sans"
     }
+}
+
+/// Decode a library capture into a 128px-wide thumbnail for the rail.
+fn decode_thumbnail(id: &str) -> Option<Arc<RenderImage>> {
+    let png = library::read_image_png(id).ok()?;
+    let decoded = image::ImageReader::new(std::io::Cursor::new(&png))
+        .with_guessed_format()
+        .ok()?
+        .decode()
+        .ok()?
+        .into_rgba8();
+    let (width, height) = decoded.dimensions();
+    let scale = 128.0 / width.max(1) as f32;
+    let thumb = if scale < 1.0 {
+        image::imageops::resize(
+            &decoded,
+            128,
+            ((height as f32) * scale).round().max(1.0) as u32,
+            image::imageops::FilterType::Triangle,
+        )
+    } else {
+        decoded
+    };
+    Some(crate::pin::rgba_to_render_image(thumb))
+}
+
+/// A contain-fit thumbnail painter for a rail row.
+fn thumbnail_canvas(thumb: Arc<RenderImage>, width: u32, height: u32) -> gpui::AnyElement {
+    canvas(
+        move |_, _, _| thumb.clone(),
+        move |bounds, thumb, window, _| {
+            let (w, h) = (width.max(1) as f32, height.max(1) as f32);
+            let fit = (bounds.size.width / px(w))
+                .min(bounds.size.height / px(h))
+                .min(1.0);
+            let draw = size(px(w * fit), px(h * fit));
+            let image_bounds = Bounds {
+                origin: gpui::point(
+                    bounds.origin.x + (bounds.size.width - draw.width) / 2.0,
+                    bounds.origin.y + (bounds.size.height - draw.height) / 2.0,
+                ),
+                size: draw,
+            };
+            window
+                .paint_image(
+                    bounds,
+                    image_bounds,
+                    Corners::all(px(R_THUMB)),
+                    thumb.clone(),
+                    0,
+                    false,
+                )
+                .ok();
+        },
+    )
+    .w_full()
+    .h_full()
+    .into_any_element()
+}
+
+/// Day group header for a capture timestamp (UTC; no local-tz in std).
+fn day_label(millis: i64) -> String {
+    let (year, month, day) = civil_from_days(millis.div_euclid(86_400_000));
+    let today = {
+        let now = library::now_millis();
+        let (y, m, d) = civil_from_days(now.div_euclid(86_400_000));
+        (y, m, d)
+    };
+    let yesterday = {
+        let (y, m, d) = civil_from_days(library::now_millis().div_euclid(86_400_000) - 1);
+        (y, m, d)
+    };
+    match (year, month, day) {
+        _ if (year, month, day) == today => "Today".to_string(),
+        _ if (year, month, day) == yesterday => "Yesterday".to_string(),
+        _ => format!(
+            "{} {:02}, {}",
+            MONTHS[(month - 1).clamp(1, 12) as usize - 1],
+            day,
+            year
+        ),
+    }
+}
+
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/// Days-since-epoch → (year, month, day), Howard Hinnant's civil_from_days.
+fn civil_from_days(days: i64) -> (i64, i64, i64) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+/// HH:MM for a capture timestamp (UTC; no local-tz in std).
+fn time_label(millis: i64) -> String {
+    let seconds = millis.rem_euclid(86_400_000) / 1000;
+    format!("{:02}:{:02}", seconds / 3600, (seconds % 3600) / 60)
 }
 
 fn parse_hex(color: &str) -> u32 {
@@ -2729,6 +3518,7 @@ fn parse_gpui_color(color: &str) -> gpui::Hsla {
 // ---- canvas painting -----------------------------------------------------
 
 struct CanvasState {
+    backdrop: gpui::Hsla,
     image: Arc<RenderImage>,
     image_width: u32,
     image_height: u32,
@@ -2738,18 +3528,19 @@ struct CanvasState {
     icon_images: HashMap<ShapeId, Arc<RenderImage>>,
     flattened_preview: Option<Arc<RenderImage>>,
     preview: Option<Shape>,
-    selected: Option<ShapeId>,
+    selected: Vec<ShapeId>,
+    marquee: Option<Rect>,
     #[allow(dead_code)]
     space_or_pan: bool,
     crop: Option<Rect>,
 }
 
 fn paint_canvas(bounds: Bounds<Pixels>, state: &CanvasState, window: &mut Window) {
-    // Canvas background behind the image.
+    // Canvas background behind the image (always dark-neutral, both schemes).
     window.paint_quad(gpui::quad(
         bounds,
         px(0.),
-        rgb(0x1e1e22),
+        state.backdrop,
         px(0.),
         gpui::transparent_black(),
         Default::default(),
@@ -2804,17 +3595,37 @@ fn paint_canvas(bounds: Bounds<Pixels>, state: &CanvasState, window: &mut Window
         }
     } else {
         for shape in state.shapes.iter().chain(state.preview.as_ref()) {
-            let selected = state.selected.as_deref() == Some(shape.id().as_str());
+            let selected = state.selected.iter().any(|id| id == shape.id());
             paint_shape(bounds, state, window, shape, selected);
         }
     }
 
-    // Selection outline + handles.
-    if let Some(id) = &state.selected
-        && let Some(shape) = state.shapes.iter().find(|shape| shape.id() == id)
-    {
-        let screen = shape_bounds_to_screen(shape, state, bounds);
-        paint_selection_ui(window, &screen, state.zoom);
+    if state.selected.len() == 1 {
+        if let Some(shape) = state
+            .shapes
+            .iter()
+            .find(|shape| shape.id() == &state.selected[0])
+        {
+            if let Shape::Arrow(arrow) = shape {
+                paint_arrow_selection_ui(bounds, state, window, arrow);
+            } else {
+                let screen = shape_bounds_to_screen(shape, state, bounds);
+                paint_selection_ui(window, &screen, true);
+            }
+        }
+    } else if state.selected.len() > 1 {
+        for shape in state
+            .shapes
+            .iter()
+            .filter(|shape| state.selected.iter().any(|id| id == shape.id()))
+        {
+            let screen = shape_bounds_to_screen(shape, state, bounds);
+            paint_selection_ui(window, &screen, false);
+        }
+    }
+
+    if let Some(marquee) = state.marquee {
+        paint_marquee(bounds, state, window, marquee);
     }
 
     // Crop overlay.
@@ -3049,7 +3860,7 @@ fn ellipse_screen_path(
     builder.build().ok()
 }
 
-fn paint_selection_ui(window: &mut Window, screen_bounds: &Rect, _zoom: f32) {
+fn paint_selection_ui(window: &mut Window, screen_bounds: &Rect, handles: bool) {
     let handle_screen = px(HANDLE_SCREEN_SIZE);
     // Outline.
     let mut builder = PathBuilder::stroke(px(1.5));
@@ -3073,6 +3884,9 @@ fn paint_selection_ui(window: &mut Window, screen_bounds: &Rect, _zoom: f32) {
     if let Ok(path) = builder.build() {
         window.paint_path(path, rgb(0x3B82F6));
     }
+    if !handles {
+        return;
+    }
     // Handles: white squares with a blue border.
     for handle in Handle::ALL {
         let (hx, hy) = handle.position(screen_bounds);
@@ -3095,6 +3909,54 @@ fn paint_selection_ui(window: &mut Window, screen_bounds: &Rect, _zoom: f32) {
             Default::default(),
         ));
     }
+}
+
+fn paint_arrow_selection_ui(
+    bounds: Bounds<Pixels>,
+    state: &CanvasState,
+    window: &mut Window,
+    arrow: &ArrowShape,
+) {
+    let handle_size = px(HANDLE_SCREEN_SIZE + 2.0);
+    for (x, y) in [(arrow.x1, arrow.y1), (arrow.x2, arrow.y2)] {
+        let center = image_to_screen(state, bounds, x, y);
+        let handle_bounds = Bounds {
+            origin: Point {
+                x: center.x - handle_size / 2.0,
+                y: center.y - handle_size / 2.0,
+            },
+            size: Size {
+                width: handle_size,
+                height: handle_size,
+            },
+        };
+        window.paint_quad(gpui::quad(
+            handle_bounds,
+            handle_size / 2.0,
+            rgb(0xffffff),
+            px(1.5),
+            rgb(0x3B82F6),
+            Default::default(),
+        ));
+    }
+}
+
+fn paint_marquee(bounds: Bounds<Pixels>, state: &CanvasState, window: &mut Window, rect: Rect) {
+    let screen_bounds = Bounds {
+        origin: image_to_screen(state, bounds, rect.x, rect.y),
+        size: Size {
+            width: px(rect.w * state.zoom),
+            height: px(rect.h * state.zoom),
+        },
+    };
+    window.paint_quad(gpui::quad(
+        screen_bounds,
+        px(0.0),
+        rgb(0x3B82F6).alpha(0.12),
+        px(1.0),
+        rgb(0x3B82F6),
+        Default::default(),
+    ));
 }
 
 fn paint_crop_overlay(
@@ -3201,7 +4063,7 @@ fn paint_crop_overlay(
         }
     }
     let crop_bounds = Rect::new(left, top, right - left, bottom - top);
-    paint_selection_ui(window, &crop_bounds, state.zoom);
+    paint_selection_ui(window, &crop_bounds, true);
 }
 
 fn shape_color(shape: &Shape) -> gpui::Hsla {
@@ -3221,229 +4083,14 @@ fn shape_color(shape: &Shape) -> gpui::Hsla {
     }
 }
 
-/// Toolbar/selection icons drawn as vector shapes.
-fn icon_for(tool: Tool, active: bool) -> gpui::AnyElement {
-    let color = if active { 0xffffff } else { 0xd0d0d6 };
-    canvas(
-        move |_, _, _| {},
-        move |bounds, _, window, _| {
-            let c = rgb(color);
-            let x = f32::from(bounds.origin.x);
-            let y = f32::from(bounds.origin.y);
-            let w = f32::from(bounds.size.width);
-            let h = f32::from(bounds.size.height);
-            let (cx, cy) = (x + w / 2.0, y + h / 2.0);
-            let mut path = |points: &[(f32, f32)], close: bool, stroke_w: f32| {
-                let mut builder = PathBuilder::stroke(px(stroke_w));
-                if let Some(first) = points.first() {
-                    builder.move_to(Point {
-                        x: px(x + first.0 * w),
-                        y: px(y + first.1 * h),
-                    });
-                    for point in &points[1..] {
-                        builder.line_to(Point {
-                            x: px(x + point.0 * w),
-                            y: px(y + point.1 * h),
-                        });
-                    }
-                    if close {
-                        builder.close();
-                    }
-                }
-                builder.build().ok().map(|path| window.paint_path(path, c))
-            };
-            match tool {
-                Tool::Select => {
-                    // Pointer arrow.
-                    let fill_points: Vec<(f32, f32)> = vec![
-                        (0.28, 0.15),
-                        (0.28, 0.75),
-                        (0.44, 0.6),
-                        (0.54, 0.82),
-                        (0.62, 0.78),
-                        (0.52, 0.57),
-                        (0.72, 0.57),
-                    ];
-                    let mut builder = PathBuilder::fill();
-                    builder.move_to(Point {
-                        x: px(x + fill_points[0].0 * w),
-                        y: px(y + fill_points[0].1 * h),
-                    });
-                    for point in &fill_points[1..] {
-                        builder.line_to(Point {
-                            x: px(x + point.0 * w),
-                            y: px(y + point.1 * h),
-                        });
-                    }
-                    builder.close();
-                    if let Ok(path) = builder.build() {
-                        window.paint_path(path, c);
-                    }
-                }
-                Tool::Rectangle => {
-                    path(
-                        &[(0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75)],
-                        true,
-                        2.0,
-                    );
-                }
-                Tool::Ellipse => {
-                    const SEGMENTS: usize = 40;
-                    let mut builder = PathBuilder::stroke(px(2.0));
-                    for index in 0..SEGMENTS {
-                        let angle = index as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
-                        let px_ = cx + angle.cos() * w * 0.25;
-                        let py = cy + angle.sin() * h * 0.25;
-                        if index == 0 {
-                            builder.move_to(Point {
-                                x: px(px_),
-                                y: px(py),
-                            });
-                        } else {
-                            builder.line_to(Point {
-                                x: px(px_),
-                                y: px(py),
-                            });
-                        }
-                    }
-                    builder.close();
-                    if let Ok(path) = builder.build() {
-                        window.paint_path(path, c);
-                    }
-                }
-                Tool::Arrow => {
-                    path(&[(0.25, 0.75), (0.7, 0.3)], false, 2.0);
-                    let mut builder = PathBuilder::fill();
-                    builder.move_to(Point {
-                        x: px(x + 0.78 * w),
-                        y: px(y + 0.22 * h),
-                    });
-                    builder.line_to(Point {
-                        x: px(x + 0.6 * w),
-                        y: px(y + 0.26 * h),
-                    });
-                    builder.line_to(Point {
-                        x: px(x + 0.74 * w),
-                        y: px(y + 0.4 * h),
-                    });
-                    builder.close();
-                    if let Ok(head) = builder.build() {
-                        window.paint_path(head, c);
-                    }
-                }
-                Tool::Pen => {
-                    path(
-                        &[(0.25, 0.7), (0.4, 0.35), (0.55, 0.6), (0.75, 0.3)],
-                        false,
-                        2.0,
-                    );
-                }
-                Tool::Text => {
-                    path(&[(0.3, 0.3), (0.7, 0.3)], false, 2.0);
-                    path(&[(0.5, 0.3), (0.5, 0.78)], false, 2.0);
-                }
-                Tool::Counter => {
-                    const SEGMENTS: usize = 32;
-                    let mut builder = PathBuilder::fill();
-                    for index in 0..SEGMENTS {
-                        let angle = index as f32 / SEGMENTS as f32 * std::f32::consts::TAU;
-                        let px_ = cx + angle.cos() * w * 0.28;
-                        let py = cy + angle.sin() * h * 0.28;
-                        if index == 0 {
-                            builder.move_to(Point {
-                                x: px(px_),
-                                y: px(py),
-                            });
-                        } else {
-                            builder.line_to(Point {
-                                x: px(px_),
-                                y: px(py),
-                            });
-                        }
-                    }
-                    builder.close();
-                    if let Ok(path) = builder.build() {
-                        window.paint_path(path, c);
-                    }
-                }
-                Tool::Crop => {
-                    path(&[(0.35, 0.15), (0.35, 0.65), (0.85, 0.65)], false, 2.0);
-                    path(&[(0.15, 0.35), (0.65, 0.35), (0.65, 0.85)], false, 2.0);
-                }
-                Tool::Blur => {
-                    path(
-                        &[(0.28, 0.5), (0.4, 0.35), (0.52, 0.5), (0.4, 0.65)],
-                        true,
-                        1.6,
-                    );
-                    path(
-                        &[(0.48, 0.5), (0.6, 0.35), (0.72, 0.5), (0.6, 0.65)],
-                        true,
-                        1.6,
-                    );
-                }
-                Tool::Pixelate => {
-                    path(
-                        &[(0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75)],
-                        true,
-                        1.8,
-                    );
-                    path(&[(0.25, 0.5), (0.75, 0.5)], false, 1.4);
-                    path(&[(0.5, 0.25), (0.5, 0.75)], false, 1.4);
-                }
-                Tool::Redact => {
-                    let mut builder = PathBuilder::fill();
-                    builder.move_to(Point {
-                        x: px(x + 0.25 * w),
-                        y: px(y + 0.3 * h),
-                    });
-                    builder.line_to(Point {
-                        x: px(x + 0.75 * w),
-                        y: px(y + 0.3 * h),
-                    });
-                    builder.line_to(Point {
-                        x: px(x + 0.75 * w),
-                        y: px(y + 0.7 * h),
-                    });
-                    builder.line_to(Point {
-                        x: px(x + 0.25 * w),
-                        y: px(y + 0.7 * h),
-                    });
-                    builder.close();
-                    if let Ok(rect) = builder.build() {
-                        window.paint_path(rect, c);
-                    }
-                }
-                Tool::Icon => {
-                    path(
-                        &[
-                            (0.5, 0.15),
-                            (0.6, 0.38),
-                            (0.85, 0.4),
-                            (0.67, 0.57),
-                            (0.72, 0.82),
-                            (0.5, 0.69),
-                            (0.28, 0.82),
-                            (0.33, 0.57),
-                            (0.15, 0.4),
-                            (0.4, 0.38),
-                        ],
-                        true,
-                        1.7,
-                    );
-                }
-            }
-        },
-    )
-    .size_full()
-    .into_any_element()
-}
-
 #[cfg(test)]
 mod tests {
     use super::{EditorSource, EditorWindow, open, shortcut_from_keys};
-    use crate::library::AnnotationSource;
-    use gpui::TestAppContext;
+    use crate::editor::model::{ARROW_STROKE_WIDTHS, ArrowShape, RectShape, Shape};
+    use crate::library::{AnnotationSource, CaptureMetadata, ImageSize};
+    use gpui::{
+        MouseButton, MouseMoveEvent, MouseUpEvent, TestAppContext, VisualTestContext, point, px,
+    };
 
     fn source(title: &str, width: u32, height: u32) -> EditorSource {
         EditorSource {
@@ -3456,6 +4103,18 @@ mod tests {
             title: title.to_string(),
             annotations: AnnotationSource::Transient,
         }
+    }
+
+    fn rectangle(id: &str, x: f32, y: f32) -> Shape {
+        Shape::Rectangle(RectShape {
+            id: id.to_string(),
+            x,
+            y,
+            w: 20.0,
+            h: 20.0,
+            color: "#e03131".to_string(),
+            stroke_width: 2.0,
+        })
     }
 
     #[test]
@@ -3522,9 +4181,9 @@ mod tests {
 
         cx.update(|cx| {
             handle
-                .update(cx, |editor, _, _| {
+                .update(cx, |editor, _, cx| {
                     editor.doc.image_id = Some("active-capture".to_string());
-                    editor.delete_library_capture("active-capture");
+                    editor.delete_library_capture("active-capture", cx);
                     assert_eq!(
                         editor.library_notice.as_deref(),
                         Some("Close this capture before deleting it.")
@@ -3532,5 +4191,253 @@ mod tests {
                 })
                 .unwrap();
         });
+    }
+
+    #[gpui::test]
+    async fn marquee_tracks_the_cursor_selects_intersections_and_moves_them_together() {
+        let cx = TestAppContext::single();
+        cx.update(|cx| open(cx, source("Marquee", 200, 200)).unwrap());
+        let handle = cx.windows()[0].downcast::<EditorWindow>().unwrap();
+
+        cx.update(|cx| {
+            handle
+                .update(cx, |editor, _, _| {
+                    editor.zoom = 1.0;
+                    editor.pan = Default::default();
+                    editor.doc.shapes.push(rectangle("one", 10.0, 10.0));
+                    editor.doc.shapes.push(rectangle("two", 45.0, 45.0));
+                    editor.doc.shapes.push(rectangle("outside", 110.0, 110.0));
+
+                    editor.select_mouse_down(0.0, 0.0);
+                    editor.on_canvas_mouse_move(&MouseMoveEvent {
+                        position: point(px(70.0), px(70.0)),
+                        pressed_button: Some(MouseButton::Left),
+                        modifiers: Default::default(),
+                    });
+                    assert!(matches!(
+                        &editor.drag,
+                        super::Drag::Marquee { current, .. } if *current == (70.0, 70.0)
+                    ));
+                    editor.on_canvas_mouse_up(&MouseUpEvent {
+                        position: point(px(70.0), px(70.0)),
+                        button: MouseButton::Left,
+                        ..Default::default()
+                    });
+                    assert_eq!(editor.selected, vec!["one", "two"]);
+
+                    editor.select_mouse_down(10.0, 20.0);
+                    assert!(matches!(editor.drag, super::Drag::MoveMany { .. }));
+                    editor.on_canvas_mouse_move(&MouseMoveEvent {
+                        position: point(px(20.0), px(30.0)),
+                        pressed_button: Some(MouseButton::Left),
+                        modifiers: Default::default(),
+                    });
+                    editor.on_canvas_mouse_up(&MouseUpEvent {
+                        position: point(px(20.0), px(30.0)),
+                        button: MouseButton::Left,
+                        ..Default::default()
+                    });
+                    assert_eq!(editor.doc.shapes[0].bounds().x, 20.0);
+                    assert_eq!(editor.doc.shapes[0].bounds().y, 20.0);
+                    assert_eq!(editor.doc.shapes[1].bounds().x, 55.0);
+                    assert_eq!(editor.doc.shapes[1].bounds().y, 55.0);
+                })
+                .unwrap();
+        });
+    }
+
+    #[gpui::test]
+    async fn arrow_selection_uses_endpoint_handles_and_shaft_drag_not_a_box() {
+        let cx = TestAppContext::single();
+        cx.update(|cx| open(cx, source("Arrow", 200, 200)).unwrap());
+        let handle = cx.windows()[0].downcast::<EditorWindow>().unwrap();
+
+        cx.update(|cx| {
+            handle
+                .update(cx, |editor, _, _| {
+                    editor.zoom = 1.0;
+                    editor.pan = Default::default();
+                    editor.doc.shapes.push(Shape::Arrow(ArrowShape {
+                        id: "arrow".to_string(),
+                        x1: 20.0,
+                        y1: 20.0,
+                        x2: 120.0,
+                        y2: 80.0,
+                        color: "#1a1a1a".to_string(),
+                        stroke_width: 4.0,
+                    }));
+                    editor.selected = vec!["arrow".to_string()];
+                    editor.apply_width_to_selection(3);
+                    let Shape::Arrow(arrow) = &editor.doc.shapes[0] else {
+                        unreachable!();
+                    };
+                    assert_eq!(arrow.stroke_width, ARROW_STROKE_WIDTHS[3]);
+
+                    editor.select_mouse_down(20.0, 20.0);
+                    assert!(matches!(
+                        editor.drag,
+                        super::Drag::ArrowEndpoint {
+                            endpoint: super::ArrowEndpoint::Start,
+                            ..
+                        }
+                    ));
+                    editor.on_canvas_mouse_move(&MouseMoveEvent {
+                        position: point(px(30.0), px(40.0)),
+                        pressed_button: Some(MouseButton::Left),
+                        modifiers: Default::default(),
+                    });
+                    editor.on_canvas_mouse_up(&MouseUpEvent {
+                        position: point(px(30.0), px(40.0)),
+                        button: MouseButton::Left,
+                        ..Default::default()
+                    });
+                    let Shape::Arrow(arrow) = &editor.doc.shapes[0] else {
+                        unreachable!();
+                    };
+                    assert_eq!(
+                        (arrow.x1, arrow.y1, arrow.x2, arrow.y2),
+                        (30.0, 40.0, 120.0, 80.0)
+                    );
+
+                    editor.select_mouse_down(75.0, 60.0);
+                    assert!(matches!(editor.drag, super::Drag::Move { .. }));
+                    editor.on_canvas_mouse_move(&MouseMoveEvent {
+                        position: point(px(85.0), px(70.0)),
+                        pressed_button: Some(MouseButton::Left),
+                        modifiers: Default::default(),
+                    });
+                    editor.on_canvas_mouse_up(&MouseUpEvent {
+                        position: point(px(85.0), px(70.0)),
+                        button: MouseButton::Left,
+                        ..Default::default()
+                    });
+                    let Shape::Arrow(arrow) = &editor.doc.shapes[0] else {
+                        unreachable!();
+                    };
+                    assert_eq!(
+                        (arrow.x1, arrow.y1, arrow.x2, arrow.y2),
+                        (40.0, 50.0, 130.0, 90.0)
+                    );
+
+                    editor.select_mouse_down(85.0, 50.0);
+                    assert!(matches!(editor.drag, super::Drag::Marquee { .. }));
+                })
+                .unwrap();
+        });
+    }
+
+    #[gpui::test]
+    async fn history_delete_action_does_not_bubble_into_the_row_open_action() {
+        let cx = TestAppContext::single();
+        cx.update(|cx| open(cx, source("History", 200, 200)).unwrap());
+        let window = cx.windows()[0];
+        let handle = window.downcast::<EditorWindow>().unwrap();
+        cx.update(|cx| {
+            handle
+                .update(cx, |editor, _, cx| {
+                    editor.captures = vec![CaptureMetadata {
+                        id: "row-test".to_string(),
+                        title: "History row".to_string(),
+                        created_at: 1,
+                        updated_at: 2,
+                        image: ImageSize {
+                            width: 20,
+                            height: 20,
+                        },
+                    }];
+                    editor.panel = Some(super::EditorPanel::Library);
+                    cx.notify();
+                })
+                .unwrap();
+        });
+
+        let mut visual = VisualTestContext::from_window(window, &cx);
+        visual.run_until_parked();
+        let bounds = visual
+            .debug_bounds("history-action-delete-row-test")
+            .expect("delete action should be laid out");
+        let center = point(
+            bounds.origin.x + bounds.size.width / 2.0,
+            bounds.origin.y + bounds.size.height / 2.0,
+        );
+        visual.simulate_mouse_move(center, None, Default::default());
+        visual.run_until_parked();
+        visual.simulate_mouse_down(center, MouseButton::Left, Default::default());
+        visual.simulate_mouse_up(center, MouseButton::Left, Default::default());
+        visual.run_until_parked();
+
+        let state = handle
+            .read_with(&cx, |editor, _| {
+                (editor.pending_delete.clone(), editor.library_notice.clone())
+            })
+            .unwrap();
+        assert_eq!(state.0.as_deref(), Some("row-test"));
+        assert_eq!(state.1, None);
+
+        let open_bounds = visual
+            .debug_bounds("history-action-open-row-test")
+            .expect("open action should be laid out");
+        let open_center = point(
+            open_bounds.origin.x + open_bounds.size.width / 2.0,
+            open_bounds.origin.y + open_bounds.size.height / 2.0,
+        );
+        visual.simulate_mouse_move(open_center, None, Default::default());
+        visual.run_until_parked();
+        visual.simulate_mouse_down(open_center, MouseButton::Left, Default::default());
+        visual.simulate_mouse_up(open_center, MouseButton::Left, Default::default());
+        visual.run_until_parked();
+        let open_result = handle
+            .read_with(&cx, |editor, _| editor.library_notice.clone())
+            .unwrap();
+        assert!(open_result.is_some());
+    }
+
+    #[gpui::test]
+    async fn zoom_controls_work_and_toolbar_does_not_shift_with_the_history_panel() {
+        let cx = TestAppContext::single();
+        cx.update(|cx| open(cx, source("Toolbar", 200, 200)).unwrap());
+        let window = cx.windows()[0];
+        let handle = window.downcast::<EditorWindow>().unwrap();
+        cx.update(|cx| {
+            handle
+                .update(cx, |editor, _, cx| {
+                    editor.zoom = 1.0;
+                    editor.pan = Default::default();
+                    cx.notify();
+                })
+                .unwrap();
+        });
+
+        let mut visual = VisualTestContext::from_window(window, &cx);
+        visual.run_until_parked();
+        let before = visual
+            .debug_bounds("editor-toolbar")
+            .expect("toolbar should be laid out");
+        let zoom_in = visual
+            .debug_bounds("zoom-in")
+            .expect("zoom control should be laid out");
+        let center = point(
+            zoom_in.origin.x + zoom_in.size.width / 2.0,
+            zoom_in.origin.y + zoom_in.size.height / 2.0,
+        );
+        visual.simulate_mouse_down(center, MouseButton::Left, Default::default());
+        visual.simulate_mouse_up(center, MouseButton::Left, Default::default());
+        visual.run_until_parked();
+        assert_eq!(handle.read_with(&cx, |editor, _| editor.zoom).unwrap(), 1.2);
+
+        cx.update(|cx| {
+            handle
+                .update(cx, |editor, _, cx| {
+                    editor.panel = Some(super::EditorPanel::Library);
+                    cx.notify();
+                })
+                .unwrap();
+        });
+        visual.run_until_parked();
+        let after = visual
+            .debug_bounds("editor-toolbar")
+            .expect("toolbar should remain laid out with the rail open");
+        assert_eq!(before.origin.x, after.origin.x);
+        assert_eq!(before.size.width, after.size.width);
     }
 }

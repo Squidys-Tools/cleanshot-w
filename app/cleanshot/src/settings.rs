@@ -5,8 +5,8 @@
 //! `library::app_data_root` migrates the old `CleanShotW` directory once when
 //! no canonical `Snipsy` directory exists.
 
-use crate::editor::icons::IconPack;
 use crate::library::{app_data_root, write_atomic};
+use crate::theme::Scheme;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -21,8 +21,8 @@ pub struct AppSettings {
     pub include_cursor: bool,
     #[serde(default)]
     pub launch_at_startup: bool,
-    #[serde(default, deserialize_with = "deserialize_icon_pack")]
-    pub default_icon_pack: IconPack,
+    #[serde(default)]
+    pub theme: Scheme,
 }
 
 #[derive(Serialize)]
@@ -39,23 +39,9 @@ impl Default for AppSettings {
             capture_hotkey: DEFAULT_CAPTURE_HOTKEY.to_string(),
             include_cursor: false,
             launch_at_startup: false,
-            default_icon_pack: IconPack::default(),
+            theme: Scheme::Dark,
         }
     }
-}
-
-fn deserialize_icon_pack<'de, D>(deserializer: D) -> Result<IconPack, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let pack = String::deserialize(deserializer)?;
-    Ok(match pack.as_str() {
-        "phosphor" => IconPack::Phosphor,
-        "tabler" => IconPack::Tabler,
-        "heroicons" => IconPack::Heroicons,
-        "remix" => IconPack::Remix,
-        _ => IconPack::Lucide,
-    })
 }
 
 fn read_settings() -> Result<AppSettings, String> {
@@ -73,15 +59,6 @@ fn read_settings_from_root(root: &Path) -> Result<AppSettings, String> {
         .unwrap_or_default();
     settings.capture_hotkey = validate_shortcut(&settings.capture_hotkey)
         .unwrap_or_else(|_| DEFAULT_CAPTURE_HOTKEY.to_string());
-    match fs::read(root.join("editor-settings.json")) {
-        Ok(bytes) => {
-            if let Ok(pack) = serde_json::from_slice(&bytes) {
-                settings.default_icon_pack = pack;
-            }
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(format!("Could not read editor preferences: {error}")),
-    }
     Ok(settings)
 }
 
@@ -96,9 +73,6 @@ pub(crate) fn write_settings(settings: &AppSettings) -> Result<(), String> {
 fn write_settings_to_root(root: &Path, settings: &AppSettings) -> Result<(), String> {
     fs::create_dir_all(root)
         .map_err(|error| format!("Could not create settings folder: {error}"))?;
-    let icon_pack_bytes = serde_json::to_vec(&settings.default_icon_pack)
-        .map_err(|error| format!("Could not encode editor preferences: {error}"))?;
-    write_atomic(&root.join("editor-settings.json"), &icon_pack_bytes)?;
     let shared = SharedSettings {
         capture_hotkey: &settings.capture_hotkey,
         include_cursor: settings.include_cursor,
@@ -271,11 +245,7 @@ fn quote_autostart_command(executable: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        AppSettings, DEFAULT_CAPTURE_HOTKEY, quote_autostart_command, read_settings_from_root,
-        validate_shortcut, write_settings_to_root,
-    };
-    use crate::editor::icons::IconPack;
+    use super::{AppSettings, DEFAULT_CAPTURE_HOTKEY, quote_autostart_command, validate_shortcut};
 
     #[test]
     fn settings_keep_new_defaults_when_loading_old_json() {
@@ -285,11 +255,10 @@ mod tests {
         .unwrap();
         assert!(!settings.include_cursor);
         assert!(!settings.launch_at_startup);
-        assert_eq!(settings.default_icon_pack, IconPack::Lucide);
     }
 
     #[test]
-    fn unknown_icon_packs_default_only_that_setting() {
+    fn unknown_settings_fields_are_ignored() {
         let settings: AppSettings = serde_json::from_str(
             r#"{"captureHotkey":"alt+5","includeCursor":true,"launchAtStartup":true,"defaultIconPack":"future-pack"}"#,
         )
@@ -297,56 +266,6 @@ mod tests {
         assert_eq!(settings.capture_hotkey, "alt+5");
         assert!(settings.include_cursor);
         assert!(settings.launch_at_startup);
-        assert_eq!(settings.default_icon_pack, IconPack::Lucide);
-    }
-
-    #[test]
-    fn icon_pack_setting_round_trips_in_camel_case() {
-        let settings = AppSettings {
-            default_icon_pack: IconPack::Heroicons,
-            ..AppSettings::default()
-        };
-        let json = serde_json::to_string(&settings).unwrap();
-        assert!(json.contains("\"defaultIconPack\":\"heroicons\""));
-        assert_eq!(
-            serde_json::from_str::<AppSettings>(&json)
-                .unwrap()
-                .default_icon_pack,
-            IconPack::Heroicons
-        );
-    }
-
-    #[test]
-    fn editor_icon_pack_survives_legacy_settings_writes() {
-        let root = std::env::temp_dir().join(format!(
-            "snipsy-settings-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let settings = AppSettings {
-            default_icon_pack: IconPack::Remix,
-            include_cursor: true,
-            ..AppSettings::default()
-        };
-        write_settings_to_root(&root, &settings).unwrap();
-
-        let shared: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(root.join("settings.json")).unwrap()).unwrap();
-        assert!(shared.get("defaultIconPack").is_none());
-
-        std::fs::write(
-            root.join("settings.json"),
-            r#"{"captureHotkey":"ctrl+shift+4","includeCursor":false,"launchAtStartup":true}"#,
-        )
-        .unwrap();
-        let loaded = read_settings_from_root(&root).unwrap();
-        assert!(!loaded.include_cursor);
-        assert!(loaded.launch_at_startup);
-        assert_eq!(loaded.default_icon_pack, IconPack::Remix);
-        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

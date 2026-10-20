@@ -1,15 +1,18 @@
 # Bundled editor icons
 
-These are 12 monochrome symbols for each of the Lucide, Phosphor, Tabler,
-Heroicons, and Remix packs. The app bundles them as transparent PNGs and tints
-their alpha channel at render time; no icon package or SVG renderer is loaded
-at runtime.
+One curated set of HugeIcons (free, MIT — see `hugeicons.LICENSE`) for Snipsy:
 
-Run `node scripts/generate-editor-icons.mjs` from the repository root to
-regenerate the PNGs and the Rust asset table. The generator uses the icon
-packages already declared in `package.json` and the repository's Playwright
-Chromium install.
+- `<name>.svg` — chrome icons (toolbars, buttons, nav), rendered by gpui's
+  `svg()` element and tinted via its text color.
+- `<name>.png` — canvas sticker icons, pre-rasterized at 512px because the
+  canvas painter and the tiny-skia flatten step need pixels; tinted at render
+  time by alpha-channel replacement.
 
-Each pack's license notice is under `licenses/`. The Remix assets remain under
-the Remix Icon License v1.0 and are included only as functional annotations in
-the Snipsy application, not as a standalone icon product.
+Regenerate with `npm install --prefix scripts && node
+scripts/generate-hugeicons-icons.mjs` after changing the mapping in
+`scripts/generate-hugeicons-icons.mjs`; the outputs and the Rust tables
+(`src/editor/icon_assets.rs`, `src/ui_chrome.rs`) are committed.
+
+scripts/check-no-legacy-icons.mjs fails CI if any retired icon pack
+reappears anywhere in the repo (purge list in
+mockups/snipsy-ui-redesign/icon-mapping.md).

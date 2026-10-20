@@ -290,6 +290,11 @@ pub fn handle_menu_event(cx: &mut App, id: &str) {
         "new-capture" => start_capture(cx),
         "capture-window" => show_window_picker(cx),
         "open-last" => open_last_capture(cx),
+        "quick-access" => {
+            if let Err(error) = crate::quick_access::open(cx) {
+                eprintln!("Snipsy: {error}");
+            }
+        }
         "toggle-autostart" => match crate::settings::toggle_autostart() {
             Ok(enabled) => eprintln!(
                 "Snipsy: launch at startup {}",

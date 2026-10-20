@@ -13,14 +13,21 @@ mod library;
 mod overlay;
 mod pin;
 mod platform;
+mod quick_access;
 mod save_dialog;
 mod settings;
 mod shortcut;
+mod theme;
 #[cfg(windows)]
 mod tray;
+mod ui;
 mod window_picker;
 
 fn main() {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("snipsy=info"));
+    let _ = tracing_subscriber::fmt().with_env_filter(filter).try_init();
+
     capture::configure_dpi_awareness();
 
     #[cfg(windows)]
@@ -54,12 +61,14 @@ fn main() {
 
     gpui_platform::application().run(move |cx: &mut gpui::App| {
         cx.set_global(flow::AppState::default());
+        crate::theme::init_from_settings(cx);
         cx.bind_keys(
             overlay::keybindings()
                 .into_iter()
                 .chain(pin::keybindings())
                 .chain(window_picker::keybindings())
-                .chain(editor::window::keybindings()),
+                .chain(editor::window::keybindings())
+                .chain(quick_access::keybindings()),
         );
 
         // Tray menu → app actions.

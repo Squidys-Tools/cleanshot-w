@@ -10,6 +10,7 @@ use tray_icon::{TrayIcon, TrayIconBuilder};
 
 pub const NEW_CAPTURE_ID: &str = "new-capture";
 pub const OPEN_LAST_ID: &str = "open-last";
+pub const QUICK_ACCESS_ID: &str = "quick-access";
 pub const CAPTURE_WINDOW_ID: &str = "capture-window";
 pub const TOGGLE_AUTOSTART_ID: &str = "toggle-autostart";
 pub const QUIT_ID: &str = "quit";
@@ -27,6 +28,7 @@ pub fn create() -> Result<Tray, String> {
     let capture_window = MenuItem::with_id(CAPTURE_WINDOW_ID, "Capture a window", true, None);
     let toggle_autostart =
         MenuItem::with_id(TOGGLE_AUTOSTART_ID, "Toggle launch at startup", true, None);
+    let quick_access = MenuItem::with_id(QUICK_ACCESS_ID, "Quick access", true, None);
     let open_last = MenuItem::with_id(OPEN_LAST_ID, "Open Snipsy", true, None);
     let quit = MenuItem::with_id(QUIT_ID, "Quit", true, None);
     let separator = PredefinedMenuItem::separator();
@@ -36,6 +38,7 @@ pub fn create() -> Result<Tray, String> {
         &separator,
         &new_capture,
         &capture_window,
+        &quick_access,
         &open_last,
         &toggle_autostart,
         &quit,

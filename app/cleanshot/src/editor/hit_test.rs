@@ -3,7 +3,47 @@
 //! image pixels) a stroke may be from the cursor and still count — the editor
 //! passes `screen_tolerance / zoom` so the physical tolerance is constant.
 
-use super::model::{Document, PenShape, Rect, Shape};
+use super::model::{ArrowShape, Document, PenShape, Rect, Shape, ShapeId};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArrowEndpoint {
+    Start,
+    End,
+}
+
+pub fn arrow_endpoint_at(
+    arrow: &ArrowShape,
+    px: f32,
+    py: f32,
+    tolerance: f32,
+) -> Option<ArrowEndpoint> {
+    let start_distance = (px - arrow.x1).powi(2) + (py - arrow.y1).powi(2);
+    let end_distance = (px - arrow.x2).powi(2) + (py - arrow.y2).powi(2);
+    let tolerance_squared = tolerance.max(0.0).powi(2);
+    if start_distance > tolerance_squared && end_distance > tolerance_squared {
+        return None;
+    }
+    Some(if start_distance <= end_distance {
+        ArrowEndpoint::Start
+    } else {
+        ArrowEndpoint::End
+    })
+}
+
+pub fn shapes_intersecting(document: &Document, selection: &Rect) -> Vec<ShapeId> {
+    document
+        .shapes
+        .iter()
+        .filter(|shape| {
+            let bounds = shape.bounds();
+            bounds.x <= selection.right()
+                && bounds.right() >= selection.x
+                && bounds.y <= selection.bottom()
+                && bounds.bottom() >= selection.y
+        })
+        .map(|shape| shape.id().clone())
+        .collect()
+}
 
 /// One of the 8 resize handles on a selected shape's bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -346,6 +386,50 @@ mod tests {
             "near the head"
         );
         assert_eq!(hit_test(&document, 150.0, 30.0, 4.0), None, "off the line");
+    }
+
+    #[test]
+    fn arrow_endpoint_handles_only_hit_near_their_own_endpoint() {
+        let arrow = ArrowShape {
+            id: "a".to_string(),
+            x1: 10.0,
+            y1: 20.0,
+            x2: 110.0,
+            y2: 120.0,
+            color: "#1a1a1a".to_string(),
+            stroke_width: 4.0,
+        };
+
+        assert_eq!(
+            arrow_endpoint_at(&arrow, 12.0, 21.0, 8.0),
+            Some(ArrowEndpoint::Start)
+        );
+        assert_eq!(
+            arrow_endpoint_at(&arrow, 111.0, 119.0, 8.0),
+            Some(ArrowEndpoint::End)
+        );
+        assert_eq!(arrow_endpoint_at(&arrow, 60.0, 70.0, 8.0), None);
+    }
+
+    #[test]
+    fn marquee_selects_shapes_whose_bounds_intersect_the_drag_rect() {
+        let mut document = Document::new(1000, 1000);
+        document.shapes.push(rect(10.0, 10.0, 20.0, 20.0, 4.0));
+        document.shapes.push(Shape::Arrow(ArrowShape {
+            id: "a".to_string(),
+            x1: 45.0,
+            y1: 45.0,
+            x2: 80.0,
+            y2: 45.0,
+            color: "#1a1a1a".to_string(),
+            stroke_width: 4.0,
+        }));
+        document.shapes.push(rect(120.0, 120.0, 20.0, 20.0, 4.0));
+
+        assert_eq!(
+            shapes_intersecting(&document, &Rect::new(25.0, 25.0, 30.0, 30.0)),
+            ["r", "a"]
+        );
     }
 
     #[test]

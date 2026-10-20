@@ -355,9 +355,9 @@ pub fn now_millis() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        AnnotationSource, ImageSize, IndexEntry, generate_id, normalize_index_entry,
-        resolve_data_root, validate_id, validate_index_entry, validate_size, validate_title,
-        write_atomic,
+        AnnotationSource, ImageSize, IndexEntry, annotation_source_from_path, generate_id,
+        normalize_index_entry, resolve_data_root, validate_id, validate_index_entry, validate_size,
+        validate_title, write_annotations_idempotent, write_atomic,
     };
     use std::fs;
 
@@ -516,6 +516,37 @@ mod tests {
 
         assert!(matches!(source, AnnotationSource::Rejected { .. }));
         assert_eq!(bytes_after_read, original);
+    }
+
+    #[test]
+    fn versionless_annotation_files_load_and_are_saved_with_a_version() {
+        let directory = std::env::temp_dir().join(format!(
+            "snipsy-versionless-annotations-{}-{}",
+            std::process::id(),
+            generate_id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("annotations.json");
+        fs::write(&path, br#"{"imageWidth":10,"imageHeight":10,"shapes":[]}"#).unwrap();
+
+        let AnnotationSource::Loaded {
+            document,
+            path: loaded_path,
+        } = annotation_source_from_path(path.clone())
+        else {
+            panic!("versionless annotation document was not loaded");
+        };
+        assert_eq!(document.version, crate::editor::model::DOCUMENT_VERSION);
+
+        write_annotations_idempotent(&document, &loaded_path).unwrap();
+        let saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["version"], crate::editor::model::DOCUMENT_VERSION);
+        assert!(matches!(
+            annotation_source_from_path(path.clone()),
+            AnnotationSource::Loaded { .. }
+        ));
+
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

@@ -10,7 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::icons::{IconGlyph, IconPack, MAX_ICON_SIZE, MIN_ICON_SIZE};
+use super::icons::{IconGlyph, MAX_ICON_SIZE, MIN_ICON_SIZE};
 
 pub const DOCUMENT_VERSION: u32 = 1;
 
@@ -28,6 +28,7 @@ pub const PALETTE: [&str; 8] = [
 
 /// Stroke widths in image pixels, old-app S/M/L/XL.
 pub const STROKE_WIDTHS: [f32; 4] = [2.0, 4.0, 8.0, 14.0];
+pub const ARROW_STROKE_WIDTHS: [f32; 4] = [3.0, 5.0, 8.0, 12.0];
 
 /// Default text size in image pixels.
 pub const DEFAULT_TEXT_SIZE: f32 = 24.0;
@@ -42,6 +43,8 @@ fn default_counter_diameter() -> f32 {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Document {
+    /// Early documents omitted the header and are treated as version 1.
+    #[serde(default = "document_version_default")]
     pub version: u32,
     /// The capture-library id whose `image.png` this annotation document
     /// edits. None is allowed for transient/test documents, but persisted
@@ -52,6 +55,11 @@ pub struct Document {
     pub image_height: u32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub shapes: Vec<Shape>,
+}
+
+fn document_version_default() -> u32 {
+    tracing::debug!(target: "snipsy::annotations", "Annotation document is missing `version`; assuming version 1");
+    DOCUMENT_VERSION
 }
 
 impl Document {
@@ -66,9 +74,8 @@ impl Document {
         }
     }
 
-    /// Parse document bytes. Only version 1 is read — anything else (including
-    /// the old tldraw format) is an error, and callers fall back to an empty
-    /// document over the image.
+    /// Parse version 1 document bytes; a missing version defaults to 1, while
+    /// foreign formats and versions remain errors.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
         let document: Document = serde_json::from_slice(bytes)
             .map_err(|error| format!("Could not parse the annotation document: {error}"))?;
@@ -332,12 +339,28 @@ pub struct EffectShape {
 #[serde(rename_all = "camelCase")]
 pub struct IconShape {
     pub id: ShapeId,
-    pub pack: IconPack,
+    /// Docs saved before the icon-pack purge stored `pack` too; serde ignores
+    /// it now, and unknown glyph ids fall back to Star (`deserialize_glyph`).
+    #[serde(default, deserialize_with = "deserialize_glyph")]
     pub glyph: IconGlyph,
     pub x: f32,
     pub y: f32,
     pub size: f32,
     pub color: String,
+}
+
+/// Old documents may carry glyph ids that are no longer bundled; they render
+/// as the closest fallback (Star) instead of failing the whole document.
+fn deserialize_glyph<'de, D>(deserializer: D) -> Result<IconGlyph, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let name = String::deserialize(deserializer)?;
+    Ok(IconGlyph::ALL
+        .iter()
+        .copied()
+        .find(|glyph| serde_json::to_string(glyph).is_ok_and(|json| json.trim_matches('"') == name))
+        .unwrap_or_default())
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -695,6 +718,20 @@ mod tests {
     }
 
     #[test]
+    fn versionless_documents_default_to_version_1_and_round_trip() {
+        // Docs from the earliest builds carried no version header; they load
+        // and re-save stamped, instead of refusing the capture's annotations.
+        let bytes =
+            br##"{"imageWidth": 10, "imageHeight": 10, "shapes": [{"type": "rectangle", "id": "a", "x": 0, "y": 0, "w": 5, "h": 5, "color": "#e03131", "strokeWidth": 2}]}"##;
+        let parsed = Document::from_bytes(bytes).unwrap();
+        assert_eq!(parsed.version, 1);
+        assert_eq!(parsed.shapes.len(), 1);
+        let reloaded = Document::from_bytes(&parsed.to_bytes().unwrap()).unwrap();
+        assert_eq!(reloaded, parsed);
+        assert_eq!(reloaded.version, 1);
+    }
+
+    #[test]
     fn tldraw_style_documents_are_rejected_not_partially_parsed() {
         // The old tldraw format has a completely different schema; it must
         // never silently load as an empty document.
@@ -962,7 +999,6 @@ mod tests {
         let mut document = Document::new(100, 80);
         document.shapes.push(Shape::Icon(IconShape {
             id: "icon".to_string(),
-            pack: IconPack::Heroicons,
             glyph: IconGlyph::ArrowRight,
             x: 10.0,
             y: 20.0,
@@ -991,7 +1027,6 @@ mod tests {
         let mut document = Document::new(2400, 1600);
         document.shapes.push(Shape::Icon(IconShape {
             id: "icon".to_string(),
-            pack: IconPack::Heroicons,
             glyph: IconGlyph::ArrowRight,
             x: 10.0,
             y: 20.0,
@@ -1012,14 +1047,27 @@ mod tests {
     }
 
     #[test]
-    fn unknown_icon_pack_or_glyph_is_rejected_at_parse_time() {
+    fn legacy_icon_shapes_parse_without_the_pack_and_fallback_to_star() {
         for icon in [
-            r##"{"type":"icon","id":"icon","pack":"next","glyph":"arrow-right","x":0,"y":0,"size":32,"color":"#1971c2"}"##,
-            r##"{"type":"icon","id":"icon","pack":"lucide","glyph":"not-bundled","x":0,"y":0,"size":32,"color":"#1971c2"}"##,
+            // Old documents: pack field present, glyph still bundled.
+            r##"{"type":"icon","id":"icon","pack":"legacy","glyph":"arrow-right","x":0,"y":0,"size":32,"color":"#1971c2"}"##,
+            // Unknown glyph id from a newer or corrupted document: Star.
+            r##"{"type":"icon","id":"icon","glyph":"not-bundled","x":0,"y":0,"size":32,"color":"#1971c2"}"##,
+            // Missing glyph entirely: Star.
+            r##"{"type":"icon","id":"icon","x":0,"y":0,"size":32,"color":"#1971c2"}"##,
         ] {
             let bytes =
                 format!(r#"{{"version":1,"imageWidth":10,"imageHeight":10,"shapes":[{icon}]}}"#);
-            assert!(Document::from_bytes(bytes.as_bytes()).is_err());
+            let document = Document::from_bytes(bytes.as_bytes()).unwrap();
+            let Shape::Icon(shape) = &document.shapes[0] else {
+                panic!("expected an icon shape");
+            };
+            let expected = if icon.contains("arrow-right") {
+                IconGlyph::ArrowRight
+            } else {
+                IconGlyph::Star
+            };
+            assert_eq!(shape.glyph, expected);
         }
     }
 }
