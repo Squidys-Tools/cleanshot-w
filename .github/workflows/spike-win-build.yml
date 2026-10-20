@@ -77,7 +77,7 @@ jobs:
         run: cargo build --release --manifest-path spikes/gpui-overlay/Cargo.toml
 
       - name: Upload spike exes
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gpui-spike-windows
           path: |

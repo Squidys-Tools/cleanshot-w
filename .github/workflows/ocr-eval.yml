@@ -118,7 +118,7 @@ jobs:
           "English Tesseract traineddata: $modelBytes bytes" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - name: Set up Python for OCR sample evaluation
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.x"
 
@@ -135,7 +135,7 @@ jobs:
           Get-Content $report | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - name: Upload Windows CLI artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: snipsy-ocr-windows
