@@ -25,10 +25,12 @@ use crate::editor::hit_test::{
 };
 use crate::editor::icons::IconGlyph;
 use crate::editor::model::{
-    ARROW_STROKE_WIDTHS, ArrowShape, COUNTER_DIAMETER, CounterShape, DEFAULT_TEXT_SIZE, Document,
-    EffectKind, EffectShape, EllipseShape, IconShape, PALETTE, PenShape, Rect, RectShape,
-    STROKE_WIDTHS, Shape, ShapeId, TextShape,
+    ArrowShape, COUNTER_DIAMETER, CounterShape, DEFAULT_TEXT_SIZE, DiamondShape, Document,
+    EdgeStyle, EffectKind, EffectShape, EllipseShape, FillStyle, IconShape, ImageShape, LineShape,
+    Opacity, PALETTE, PenShape, Rect, RectShape, STROKE_WIDTHS, Shape, ShapeId, ShapeStyle,
+    Sloppiness, StrokeStyle, TEXT_SIZES, TextAlign, TextShape,
 };
+use crate::editor::outline;
 use crate::library;
 use crate::settings::{AppSettings, current_settings};
 use crate::theme::{R_BTN, R_INPUT, R_PANEL, R_PILL, R_THUMB, Theme};
@@ -39,10 +41,14 @@ actions!(
     [
         ToolSelect,
         ToolRectangle,
+        ToolDiamond,
         ToolEllipse,
         ToolArrow,
+        ToolLine,
         ToolPen,
         ToolText,
+        ToolImage,
+        ToolEraser,
         ToolCounter,
         ToolCrop,
         ToolBlur,
@@ -50,6 +56,8 @@ actions!(
         ToolRedact,
         ToolIcon,
         DeleteShape,
+        DuplicateShape,
+        PasteImage,
         UndoEdit,
         RedoEdit,
         CopyFlattened,
@@ -78,10 +86,14 @@ const ZOOM_MAX: f32 = 16.0;
 pub enum Tool {
     Select,
     Rectangle,
+    Diamond,
     Ellipse,
     Arrow,
+    Line,
     Pen,
     Text,
+    Image,
+    Eraser,
     Counter,
     Crop,
     Blur,
@@ -102,10 +114,14 @@ impl Tool {
         match self {
             Tool::Select => "select",
             Tool::Rectangle => "rectangle",
+            Tool::Diamond => "diamond",
             Tool::Ellipse => "ellipse",
             Tool::Arrow => "arrow",
+            Tool::Line => "line",
             Tool::Pen => "pen",
             Tool::Text => "text",
+            Tool::Image => "image",
+            Tool::Eraser => "eraser",
             Tool::Counter => "counter",
             Tool::Crop => "crop",
             Tool::Blur => "blur",
@@ -178,6 +194,9 @@ enum Drag {
         original: Rect,
         handle: Handle,
     },
+    /// The eraser is sweeping; every shape it touches is deleted when the
+    /// drag ends (history was opened at mouse-down).
+    Erase,
 }
 
 /// Everything needed to open one editor window.
@@ -216,6 +235,13 @@ pub struct EditorWindow {
     tool: Tool,
     color_index: usize,
     stroke_width_index: usize,
+    text_size_index: usize,
+    /// Style options new shapes are created with (Excalidraw's defaults).
+    fill_color: Option<String>,
+    fill_style: FillStyle,
+    stroke_style: StrokeStyle,
+    sloppiness: Sloppiness,
+    edges: EdgeStyle,
     icon_glyph: IconGlyph,
     panel: Option<EditorPanel>,
     captures: Vec<library::CaptureMetadata>,
@@ -225,6 +251,9 @@ pub struct EditorWindow {
     settings: AppSettings,
     settings_notice: Option<String>,
     capturing_shortcut: bool,
+    /// Decoded asset bitmaps for image shapes, keyed by asset id. A `None`
+    /// caches a known-missing asset.
+    asset_images: HashMap<String, Option<Arc<RenderImage>>>,
     icon_image_cache: HashMap<(IconGlyph, String, u32), Arc<RenderImage>>,
     thumbs: HashMap<String, Arc<RenderImage>>,
     history_search: String,
@@ -377,6 +406,12 @@ impl EditorWindow {
             tool: Tool::Select,
             color_index: 4,
             stroke_width_index: 1,
+            text_size_index: 1,
+            fill_color: None,
+            fill_style: FillStyle::Hachure,
+            stroke_style: StrokeStyle::Solid,
+            sloppiness: Sloppiness::Off,
+            edges: EdgeStyle::Sharp,
             icon_glyph: IconGlyph::Star,
             panel: None,
             captures,
@@ -386,6 +421,7 @@ impl EditorWindow {
             settings,
             settings_notice: None,
             capturing_shortcut: false,
+            asset_images: HashMap::new(),
             icon_image_cache: HashMap::new(),
             icon_image_cache_bytes: 0,
             thumbs: HashMap::new(),
@@ -450,24 +486,31 @@ pub fn keybindings() -> Vec<KeyBinding> {
         KeyBinding::new("r", ToolRectangle, Some("EditorWindow")),
         KeyBinding::new("o", ToolEllipse, Some("EditorWindow")),
         KeyBinding::new("a", ToolArrow, Some("EditorWindow")),
-        KeyBinding::new("d", ToolPen, Some("EditorWindow")),
+        KeyBinding::new("p", ToolPen, Some("EditorWindow")),
+        KeyBinding::new("d", ToolDiamond, Some("EditorWindow")),
+        KeyBinding::new("l", ToolLine, Some("EditorWindow")),
         KeyBinding::new("t", ToolText, Some("EditorWindow")),
+        KeyBinding::new("e", ToolEraser, Some("EditorWindow")),
         KeyBinding::new("c", ToolCounter, Some("EditorWindow")),
         KeyBinding::new("shift-x", ToolCrop, Some("EditorWindow")),
         KeyBinding::new("1", ToolSelect, Some("EditorWindow")),
         KeyBinding::new("2", ToolRectangle, Some("EditorWindow")),
-        KeyBinding::new("3", ToolEllipse, Some("EditorWindow")),
-        KeyBinding::new("4", ToolArrow, Some("EditorWindow")),
-        KeyBinding::new("5", ToolPen, Some("EditorWindow")),
-        KeyBinding::new("6", ToolText, Some("EditorWindow")),
-        KeyBinding::new("7", ToolCounter, Some("EditorWindow")),
-        KeyBinding::new("8", ToolCrop, Some("EditorWindow")),
+        KeyBinding::new("3", ToolDiamond, Some("EditorWindow")),
+        KeyBinding::new("4", ToolEllipse, Some("EditorWindow")),
+        KeyBinding::new("5", ToolArrow, Some("EditorWindow")),
+        KeyBinding::new("6", ToolLine, Some("EditorWindow")),
+        KeyBinding::new("7", ToolPen, Some("EditorWindow")),
+        KeyBinding::new("8", ToolText, Some("EditorWindow")),
+        KeyBinding::new("9", ToolImage, Some("EditorWindow")),
+        KeyBinding::new("0", ToolCounter, Some("EditorWindow")),
         KeyBinding::new("b", ToolBlur, Some("EditorWindow")),
         KeyBinding::new("m", ToolPixelate, Some("EditorWindow")),
         KeyBinding::new("shift-r", ToolRedact, Some("EditorWindow")),
         KeyBinding::new("i", ToolIcon, Some("EditorWindow")),
         KeyBinding::new("delete", DeleteShape, Some("EditorWindow")),
         KeyBinding::new("backspace", DeleteShape, Some("EditorWindow")),
+        KeyBinding::new("ctrl-d", DuplicateShape, Some("EditorWindow")),
+        KeyBinding::new("ctrl-v", PasteImage, Some("EditorWindow")),
         KeyBinding::new("ctrl-z", UndoEdit, Some("EditorWindow")),
         KeyBinding::new("ctrl-shift-z", RedoEdit, Some("EditorWindow")),
         KeyBinding::new("ctrl-y", RedoEdit, Some("EditorWindow")),
@@ -534,10 +577,18 @@ impl EditorWindow {
     }
 
     fn current_stroke_width(&self) -> f32 {
-        if self.tool == Tool::Arrow {
-            ARROW_STROKE_WIDTHS[self.stroke_width_index]
-        } else {
-            STROKE_WIDTHS[self.stroke_width_index]
+        STROKE_WIDTHS[self.stroke_width_index]
+    }
+
+    /// The style options new shapes are created with.
+    fn current_style(&self) -> ShapeStyle {
+        ShapeStyle {
+            fill_color: self.fill_color.clone(),
+            fill_style: self.fill_style,
+            stroke_style: self.stroke_style,
+            sloppiness: self.sloppiness,
+            edges: self.edges,
+            opacity: Opacity::FULL,
         }
     }
 
@@ -597,7 +648,7 @@ impl EditorWindow {
     }
 
     fn end_flattened_png(&self) -> Result<Vec<u8>, String> {
-        flatten_to_png(&self.doc, self.rgba.as_raw())
+        flatten_to_png(&self.doc, self.rgba.as_raw(), &Self::asset_source())
     }
 
     // ---- interaction: mouse ---------------------------------------------
@@ -626,8 +677,10 @@ impl EditorWindow {
         match self.tool {
             Tool::Select => self.select_mouse_down(ix, iy),
             Tool::Rectangle
+            | Tool::Diamond
             | Tool::Ellipse
             | Tool::Arrow
+            | Tool::Line
             | Tool::Blur
             | Tool::Pixelate
             | Tool::Redact => {
@@ -646,6 +699,13 @@ impl EditorWindow {
             Tool::Text => self.place_text(ix, iy),
             Tool::Counter => self.place_counter(ix, iy),
             Tool::Icon => self.place_icon(ix, iy),
+            Tool::Image => self.insert_image_from_dialog(),
+            Tool::Eraser => {
+                // One history entry covers the whole erase sweep.
+                self.history.begin(&self.doc, None);
+                self.drag = Drag::Erase;
+                self.erase_at(ix, iy);
+            }
             Tool::Crop => self.crop_mouse_down(ix, iy),
         }
     }
@@ -739,6 +799,7 @@ impl EditorWindow {
             text: String::new(),
             size: DEFAULT_TEXT_SIZE,
             color: self.current_color(),
+            ..Default::default()
         };
         self.doc.shapes.push(Shape::Text(shape));
         self.selected = vec![id.clone()];
@@ -756,6 +817,7 @@ impl EditorWindow {
             n,
             color: self.current_color(),
             diameter: COUNTER_DIAMETER,
+            ..Default::default()
         }));
         self.commit();
         // Counters stay selected so the palette applies to them.
@@ -777,6 +839,7 @@ impl EditorWindow {
             y: iy - size / 2.0,
             size,
             color: self.current_color(),
+            ..Default::default()
         }));
         self.selected = self
             .doc
@@ -916,6 +979,10 @@ impl EditorWindow {
                 let (ix, iy) = self.to_image(position);
                 self.crop = Some(handle.resize_bounds(&original, ix, iy));
             }
+            Drag::Erase => {
+                let (ix, iy) = self.to_image(position);
+                self.erase_at(ix, iy);
+            }
         }
     }
 
@@ -934,6 +1001,7 @@ impl EditorWindow {
                         points,
                         color: self.current_color(),
                         stroke_width: self.current_stroke_width(),
+                        style: self.current_style(),
                     }));
                     self.selected = self
                         .doc
@@ -963,6 +1031,7 @@ impl EditorWindow {
             Drag::CropNew { .. } | Drag::CropMove { .. } | Drag::CropResize { .. } => {
                 let _ = event;
             }
+            Drag::Erase => self.commit(),
         }
     }
 
@@ -970,13 +1039,12 @@ impl EditorWindow {
     fn finish_draw(&mut self, start: (f32, f32), current: (f32, f32)) {
         let id = next_shape_id(self.tool_name());
         let created = match self.tool {
-            Tool::Rectangle => {
+            Tool::Rectangle | Tool::Diamond | Tool::Ellipse => {
                 (start.0 - current.0).abs() >= 2.0 || (start.1 - current.1).abs() >= 2.0
             }
-            Tool::Ellipse => {
-                (start.0 - current.0).abs() >= 2.0 || (start.1 - current.1).abs() >= 2.0
+            Tool::Arrow | Tool::Line => {
+                (start.0 - current.0).powi(2) + (start.1 - current.1).powi(2) >= 4.0
             }
-            Tool::Arrow => (start.0 - current.0).powi(2) + (start.1 - current.1).powi(2) >= 4.0,
             Tool::Blur | Tool::Pixelate | Tool::Redact => {
                 (start.0 - current.0).abs() >= 2.0 && (start.1 - current.1).abs() >= 2.0
             }
@@ -988,31 +1056,54 @@ impl EditorWindow {
         }
         let shape = match self.tool {
             Tool::Rectangle => Shape::Rectangle(RectShape {
-                id,
+                id: id.clone(),
                 x: start.0.min(current.0),
                 y: start.1.min(current.1),
                 w: (start.0 - current.0).abs(),
                 h: (start.1 - current.1).abs(),
                 color: self.current_color(),
                 stroke_width: self.current_stroke_width(),
+                style: self.current_style(),
+            }),
+            Tool::Diamond => Shape::Diamond(DiamondShape {
+                id: id.clone(),
+                x: start.0.min(current.0),
+                y: start.1.min(current.1),
+                w: (start.0 - current.0).abs(),
+                h: (start.1 - current.1).abs(),
+                color: self.current_color(),
+                stroke_width: self.current_stroke_width(),
+                style: self.current_style(),
             }),
             Tool::Ellipse => Shape::Ellipse(EllipseShape {
-                id,
+                id: id.clone(),
                 x: start.0.min(current.0),
                 y: start.1.min(current.1),
                 w: (start.0 - current.0).abs(),
                 h: (start.1 - current.1).abs(),
                 color: self.current_color(),
                 stroke_width: self.current_stroke_width(),
+                style: self.current_style(),
             }),
-            Tool::Arrow => Shape::Arrow(ArrowShape {
-                id,
+            Tool::Line => Shape::Line(LineShape {
+                id: id.clone(),
                 x1: start.0,
                 y1: start.1,
                 x2: current.0,
                 y2: current.1,
                 color: self.current_color(),
                 stroke_width: self.current_stroke_width(),
+                style: self.current_style(),
+            }),
+            Tool::Arrow => Shape::Arrow(ArrowShape {
+                id: id.clone(),
+                x1: start.0,
+                y1: start.1,
+                x2: current.0,
+                y2: current.1,
+                color: self.current_color(),
+                stroke_width: self.current_stroke_width(),
+                style: self.current_style(),
             }),
             Tool::Blur | Tool::Pixelate | Tool::Redact => Shape::Effect(EffectShape {
                 id,
@@ -1045,10 +1136,14 @@ impl EditorWindow {
         match self.tool {
             Tool::Select => "select",
             Tool::Rectangle => "rect",
+            Tool::Diamond => "diamond",
             Tool::Ellipse => "ellipse",
             Tool::Arrow => "arrow",
+            Tool::Line => "line",
             Tool::Pen => "pen",
             Tool::Text => "text",
+            Tool::Image => "image",
+            Tool::Eraser => "eraser",
             Tool::Counter => "counter",
             Tool::Crop => "crop",
             Tool::Blur => "blur",
@@ -1361,6 +1456,155 @@ impl EditorWindow {
         }
     }
 
+    /// Delete whatever shape is under the image-space point (the eraser
+    /// tool's sweep step). History is grouped by the caller.
+    fn erase_at(&mut self, ix: f32, iy: f32) {
+        if let Some(index) = hit_test(&self.doc, ix, iy, 4.0 / self.zoom) {
+            let id = self.doc.shapes[index].id().clone();
+            self.doc.delete(&id);
+            self.selected.retain(|selected| selected != &id);
+        }
+    }
+
+    /// Copy the selected shape to just above it, offset by DUPLICATE_OFFSET.
+    fn duplicate_selected(&mut self) {
+        if self.text_editing.is_some() {
+            return;
+        }
+        let Some(id) = self.selected.first().cloned() else {
+            return;
+        };
+        self.history.begin(&self.doc, None);
+        let new_id = next_shape_id("copy");
+        match self.doc.duplicate(&id, new_id.clone()) {
+            Some(new_id) => {
+                self.selected = vec![new_id];
+                self.commit();
+            }
+            None => {
+                let _ = self.history.cancel();
+            }
+        }
+    }
+
+    /// The decoded asset bitmap for an image shape, cached by asset id.
+    fn cached_asset_image(&mut self, asset_id: &str) -> Option<Arc<RenderImage>> {
+        if let Some(cached) = self.asset_images.get(asset_id) {
+            return cached.clone();
+        }
+        let decoded = library::read_asset(asset_id)
+            .ok()
+            .and_then(|png| {
+                image::ImageReader::new(std::io::Cursor::new(&png))
+                    .with_guessed_format()
+                    .ok()?
+                    .decode()
+                    .ok()
+                    .map(|decoded| decoded.into_rgba8())
+            })
+            .map(crate::pin::rgba_to_render_image);
+        self.asset_images
+            .insert(asset_id.to_string(), decoded.clone());
+        decoded
+    }
+
+    /// Every asset the document references, decoded and cached.
+    fn load_asset_images(&mut self) {
+        let ids: Vec<String> = self
+            .doc
+            .shapes
+            .iter()
+            .filter_map(|shape| match shape {
+                Shape::Image(image) => Some(image.asset_id.clone()),
+                _ => None,
+            })
+            .collect();
+        for id in ids {
+            self.cached_asset_image(&id);
+        }
+    }
+
+    /// Insert an image element from a picked file, scaled to fit the capture
+    /// and centered on it.
+    fn insert_image_from_dialog(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Image", &["png", "jpg", "jpeg", "webp", "gif", "bmp"])
+            .pick_file()
+        else {
+            return;
+        };
+        match std::fs::read(&path) {
+            Ok(bytes) => {
+                if let Err(error) = self.insert_image_asset(&bytes) {
+                    eprintln!("Snipsy: {error}");
+                }
+            }
+            Err(error) => eprintln!("Snipsy: could not read {}: {error}", path.display()),
+        }
+    }
+
+    /// Insert an image element from PNG/JPEG/etc. bytes (dialog or paste).
+    fn insert_image_asset(&mut self, bytes: &[u8]) -> Result<(), String> {
+        let decoded = image::ImageReader::new(std::io::Cursor::new(bytes))
+            .with_guessed_format()
+            .map_err(|error| format!("Could not open the image: {error}"))?
+            .decode()
+            .map_err(|error| format!("Could not decode the image: {error}"))?
+            .into_rgba8();
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgba8(decoded.clone())
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .map_err(|error| format!("Could not encode the image asset: {error}"))?;
+        let asset_id = library::save_asset(&png)?;
+
+        // Native size, scaled down to at most half the capture, centered.
+        let (native_w, native_h) = decoded.dimensions();
+        let max_w = (self.doc.image_width as f32 / 2.0).max(50.0);
+        let max_h = (self.doc.image_height as f32 / 2.0).max(50.0);
+        let scale = (max_w / native_w as f32)
+            .min(max_h / native_h as f32)
+            .min(1.0);
+        let width = (native_w as f32 * scale).round().max(1.0);
+        let height = (native_h as f32 * scale).round().max(1.0);
+        let bounds = Rect::new(
+            (self.doc.image_width as f32 - width) / 2.0,
+            (self.doc.image_height as f32 - height) / 2.0,
+            width,
+            height,
+        );
+
+        self.history.begin(&self.doc, None);
+        let id = next_shape_id("image");
+        self.doc.shapes.push(Shape::Image(ImageShape {
+            id: id.clone(),
+            asset_id: asset_id.clone(),
+            bounds,
+            style: self.current_style(),
+        }));
+        self.selected = vec![id];
+        self.commit();
+        self.cached_asset_image(&asset_id);
+        Ok(())
+    }
+
+    /// Paste an image from the system clipboard as an image element.
+    fn insert_image_from_clipboard(&mut self) {
+        match clipboard::read_image_png() {
+            Ok(Some(png)) => {
+                if let Err(error) = self.insert_image_asset(&png) {
+                    eprintln!("Snipsy: {error}");
+                }
+            }
+            Ok(None) => {}
+            Err(error) => eprintln!("Snipsy: {error}"),
+        }
+    }
+
+    /// Asset PNG bytes for the flatten pipeline, from the library store.
+    fn asset_source() -> impl Fn(&str) -> Option<Vec<u8>> {
+        |asset_id: &str| library::read_asset(asset_id).ok()
+    }
+
     fn apply_color_to_selection(&mut self, color_index: usize) {
         self.color_index = color_index;
         let color = self.current_color();
@@ -1368,25 +1612,15 @@ impl EditorWindow {
             return;
         }
         if let Some(index) = self.selected_index() {
-            if matches!(&self.doc.shapes[index], Shape::Effect(_)) {
-                return;
-            }
             self.history.begin(&self.doc, None);
-            let shape_color = match &mut self.doc.shapes[index] {
-                Shape::Rectangle(shape) => &mut shape.color,
-                Shape::Ellipse(shape) => &mut shape.color,
-                Shape::Arrow(shape) => &mut shape.color,
-                Shape::Pen(shape) => &mut shape.color,
-                Shape::Text(shape) => &mut shape.color,
-                Shape::Counter(shape) => &mut shape.color,
-                Shape::Icon(shape) => &mut shape.color,
-                Shape::Effect(_) => unreachable!(),
-            };
-            if *shape_color != color {
-                *shape_color = color;
-                self.commit();
-            } else {
-                let _ = self.history.cancel();
+            match stroke_color_mut(&mut self.doc.shapes[index]) {
+                Some(shape_color) if *shape_color != color => {
+                    *shape_color = color;
+                    self.commit();
+                }
+                _ => {
+                    let _ = self.history.cancel();
+                }
             }
         }
     }
@@ -1397,20 +1631,138 @@ impl EditorWindow {
             return;
         }
         if let Some(index) = self.selected_index() {
-            let width = if matches!(&self.doc.shapes[index], Shape::Arrow(_)) {
-                ARROW_STROKE_WIDTHS[width_index]
-            } else {
-                STROKE_WIDTHS[width_index]
-            };
+            let width = STROKE_WIDTHS[width_index];
             self.history.begin(&self.doc, None);
             match &mut self.doc.shapes[index] {
                 Shape::Rectangle(shape) => shape.stroke_width = width,
+                Shape::Diamond(shape) => shape.stroke_width = width,
                 Shape::Ellipse(shape) => shape.stroke_width = width,
+                Shape::Line(shape) => shape.stroke_width = width,
                 Shape::Arrow(shape) => shape.stroke_width = width,
                 Shape::Pen(shape) => shape.stroke_width = width,
-                Shape::Text(_) | Shape::Counter(_) | Shape::Icon(_) | Shape::Effect(_) => {}
+                Shape::Text(_)
+                | Shape::Counter(_)
+                | Shape::Icon(_)
+                | Shape::Effect(_)
+                | Shape::Image(_) => {}
             }
             self.commit();
+        }
+    }
+
+    /// Apply one style option to the selected shape (any shape that carries
+    /// [`ShapeStyle`]). `nothing_changed` history is cancelled.
+    fn apply_style_to_selection(&mut self, apply: impl FnOnce(&mut ShapeStyle)) {
+        if self.text_editing.is_some() {
+            return;
+        }
+        let Some(index) = self.selected_index() else {
+            return;
+        };
+        let Some(style) = (match &mut self.doc.shapes[index] {
+            Shape::Rectangle(shape) => Some(&mut shape.style),
+            Shape::Diamond(shape) => Some(&mut shape.style),
+            Shape::Ellipse(shape) => Some(&mut shape.style),
+            Shape::Line(shape) => Some(&mut shape.style),
+            Shape::Arrow(shape) => Some(&mut shape.style),
+            Shape::Pen(shape) => Some(&mut shape.style),
+            Shape::Text(shape) => Some(&mut shape.style),
+            Shape::Counter(shape) => Some(&mut shape.style),
+            Shape::Icon(shape) => Some(&mut shape.style),
+            Shape::Image(shape) => Some(&mut shape.style),
+            Shape::Effect(_) => None,
+        }) else {
+            return;
+        };
+        let before = style.clone();
+        apply(style);
+        if style == &before {
+            return;
+        }
+        self.history.begin(&self.doc, None);
+        self.commit();
+    }
+
+    fn apply_fill_color_to_selection(&mut self, color: Option<String>) {
+        self.fill_color = color.clone();
+        if color.is_some() && self.fill_style == FillStyle::None {
+            // Choosing a fill color defaults its style to Excalidraw's
+            // hachure, like Excalidraw itself.
+            self.fill_style = FillStyle::Hachure;
+            self.apply_style_to_selection(|style| {
+                style.fill_color = color.clone();
+                if style.fill_style == FillStyle::None {
+                    style.fill_style = FillStyle::Hachure;
+                }
+            });
+        } else {
+            self.apply_style_to_selection(|style| style.fill_color = color);
+        }
+    }
+
+    fn apply_fill_style_to_selection(&mut self, style: FillStyle) {
+        self.fill_style = style;
+        if style != FillStyle::None && self.fill_color.is_none() {
+            self.fill_color = Some("#1971c2".to_string());
+        }
+        self.apply_style_to_selection(|shape| {
+            shape.fill_style = style;
+            if style != FillStyle::None && shape.fill_color.is_none() {
+                shape.fill_color = Some("#1971c2".to_string());
+            }
+        });
+    }
+
+    fn apply_stroke_style_to_selection(&mut self, style: StrokeStyle) {
+        self.stroke_style = style;
+        self.apply_style_to_selection(|shape| shape.stroke_style = style);
+    }
+
+    fn apply_sloppiness_to_selection(&mut self, sloppiness: Sloppiness) {
+        self.sloppiness = sloppiness;
+        self.apply_style_to_selection(|shape| shape.sloppiness = sloppiness);
+    }
+
+    fn apply_edges_to_selection(&mut self, edges: EdgeStyle) {
+        self.edges = edges;
+        self.apply_style_to_selection(|shape| shape.edges = edges);
+    }
+
+    fn apply_opacity_to_selection(&mut self, percent: u8) {
+        self.apply_style_to_selection(|shape| shape.opacity = Opacity(percent));
+    }
+
+    fn apply_text_size_to_selection(&mut self, size_index: usize) {
+        self.text_size_index = size_index;
+        if self.text_editing.is_some() {
+            return;
+        }
+        if let Some(index) = self.selected_index()
+            && matches!(&self.doc.shapes[index], Shape::Text(_))
+        {
+            self.history.begin(&self.doc, None);
+            if let Shape::Text(text) = &mut self.doc.shapes[index] {
+                text.size = TEXT_SIZES[size_index];
+            }
+            self.commit();
+        }
+    }
+
+    fn apply_text_align_to_selection(&mut self, align: TextAlign) {
+        if self.text_editing.is_some() {
+            return;
+        }
+        if let Some(index) = self.selected_index() {
+            if matches!(&self.doc.shapes[index], Shape::Text(text) if text.align == align) {
+                return;
+            }
+            if matches!(&self.doc.shapes[index], Shape::Text(_)) {
+                self.history.begin(&self.doc, None);
+                if let Shape::Text(text) = &mut self.doc.shapes[index] {
+                    text.align = align;
+                }
+                self.commit();
+            }
         }
     }
 
@@ -1599,6 +1951,33 @@ impl EditorWindow {
     }
 }
 
+/// A text block's estimated width (the model's char-count heuristic), used
+/// to size alignment boxes on the canvas.
+fn estimate_text_block_width(text: &TextShape) -> f32 {
+    text.text
+        .split('\n')
+        .map(|line| line.chars().count() as f32 * text.size * 0.6)
+        .fold(0.0f32, f32::max)
+        .max(1.0)
+}
+
+/// Mutable access to a shape's stroke color; `None` for shapes without one
+/// (effects, image elements).
+fn stroke_color_mut(shape: &mut Shape) -> Option<&mut String> {
+    match shape {
+        Shape::Rectangle(shape) => Some(&mut shape.color),
+        Shape::Ellipse(shape) => Some(&mut shape.color),
+        Shape::Diamond(shape) => Some(&mut shape.color),
+        Shape::Line(shape) => Some(&mut shape.color),
+        Shape::Arrow(shape) => Some(&mut shape.color),
+        Shape::Pen(shape) => Some(&mut shape.color),
+        Shape::Text(shape) => Some(&mut shape.color),
+        Shape::Counter(shape) => Some(&mut shape.color),
+        Shape::Icon(shape) => Some(&mut shape.color),
+        Shape::Effect(_) | Shape::Image(_) => None,
+    }
+}
+
 fn char_to_byte_index(text: &str, char_index: usize) -> usize {
     text.char_indices()
         .nth(char_index)
@@ -1695,6 +2074,22 @@ impl Render for EditorWindow {
                 this.set_tool(Tool::Rectangle);
                 cx.notify();
             }))
+            .on_action(cx.listener(|this, _: &ToolDiamond, _, cx| {
+                this.set_tool(Tool::Diamond);
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &ToolLine, _, cx| {
+                this.set_tool(Tool::Line);
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &ToolImage, _, cx| {
+                this.insert_image_from_dialog();
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &ToolEraser, _, cx| {
+                this.set_tool(Tool::Eraser);
+                cx.notify();
+            }))
             .on_action(cx.listener(|this, _: &ToolEllipse, _, cx| {
                 this.set_tool(Tool::Ellipse);
                 cx.notify();
@@ -1738,6 +2133,14 @@ impl Render for EditorWindow {
             }))
             .on_action(cx.listener(|this, _: &DeleteShape, _, cx| {
                 this.delete_selected();
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &DuplicateShape, _, cx| {
+                this.duplicate_selected();
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &PasteImage, _, cx| {
+                this.insert_image_from_clipboard();
                 cx.notify();
             }))
             .on_action(cx.listener(|this, _: &UndoEdit, _, cx| {
@@ -1919,6 +2322,12 @@ impl EditorWindow {
                 icon_images.insert(icon.id, image);
             }
         }
+        self.load_asset_images();
+        let asset_images = self
+            .asset_images
+            .iter()
+            .filter_map(|(id, image)| image.clone().map(|image| (id.clone(), image)))
+            .collect();
         CanvasState {
             backdrop,
             image: self.image.clone(),
@@ -1928,6 +2337,7 @@ impl EditorWindow {
             pan: self.pan,
             shapes,
             icon_images,
+            asset_images,
             flattened_preview,
             preview: self.preview_shape(),
             selected: self.selected.clone(),
@@ -1998,6 +2408,7 @@ impl EditorWindow {
                 self.rgba.as_raw(),
                 &super::flatten::SystemTextPainter::new(),
                 editing_shape.as_deref(),
+                &Self::asset_source(),
             ) {
                 Ok((pixmap, _)) => Some(crate::pin::rgba_to_render_image(
                     super::flatten::pixmap_to_rgba(&pixmap),
@@ -2034,6 +2445,17 @@ impl EditorWindow {
                         h: (start.1 - current.1).abs(),
                         color,
                         stroke_width,
+                        style: self.current_style(),
+                    }),
+                    Tool::Diamond => Shape::Diamond(DiamondShape {
+                        id: "preview".to_string(),
+                        x: start.0.min(current.0),
+                        y: start.1.min(current.1),
+                        w: (start.0 - current.0).abs(),
+                        h: (start.1 - current.1).abs(),
+                        color,
+                        stroke_width,
+                        style: self.current_style(),
                     }),
                     Tool::Ellipse => Shape::Ellipse(EllipseShape {
                         id: "preview".to_string(),
@@ -2043,6 +2465,17 @@ impl EditorWindow {
                         h: (start.1 - current.1).abs(),
                         color,
                         stroke_width,
+                        style: self.current_style(),
+                    }),
+                    Tool::Line => Shape::Line(LineShape {
+                        id: "preview".to_string(),
+                        x1: start.0,
+                        y1: start.1,
+                        x2: current.0,
+                        y2: current.1,
+                        color,
+                        stroke_width,
+                        style: self.current_style(),
                     }),
                     Tool::Arrow => Shape::Arrow(ArrowShape {
                         id: "preview".to_string(),
@@ -2052,6 +2485,7 @@ impl EditorWindow {
                         y2: current.1,
                         color,
                         stroke_width,
+                        style: self.current_style(),
                     }),
                     Tool::Blur | Tool::Pixelate | Tool::Redact => Shape::Effect(EffectShape {
                         id: "preview".to_string(),
@@ -2076,6 +2510,7 @@ impl EditorWindow {
                 points: points.clone(),
                 color: self.current_color(),
                 stroke_width: self.current_stroke_width(),
+                style: self.current_style(),
             })),
             _ => None,
         }
@@ -2099,7 +2534,20 @@ impl EditorWindow {
                     if has_effect && !is_editing {
                         continue;
                     }
-                    let color = parse_gpui_color(&text.color);
+                    let color = parse_gpui_color(&text.color).alpha(text.style.opacity.alpha());
+                    // Aligned blocks render inside a box as wide as the
+                    // block's estimated bounds; left keeps natural sizing.
+                    let (block_width, text_align) = match text.align {
+                        TextAlign::Left => (None, gpui::TextAlign::Left),
+                        TextAlign::Center => (
+                            Some(estimate_text_block_width(text) * self.zoom),
+                            gpui::TextAlign::Center,
+                        ),
+                        TextAlign::Right => (
+                            Some(estimate_text_block_width(text) * self.zoom),
+                            gpui::TextAlign::Right,
+                        ),
+                    };
                     let mut styled = div()
                         .absolute()
                         .left(left)
@@ -2107,6 +2555,9 @@ impl EditorWindow {
                         .font_family(default_font_family())
                         .text_size(px(font_px))
                         .text_color(color);
+                    if let Some(width) = block_width {
+                        styled = styled.w(px(width)).text_align(text_align);
+                    }
                     if is_editing {
                         // Editing box: render the text with a caret block.
                         let before: String = text.text.chars().take(self.caret).collect();
@@ -2826,12 +3277,16 @@ impl EditorWindow {
         let tools = [
             (Tool::Select, "1", "Select"),
             (Tool::Rectangle, "2", "Rectangle"),
-            (Tool::Ellipse, "3", "Ellipse"),
-            (Tool::Arrow, "4", "Arrow"),
-            (Tool::Pen, "5", "Pen"),
-            (Tool::Text, "6", "Text"),
-            (Tool::Counter, "7", "Counter"),
-            (Tool::Crop, "8", "Crop"),
+            (Tool::Diamond, "3", "Diamond"),
+            (Tool::Ellipse, "4", "Ellipse"),
+            (Tool::Arrow, "5", "Arrow"),
+            (Tool::Line, "6", "Line"),
+            (Tool::Pen, "7", "Pen"),
+            (Tool::Text, "8", "Text"),
+            (Tool::Image, "9", "Image"),
+            (Tool::Eraser, "E", "Eraser"),
+            (Tool::Counter, "0", "Counter"),
+            (Tool::Crop, "Shift+X", "Crop"),
             (Tool::Blur, "B", "Blur"),
             (Tool::Pixelate, "M", "Pixelate"),
             (Tool::Redact, "Shift+R", "Redact"),
@@ -3035,6 +3490,10 @@ impl EditorWindow {
         let theme = Theme::current(cx);
         let selected_color_index = self.selected_color_index();
         let selected_width_index = self.selected_width_index();
+        let style = self.selected_style();
+        let supports_fill = self.selected_supports_fill();
+        let is_text = self.selected_text_size_index().is_some();
+        let has_stroke = selected_width_index.is_some();
 
         let mut pill = div()
             .flex()
@@ -3049,65 +3508,260 @@ impl EditorWindow {
             .border_color(theme.hairline)
             .shadow(theme.shadow_floating.clone());
 
-        for (index, color) in PALETTE.iter().enumerate() {
-            let swatch = rgb(parse_hex(color));
-            let mut chip = div()
-                .id(gpui::ElementId::Name(format!("color-{index}").into()))
-                .w(px(18.0))
-                .h(px(18.0))
-                .rounded_full()
-                .bg(swatch)
-                .cursor(gpui::CursorStyle::PointingHand)
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
-                        this.apply_color_to_selection(index);
-                        cx.notify();
-                    }),
-                );
-            if selected_color_index == Some(index) {
-                chip = chip.border_2().border_color(theme.accent);
-            } else {
-                chip = chip.border_1().border_color(theme.hairline_strong);
-            }
-            pill = pill.child(chip);
-        }
-
-        if selected_width_index.is_some() {
-            pill = pill.child(separator(&theme));
-            for (index, label) in ["S", "M", "L", "XL"].iter().enumerate() {
-                let active = selected_width_index == Some(index);
+        // Stroke color.
+        if selected_color_index.is_some() || is_text {
+            for (index, color) in PALETTE.iter().enumerate() {
+                let swatch = rgb(parse_hex(color));
+                let active = selected_color_index == Some(index);
                 let mut chip = div()
-                    .id(gpui::ElementId::Name(format!("width-{index}").into()))
-                    .w(px(24.0))
-                    .h(px(24.0))
-                    .rounded(px(R_INPUT))
-                    .flex()
-                    .items_center()
-                    .justify_center()
+                    .id(gpui::ElementId::Name(format!("color-{index}").into()))
+                    .w(px(18.0))
+                    .h(px(18.0))
+                    .rounded_full()
+                    .bg(swatch)
                     .cursor(gpui::CursorStyle::PointingHand)
-                    .text_size(px(11.0))
-                    .font_family(default_font_family())
-                    .text_color(if active { theme.text_1 } else { theme.text_3 })
-                    .child(*label)
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(move |this, _: &MouseDownEvent, _, cx| {
-                            this.apply_width_to_selection(index);
+                            this.apply_color_to_selection(index);
                             cx.notify();
                         }),
                     );
                 if active {
-                    chip = chip.bg(theme.accent_soft).text_color(theme.accent);
+                    chip = chip.border_2().border_color(theme.accent);
+                } else {
+                    chip = chip.border_1().border_color(theme.hairline_strong);
                 }
                 pill = pill.child(chip);
             }
         }
 
-        let z_order = self.selected_index().is_some();
-        if z_order {
+        // Fill color (closed shapes only): a transparent chip, then the palette.
+        if supports_fill {
+            pill = pill.child(separator(&theme));
+            let fill_color = style.and_then(|style| style.fill_color.clone());
+            let fill_is_set = fill_color.is_some();
+            let transparent_chip = {
+                let mut chip = div()
+                    .id(gpui::ElementId::Name("fill-none".into()))
+                    .w(px(18.0))
+                    .h(px(18.0))
+                    .rounded_full()
+                    .border_1()
+                    .border_color(theme.hairline_strong)
+                    .cursor(gpui::CursorStyle::PointingHand)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_size(px(10.0))
+                    .text_color(theme.text_3)
+                    .child("\\")
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                            this.apply_fill_color_to_selection(None);
+                            cx.notify();
+                        }),
+                    );
+                if !fill_is_set {
+                    chip = chip.border_2().border_color(theme.accent);
+                }
+                chip
+            };
+            pill = pill.child(transparent_chip);
+            for (index, color) in PALETTE.iter().enumerate() {
+                let swatch = rgb(parse_hex(color));
+                let active = fill_color.as_deref() == Some(color);
+                let mut chip = div()
+                    .id(gpui::ElementId::Name(format!("fill-{index}").into()))
+                    .w(px(18.0))
+                    .h(px(18.0))
+                    .rounded_full()
+                    .bg(swatch)
+                    .cursor(gpui::CursorStyle::PointingHand)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                            this.apply_fill_color_to_selection(Some(color.to_string()));
+                            cx.notify();
+                        }),
+                    );
+                if active {
+                    chip = chip.border_2().border_color(theme.accent);
+                } else {
+                    chip = chip.border_1().border_color(theme.hairline_strong);
+                }
+                pill = pill.child(chip);
+            }
+            // Fill style: only meaningful when a fill color is set.
+            if fill_is_set {
+                for (label, fill) in [
+                    ("So", FillStyle::Solid),
+                    ("Ha", FillStyle::Hachure),
+                    ("X", FillStyle::CrossHatch),
+                ] {
+                    let active = style.map(|s| s.fill_style) == Some(fill);
+                    pill = pill.child(self.option_chip(
+                        &format!("fill-style-{}", label),
+                        label,
+                        active,
+                        &theme,
+                        cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                            this.apply_fill_style_to_selection(fill);
+                            cx.notify();
+                        }),
+                    ));
+                }
+            }
+        }
+
+        // Stroke width.
+        if has_stroke {
+            pill = pill.child(separator(&theme));
+            for (index, label) in ["S", "M", "L", "XL"].iter().enumerate() {
+                let active = selected_width_index == Some(index);
+                pill = pill.child(self.option_chip(
+                    &format!("width-{index}"),
+                    label,
+                    active,
+                    &theme,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        this.apply_width_to_selection(index);
+                        cx.notify();
+                    }),
+                ));
+            }
+        }
+
+        // Stroke style: solid / dashed / dotted.
+        if has_stroke {
+            pill = pill.child(separator(&theme));
+            for (label, stroke) in [
+                ("—", StrokeStyle::Solid),
+                ("– –", StrokeStyle::Dashed),
+                ("•••", StrokeStyle::Dotted),
+            ] {
+                let active = style.map(|s| s.stroke_style) == Some(stroke);
+                pill = pill.child(self.option_chip(
+                    &format!("stroke-style-{:?}", stroke),
+                    label,
+                    active,
+                    &theme,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        this.apply_stroke_style_to_selection(stroke);
+                        cx.notify();
+                    }),
+                ));
+            }
+        }
+
+        // Sloppiness: Excalidraw's three levels.
+        if let Some(current) = style.map(|s| s.sloppiness) {
+            pill = pill.child(separator(&theme));
+            for (label, sloppiness) in [
+                ("Off", Sloppiness::Off),
+                ("Rgh", Sloppiness::Rough),
+                ("Scr", Sloppiness::VeryRough),
+            ] {
+                let active = current == sloppiness;
+                pill = pill.child(self.option_chip(
+                    &format!("sloppiness-{}", label),
+                    label,
+                    active,
+                    &theme,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        this.apply_sloppiness_to_selection(sloppiness);
+                        cx.notify();
+                    }),
+                ));
+            }
+        }
+
+        // Edges: sharp or round (rectangles and diamonds).
+        if supports_fill {
+            pill = pill.child(separator(&theme));
+            for (label, edges) in [("Sharp", EdgeStyle::Sharp), ("Round", EdgeStyle::Round)] {
+                let active = style.map(|s| s.edges) == Some(edges);
+                pill = pill.child(self.option_chip(
+                    &format!("edges-{}", label),
+                    label,
+                    active,
+                    &theme,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        this.apply_edges_to_selection(edges);
+                        cx.notify();
+                    }),
+                ));
+            }
+        }
+
+        // Opacity presets (per element, 0-100).
+        if let Some(current) = style.map(|s| s.opacity) {
+            pill = pill.child(separator(&theme));
+            for percent in [25u8, 50, 75, 100] {
+                let active = current.0 == percent;
+                pill = pill.child(self.option_chip(
+                    &format!("opacity-{percent}"),
+                    &format!("{percent}"),
+                    active,
+                    &theme,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        this.apply_opacity_to_selection(percent);
+                        cx.notify();
+                    }),
+                ));
+            }
+        }
+
+        // Text options: font size S/M/L/XL and alignment.
+        if is_text {
+            pill = pill.child(separator(&theme));
+            for (index, label) in ["S", "M", "L", "XL"].iter().enumerate() {
+                let active = self.selected_text_size_index() == Some(index);
+                pill = pill.child(self.option_chip(
+                    &format!("text-size-{index}"),
+                    label,
+                    active,
+                    &theme,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        this.apply_text_size_to_selection(index);
+                        cx.notify();
+                    }),
+                ));
+            }
+            pill = pill.child(separator(&theme));
+            for (label, align) in [
+                ("⯇", TextAlign::Left),
+                ("≡", TextAlign::Center),
+                ("⯈", TextAlign::Right),
+            ] {
+                let active = self.selected_text_align() == Some(align);
+                pill = pill.child(self.option_chip(
+                    &format!("text-align-{:?}", align),
+                    label,
+                    active,
+                    &theme,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        this.apply_text_align_to_selection(align);
+                        cx.notify();
+                    }),
+                ));
+            }
+        }
+
+        // Element ops: duplicate, z-order, delete.
+        if self.selected_index().is_some() {
             pill = pill
                 .child(separator(&theme))
+                .child(self.selection_icon_button(
+                    "duplicate",
+                    "Duplicate (Ctrl+D)",
+                    &theme,
+                    cx.listener(|this, _: &MouseDownEvent, _, cx| {
+                        this.duplicate_selected();
+                        cx.notify();
+                    }),
+                ))
                 .child(self.selection_icon_button(
                     "send_backward",
                     "Send backward",
@@ -3151,6 +3805,36 @@ impl EditorWindow {
         )
     }
 
+    /// A small labeled option chip for the selection strip.
+    fn option_chip(
+        &self,
+        id: &str,
+        label: &str,
+        active: bool,
+        theme: &Theme,
+        handler: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+    ) -> gpui::Stateful<gpui::Div> {
+        let mut chip = div()
+            .id(gpui::ElementId::Name(id.into()))
+            .min_w(px(24.0))
+            .h(px(24.0))
+            .px(px(4.0))
+            .rounded(px(R_INPUT))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor(gpui::CursorStyle::PointingHand)
+            .text_size(px(10.0))
+            .font_family(default_font_family())
+            .text_color(if active { theme.text_1 } else { theme.text_3 })
+            .child(label.to_string())
+            .on_mouse_down(MouseButton::Left, handler);
+        if active {
+            chip = chip.bg(theme.accent_soft).text_color(theme.accent);
+        }
+        chip
+    }
+
     /// An icon button inside the selection strip; delete is tinted danger.
     fn selection_icon_button(
         &self,
@@ -3180,17 +3864,38 @@ impl EditorWindow {
     }
 
     /// The palette index of the selected shape's color, if it matches one.
+    /// The selected shape's style options, if it carries any.
+    fn selected_style(&self) -> Option<&ShapeStyle> {
+        let index = self.selected_index()?;
+        match &self.doc.shapes[index] {
+            Shape::Rectangle(shape) => Some(&shape.style),
+            Shape::Diamond(shape) => Some(&shape.style),
+            Shape::Ellipse(shape) => Some(&shape.style),
+            Shape::Line(shape) => Some(&shape.style),
+            Shape::Arrow(shape) => Some(&shape.style),
+            Shape::Pen(shape) => Some(&shape.style),
+            Shape::Text(shape) => Some(&shape.style),
+            Shape::Counter(shape) => Some(&shape.style),
+            Shape::Icon(shape) => Some(&shape.style),
+            Shape::Image(shape) => Some(&shape.style),
+            Shape::Effect(_) => None,
+        }
+    }
+
+    /// The palette index of the selected shape's color, if it matches one.
     fn selected_color_index(&self) -> Option<usize> {
         let index = self.selected_index()?;
         let color = match &self.doc.shapes[index] {
             Shape::Rectangle(shape) => &shape.color,
             Shape::Ellipse(shape) => &shape.color,
+            Shape::Diamond(shape) => &shape.color,
+            Shape::Line(shape) => &shape.color,
             Shape::Arrow(shape) => &shape.color,
             Shape::Pen(shape) => &shape.color,
             Shape::Text(shape) => &shape.color,
             Shape::Counter(shape) => &shape.color,
             Shape::Icon(shape) => &shape.color,
-            Shape::Effect(_) => return None,
+            Shape::Effect(_) | Shape::Image(_) => return None,
         };
         PALETTE.iter().position(|candidate| candidate == color)
     }
@@ -3200,23 +3905,62 @@ impl EditorWindow {
         let index = self.selected_index()?;
         let width = match &self.doc.shapes[index] {
             Shape::Rectangle(shape) => shape.stroke_width,
+            Shape::Diamond(shape) => shape.stroke_width,
             Shape::Ellipse(shape) => shape.stroke_width,
+            Shape::Line(shape) => shape.stroke_width,
             Shape::Arrow(shape) => shape.stroke_width,
             Shape::Pen(shape) => shape.stroke_width,
-            Shape::Text(_) | Shape::Counter(_) | Shape::Icon(_) | Shape::Effect(_) => return None,
+            Shape::Text(_)
+            | Shape::Counter(_)
+            | Shape::Icon(_)
+            | Shape::Effect(_)
+            | Shape::Image(_) => return None,
         };
-        let widths = if matches!(&self.doc.shapes[index], Shape::Arrow(_)) {
-            &ARROW_STROKE_WIDTHS
-        } else {
-            &STROKE_WIDTHS
-        };
-        widths
+        STROKE_WIDTHS
             .iter()
             .enumerate()
             .min_by(|(_, left), (_, right)| {
                 (*left - width).abs().total_cmp(&(*right - width).abs())
             })
             .map(|(index, _)| index)
+    }
+
+    /// The size bucket of the selected text shape.
+    fn selected_text_size_index(&self) -> Option<usize> {
+        let index = self.selected_index()?;
+        match &self.doc.shapes[index] {
+            Shape::Text(text) => TEXT_SIZES
+                .iter()
+                .enumerate()
+                .min_by(|(_, left), (_, right)| {
+                    (*left - text.size)
+                        .abs()
+                        .total_cmp(&(*right - text.size).abs())
+                })
+                .map(|(index, _)| index),
+            _ => None,
+        }
+    }
+
+    /// The alignment of the selected text shape.
+    fn selected_text_align(&self) -> Option<TextAlign> {
+        let index = self.selected_index()?;
+        match &self.doc.shapes[index] {
+            Shape::Text(text) => Some(text.align),
+            _ => None,
+        }
+    }
+
+    /// Whether the selected shape is a closed shape that supports fills
+    /// (rectangle, diamond, ellipse).
+    fn selected_supports_fill(&self) -> bool {
+        let Some(index) = self.selected_index() else {
+            return false;
+        };
+        matches!(
+            &self.doc.shapes[index],
+            Shape::Rectangle(_) | Shape::Diamond(_) | Shape::Ellipse(_)
+        )
     }
 }
 
@@ -3526,6 +4270,7 @@ struct CanvasState {
     pan: Point<Pixels>,
     shapes: Vec<Shape>,
     icon_images: HashMap<ShapeId, Arc<RenderImage>>,
+    asset_images: HashMap<String, Arc<RenderImage>>,
     flattened_preview: Option<Arc<RenderImage>>,
     preview: Option<Shape>,
     selected: Vec<ShapeId>,
@@ -3665,69 +4410,29 @@ fn paint_shape(
     shape: &Shape,
     _selected: bool,
 ) {
-    let color = shape_color(shape);
     match shape {
-        Shape::Rectangle(rect) => {
-            if let Some(path) = rect_path(
-                bounds_of_canvas(rect.x, rect.y, rect.w, rect.h, _bounds, state),
-                screen_stroke_width(rect.stroke_width, state),
-            ) {
-                window.paint_path(path, color);
-            }
-        }
-        Shape::Ellipse(ellipse) => {
-            if let Some(path) = ellipse_screen_path(
-                _bounds,
-                state,
-                Rect::new(ellipse.x, ellipse.y, ellipse.w, ellipse.h),
-                screen_stroke_width(ellipse.stroke_width, state),
-                false,
-            ) {
-                window.paint_path(path, color);
-            }
-        }
-        Shape::Arrow(arrow) => {
-            let head_size = ((arrow.stroke_width * 4.0).max(12.0)) * state.zoom;
-            let (x1, y1) = (arrow.x1, arrow.y1);
-            let (x2, y2) = (arrow.x2, arrow.y2);
-            // Line.
-            let mut builder = PathBuilder::stroke(screen_stroke_width(arrow.stroke_width, state));
-            let start = image_to_screen(state, _bounds, x1, y1);
-            let end = image_to_screen(state, _bounds, x2, y2);
-            builder.move_to(start);
-            builder.line_to(end);
-            if let Ok(path) = builder.build() {
-                window.paint_path(path, color);
-            }
-            // Head (filled triangle).
-            let head = arrow.head_triangle(head_size / state.zoom);
-            let mut builder = PathBuilder::fill();
-            let points = head.map(|(hx, hy)| image_to_screen(state, _bounds, hx, hy));
-            builder.move_to(points[0]);
-            builder.line_to(points[1]);
-            builder.line_to(points[2]);
-            builder.close();
-            if let Ok(path) = builder.build() {
-                window.paint_path(path, color);
-            }
-        }
-        Shape::Pen(pen) => {
-            if pen.points.len() >= 2 {
-                let mut builder = PathBuilder::stroke(screen_stroke_width(pen.stroke_width, state));
-                let first = image_to_screen(state, _bounds, pen.points[0].0, pen.points[0].1);
-                builder.move_to(first);
-                for (x, y) in &pen.points[1..] {
-                    builder.line_to(image_to_screen(state, _bounds, *x, *y));
-                }
-                if let Ok(path) = builder.build() {
-                    window.paint_path(path, color);
-                }
-            }
-        }
         // Text renders as divs above the canvas; counters paint their badge
-        // here and the digit as a div.
+        // here and the digit as a div; effects preview as quads; icons have
+        // their own GPU image path.
         Shape::Text(_) => {}
+        Shape::Effect(effect) => {
+            let color = shape_color(shape);
+            let bounds = effect.bounds;
+            let screen = bounds_of_canvas(bounds.x, bounds.y, bounds.w, bounds.h, _bounds, state);
+            window.paint_quad(gpui::quad(
+                screen,
+                px(0.0),
+                color.alpha(0.2),
+                px(0.0),
+                gpui::transparent_black(),
+                Default::default(),
+            ));
+            if let Some(path) = rect_path(screen, px(1.5)) {
+                window.paint_path(path, color);
+            }
+        }
         Shape::Counter(counter) => {
+            let color = shape_color(shape);
             if let Some(path) = ellipse_screen_path(
                 _bounds,
                 state,
@@ -3754,21 +4459,6 @@ fn paint_shape(
                 window.paint_path(ring, rgb(0xffffff));
             }
         }
-        Shape::Effect(effect) => {
-            let bounds = effect.bounds;
-            let screen = bounds_of_canvas(bounds.x, bounds.y, bounds.w, bounds.h, _bounds, state);
-            window.paint_quad(gpui::quad(
-                screen,
-                px(0.0),
-                color.alpha(0.2),
-                px(0.0),
-                gpui::transparent_black(),
-                Default::default(),
-            ));
-            if let Some(path) = rect_path(screen, px(1.5)) {
-                window.paint_path(path, color);
-            }
-        }
         Shape::Icon(icon) => {
             if let Some(image) = state.icon_images.get(&icon.id) {
                 let screen = Bounds {
@@ -3790,6 +4480,99 @@ fn paint_shape(
                     .ok();
             }
         }
+        _ => {
+            // Everything styled goes through the shared op engine, so the
+            // canvas and the flattened export agree exactly.
+            for op in outline::shape_ops(shape) {
+                paint_op(_bounds, state, window, &op);
+            }
+        }
+    }
+}
+
+/// Paint one engine op onto the canvas (screen space).
+fn paint_op(
+    bounds: Bounds<Pixels>,
+    state: &CanvasState,
+    window: &mut Window,
+    op: &outline::DrawOp,
+) {
+    fn gpui_color(color: (u8, u8, u8), opacity: f32) -> gpui::Hsla {
+        let mut hsla: gpui::Hsla =
+            rgb(((color.0 as u32) << 16) | ((color.1 as u32) << 8) | color.2 as u32).into();
+        hsla.a *= opacity.clamp(0.0, 1.0);
+        hsla
+    }
+    match op {
+        outline::DrawOp::FillPolygon {
+            points,
+            color,
+            opacity,
+        } => {
+            let mut builder = gpui::PathBuilder::fill();
+            for (index, (x, y)) in points.iter().enumerate() {
+                let point = image_to_screen(state, bounds, *x, *y);
+                if index == 0 {
+                    builder.move_to(point);
+                } else {
+                    builder.line_to(point);
+                }
+            }
+            builder.close();
+            if let Ok(path) = builder.build() {
+                window.paint_path(path, gpui_color(*color, *opacity));
+            }
+        }
+        outline::DrawOp::StrokePolyline {
+            points,
+            color,
+            width,
+            opacity,
+            round_cap,
+            ..
+        } => {
+            let mut builder = gpui::PathBuilder::stroke(screen_stroke_width(*width, state));
+            for (index, (x, y)) in points.iter().enumerate() {
+                let point = image_to_screen(state, bounds, *x, *y);
+                if index == 0 {
+                    builder.move_to(point);
+                } else {
+                    builder.line_to(point);
+                }
+            }
+            // Dashed/dotted strokes arrive pre-split as separate polylines.
+            let _ = round_cap;
+            if let Ok(path) = builder.build() {
+                window.paint_path(path, gpui_color(*color, *opacity));
+            }
+        }
+        outline::DrawOp::Image {
+            asset_id,
+            bounds: image_bounds,
+            opacity,
+        } => {
+            if let Some(image) = state.asset_images.get(asset_id) {
+                let screen = Bounds {
+                    origin: image_to_screen(state, bounds, image_bounds.x, image_bounds.y),
+                    size: Size {
+                        width: px(image_bounds.w * state.zoom),
+                        height: px(image_bounds.h * state.zoom),
+                    },
+                };
+                let _ = opacity;
+                window
+                    .paint_image(
+                        bounds,
+                        screen,
+                        Corners::<Pixels>::default(),
+                        image.clone(),
+                        0,
+                        false,
+                    )
+                    .ok();
+            }
+        }
+        outline::DrawOp::Opaque => {}
     }
 }
 
@@ -4075,18 +4858,21 @@ fn shape_color(shape: &Shape) -> gpui::Hsla {
         },
         Shape::Rectangle(shape) => rgb(parse_hex(&shape.color)).into(),
         Shape::Ellipse(shape) => rgb(parse_hex(&shape.color)).into(),
+        Shape::Diamond(shape) => rgb(parse_hex(&shape.color)).into(),
+        Shape::Line(shape) => rgb(parse_hex(&shape.color)).into(),
         Shape::Arrow(shape) => rgb(parse_hex(&shape.color)).into(),
         Shape::Pen(shape) => rgb(parse_hex(&shape.color)).into(),
         Shape::Text(shape) => rgb(parse_hex(&shape.color)).into(),
         Shape::Counter(shape) => rgb(parse_hex(&shape.color)).into(),
         Shape::Icon(shape) => rgb(parse_hex(&shape.color)).into(),
+        Shape::Image(_) => rgb(0x3b82f6).into(),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{EditorSource, EditorWindow, open, shortcut_from_keys};
-    use crate::editor::model::{ARROW_STROKE_WIDTHS, ArrowShape, RectShape, Shape};
+    use crate::editor::model::{ArrowShape, RectShape, STROKE_WIDTHS, Shape};
     use crate::library::{AnnotationSource, CaptureMetadata, ImageSize};
     use gpui::{
         MouseButton, MouseMoveEvent, MouseUpEvent, TestAppContext, VisualTestContext, point, px,
@@ -4114,6 +4900,7 @@ mod tests {
             h: 20.0,
             color: "#e03131".to_string(),
             stroke_width: 2.0,
+            ..Default::default()
         })
     }
 
@@ -4265,13 +5052,14 @@ mod tests {
                         y2: 80.0,
                         color: "#1a1a1a".to_string(),
                         stroke_width: 4.0,
+                        ..Default::default()
                     }));
                     editor.selected = vec!["arrow".to_string()];
                     editor.apply_width_to_selection(3);
                     let Shape::Arrow(arrow) = &editor.doc.shapes[0] else {
                         unreachable!();
                     };
-                    assert_eq!(arrow.stroke_width, ARROW_STROKE_WIDTHS[3]);
+                    assert_eq!(arrow.stroke_width, STROKE_WIDTHS[3]);
 
                     editor.select_mouse_down(20.0, 20.0);
                     assert!(matches!(

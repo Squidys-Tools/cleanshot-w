@@ -124,6 +124,7 @@ mod tests {
                 h: 5.0,
                 color: "#e03131".to_string(),
                 stroke_width: 2.0,
+                ..Default::default()
             }));
         }
         document
@@ -138,6 +139,7 @@ mod tests {
             h: 5.0,
             color: "#e03131".to_string(),
             stroke_width: 2.0,
+            ..Default::default()
         }));
     }
 

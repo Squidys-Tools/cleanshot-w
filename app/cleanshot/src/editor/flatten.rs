@@ -7,17 +7,40 @@
 //! can substitute a deterministic painter and still exercise every blending
 //! and geometry path.
 
-use tiny_skia::{Color, Pixmap, PremultipliedColorU8, Stroke};
+use tiny_skia::{Color, LineCap, LineJoin, Pixmap, PremultipliedColorU8, Stroke, Transform};
 
 use super::effects::{self, EffectPatch};
-use super::model::{Document, Shape};
+use super::model::{Document, Shape, TextAlign};
+use super::outline::{self, DrawOp};
+
+/// Resolves a library asset id to its PNG bytes. Returns `None` when the
+/// asset is missing (the image shape then renders as nothing, like a broken
+/// link).
+pub type AssetSource<'a> = &'a dyn Fn(&str) -> Option<Vec<u8>>;
+
+#[cfg(test)]
+fn no_assets(_: &str) -> Option<Vec<u8>> {
+    None
+}
 
 /// Draws text into a tiny-skia pixmap. `paint` places the text block's
 /// top-left at (x, y) and returns the laid-out height; `measure` returns
 /// (width, height) of the laid-out block. Text may contain `\n` for line
 /// breaks.
 pub trait TextPainter {
-    fn paint(&self, pixmap: &mut Pixmap, text: &str, x: f32, y: f32, font_px: f32, color: Color);
+    /// `align` shifts each line left/center/right within its measured line
+    /// width, so a text block's lines share its alignment.
+    #[allow(clippy::too_many_arguments)]
+    fn paint(
+        &self,
+        pixmap: &mut Pixmap,
+        text: &str,
+        x: f32,
+        y: f32,
+        font_px: f32,
+        color: Color,
+        align: TextAlign,
+    );
     fn measure(&self, text: &str, font_px: f32) -> (f32, f32);
 }
 
@@ -95,13 +118,27 @@ impl Default for SystemTextPainter {
 }
 
 impl TextPainter for SystemTextPainter {
-    fn paint(&self, pixmap: &mut Pixmap, text: &str, x: f32, y: f32, font_px: f32, color: Color) {
+    fn paint(
+        &self,
+        pixmap: &mut Pixmap,
+        text: &str,
+        x: f32,
+        y: f32,
+        font_px: f32,
+        color: Color,
+        align: TextAlign,
+    ) {
         let Some(font) = &self.font else {
             return;
         };
+        let block_width = self.measure(text, font_px).0;
         for (line_index, line) in text.split('\n').enumerate() {
             let baseline = y + Self::line_height(font_px) * line_index as f32 + font_px;
-            let mut cursor = x;
+            let line_width = line
+                .chars()
+                .map(|ch| font.rasterize(ch, font_px).0.advance_width)
+                .sum::<f32>();
+            let mut cursor = x + align_offset(align, block_width, line_width);
             for ch in line.chars() {
                 let (metrics, bitmap) = font.rasterize(ch, font_px);
                 if metrics.width > 0 && metrics.height > 0 {
@@ -182,27 +219,23 @@ fn blit_glyph(
 
 /// Flatten the document over `image_rgba` (RGBA8, document image size) and
 /// return the composed raster.
-pub fn flatten(
+pub fn flatten_with_assets(
     document: &Document,
     image_rgba: &[u8],
     painter: &dyn TextPainter,
+    assets: AssetSource,
 ) -> Result<Pixmap, String> {
-    flatten_with_effect_patches(document, image_rgba, painter).map(|(pixmap, _)| pixmap)
+    flatten_with_effect_patches_skipping(document, image_rgba, painter, None, assets)
+        .map(|(pixmap, _)| pixmap)
 }
 
-pub fn flatten_with_effect_patches(
-    document: &Document,
-    image_rgba: &[u8],
-    painter: &dyn TextPainter,
-) -> Result<(Pixmap, Vec<EffectPatch>), String> {
-    flatten_with_effect_patches_skipping(document, image_rgba, painter, None)
-}
-
+#[allow(clippy::too_many_arguments)]
 pub fn flatten_with_effect_patches_skipping(
     document: &Document,
     image_rgba: &[u8],
     painter: &dyn TextPainter,
     skip_shape: Option<&str>,
+    assets: AssetSource,
 ) -> Result<(Pixmap, Vec<EffectPatch>), String> {
     let width = document.image_width;
     let height = document.image_height;
@@ -237,14 +270,18 @@ pub fn flatten_with_effect_patches_skipping(
                 effect_patches.push(patch);
             }
         } else {
-            draw_shape(&mut pixmap, shape, painter);
+            draw_shape(&mut pixmap, shape, painter, assets);
         }
     }
     Ok((pixmap, effect_patches))
 }
 
 /// Flatten and encode straight to PNG bytes.
-pub fn flatten_to_png(document: &Document, image_rgba: &[u8]) -> Result<Vec<u8>, String> {
+pub fn flatten_to_png(
+    document: &Document,
+    image_rgba: &[u8],
+    assets: AssetSource,
+) -> Result<Vec<u8>, String> {
     let painter = SystemTextPainter::new();
     if !painter.is_available()
         && document
@@ -254,7 +291,7 @@ pub fn flatten_to_png(document: &Document, image_rgba: &[u8]) -> Result<Vec<u8>,
     {
         return Err("No supported system font was found, so text cannot be flattened.".to_string());
     }
-    let pixmap = flatten(document, image_rgba, &painter)?;
+    let pixmap = flatten_with_assets(document, image_rgba, &painter, assets)?;
     pixmap
         .encode_png()
         .map_err(|error| format!("Could not encode the flattened PNG: {error}"))
@@ -274,75 +311,31 @@ fn paint(color: Color) -> tiny_skia::Paint<'static> {
     }
 }
 
-fn draw_shape(pixmap: &mut Pixmap, shape: &Shape, painter: &dyn TextPainter) {
+fn draw_shape(pixmap: &mut Pixmap, shape: &Shape, painter: &dyn TextPainter, assets: AssetSource) {
     match shape {
-        Shape::Rectangle(rect) => {
-            let paint = paint(parse_color(&rect.color));
-            if let Some(path) = closed_polyline(&[
-                (rect.x, rect.y),
-                (rect.x + rect.w, rect.y),
-                (rect.x + rect.w, rect.y + rect.h),
-                (rect.x, rect.y + rect.h),
-            ]) {
-                pixmap.stroke_path(
-                    &path,
-                    &paint,
-                    &stroke_of(rect.stroke_width),
-                    tiny_skia::Transform::default(),
-                    None,
-                );
+        Shape::Rectangle(_)
+        | Shape::Ellipse(_)
+        | Shape::Diamond(_)
+        | Shape::Line(_)
+        | Shape::Arrow(_)
+        | Shape::Pen(_) => {
+            for op in outline::shape_ops(shape) {
+                draw_op(pixmap, &op);
             }
         }
-        Shape::Ellipse(ellipse) => {
-            let paint = paint(parse_color(&ellipse.color));
-            if let Some(path) = ellipse_path(ellipse.x, ellipse.y, ellipse.w, ellipse.h) {
-                pixmap.stroke_path(
-                    &path,
-                    &paint,
-                    &stroke_of(ellipse.stroke_width),
-                    tiny_skia::Transform::default(),
-                    None,
-                );
-            }
-        }
-        Shape::Arrow(arrow) => {
-            let paint = paint(parse_color(&arrow.color));
-            let head_size = (arrow.stroke_width * 4.0).max(12.0);
-            if let Some(line) = open_polyline(&[(arrow.x1, arrow.y1), (arrow.x2, arrow.y2)]) {
-                pixmap.stroke_path(
-                    &line,
-                    &paint,
-                    &stroke_of(arrow.stroke_width),
-                    tiny_skia::Transform::default(),
-                    None,
-                );
-            }
-            if let Some(head) = closed_polyline(&arrow.head_triangle(head_size)) {
-                pixmap.fill_path(
-                    &head,
-                    &paint,
-                    tiny_skia::FillRule::Winding,
-                    tiny_skia::Transform::default(),
-                    None,
-                );
-            }
-        }
-        Shape::Pen(pen) => {
-            if pen.points.len() >= 2 {
-                let paint = paint(parse_color(&pen.color));
-                if let Some(path) = open_polyline(&pen.points) {
-                    pixmap.stroke_path(
-                        &path,
-                        &paint,
-                        &stroke_of(pen.stroke_width),
-                        tiny_skia::Transform::default(),
-                        None,
-                    );
+        Shape::Image(image) => match assets(&image.asset_id) {
+            Some(png) => {
+                if let Ok(decoded) =
+                    image::load_from_memory(&png).map(|decoded| decoded.into_rgba8())
+                {
+                    draw_image(pixmap, &decoded, image.bounds, image.style.opacity.alpha());
                 }
             }
-        }
+            None => eprintln!("Snipsy: image asset {} is missing", image.asset_id),
+        },
         Shape::Text(text) => {
-            let color = parse_color(&text.color);
+            let mut color = parse_color(&text.color);
+            color.set_alpha(text.style.opacity.alpha().clamp(0.0, 1.0));
             painter.paint(
                 pixmap,
                 &text.text,
@@ -350,11 +343,13 @@ fn draw_shape(pixmap: &mut Pixmap, shape: &Shape, painter: &dyn TextPainter) {
                 text.y,
                 text.size.max(1.0),
                 color,
+                text.align,
             );
         }
         Shape::Counter(counter) => {
             let white = paint(Color::WHITE);
-            let color = parse_color(&counter.color);
+            let mut color = parse_color(&counter.color);
+            color.set_alpha(counter.style.opacity.alpha());
             let cx = counter.x + counter.diameter / 2.0;
             let cy = counter.y + counter.diameter / 2.0;
             let radius = counter.diameter / 2.0;
@@ -393,11 +388,13 @@ fn draw_shape(pixmap: &mut Pixmap, shape: &Shape, painter: &dyn TextPainter) {
                 cy - digit_box_height / 2.0,
                 digit_height,
                 Color::WHITE,
+                TextAlign::Left,
             );
         }
         Shape::Effect(_) => {}
         Shape::Icon(icon) => {
-            if let Ok(image) = super::icons::rasterize(icon.glyph, &icon.color, icon.size) {
+            if let Ok(mut image) = super::icons::rasterize(icon.glyph, &icon.color, icon.size) {
+                apply_opacity(&mut image, icon.style.opacity.alpha());
                 composite_image(pixmap, &image, icon.x, icon.y);
             }
         }
@@ -466,6 +463,114 @@ fn composite_image(pixmap: &mut Pixmap, image: &image::RgbaImage, x: f32, y: f32
             )
             .expect("icon pixels were alpha-composited");
         }
+    }
+}
+
+/// The x offset one line shifts by so the block's alignment holds: the
+/// difference between the whole block's width and this line's width.
+fn align_offset(align: TextAlign, block_width: f32, line_width: f32) -> f32 {
+    match align {
+        TextAlign::Left => 0.0,
+        TextAlign::Center => (block_width - line_width) / 2.0,
+        TextAlign::Right => block_width - line_width,
+    }
+}
+
+/// Interpret one engine op: fills and strokes carry their own color and
+/// opacity; images are handled by the caller (they need asset bytes).
+fn draw_op(pixmap: &mut Pixmap, op: &DrawOp) {
+    match op {
+        DrawOp::FillPolygon {
+            points,
+            color,
+            opacity,
+        } => {
+            if let Some(path) = closed_polyline(points) {
+                let fill = paint(color_with_alpha(*color, *opacity));
+                pixmap.fill_path(
+                    &path,
+                    &fill,
+                    tiny_skia::FillRule::Winding,
+                    Transform::default(),
+                    None,
+                );
+            }
+        }
+        DrawOp::StrokePolyline {
+            points,
+            closed,
+            color,
+            width,
+            opacity,
+            round_cap,
+        } => {
+            let path = if *closed {
+                closed_polyline(points)
+            } else {
+                open_polyline(points)
+            };
+            if let Some(path) = path {
+                let mut stroke = stroke_of(*width);
+                stroke.line_cap = if *round_cap {
+                    LineCap::Round
+                } else {
+                    LineCap::Butt
+                };
+                stroke.line_join = LineJoin::Round;
+                pixmap.stroke_path(
+                    &path,
+                    &paint(color_with_alpha(*color, *opacity)),
+                    &stroke,
+                    Transform::default(),
+                    None,
+                );
+            }
+        }
+        DrawOp::Image { .. } | DrawOp::Opaque => {}
+    }
+}
+
+fn color_with_alpha(color: (u8, u8, u8), opacity: f32) -> Color {
+    Color::from_rgba(
+        f32::from(color.0) / 255.0,
+        f32::from(color.1) / 255.0,
+        f32::from(color.2) / 255.0,
+        opacity.clamp(0.0, 1.0),
+    )
+    .unwrap_or(Color::BLACK)
+}
+
+/// Scale `image` into `bounds` (nearest neighbor is enough at capture sizes)
+/// and alpha-composite it with the given opacity.
+fn draw_image(
+    pixmap: &mut Pixmap,
+    image: &image::RgbaImage,
+    bounds: super::model::Rect,
+    opacity: f32,
+) {
+    let width = bounds.w.round().max(1.0) as u32;
+    let height = bounds.h.round().max(1.0) as u32;
+    if width == 0 || height == 0 {
+        return;
+    }
+    let scaled = if (image.width(), image.height()) == (width, height) {
+        image.clone()
+    } else {
+        image::imageops::resize(image, width, height, image::imageops::FilterType::Triangle)
+    };
+    let mut faded = scaled;
+    apply_opacity(&mut faded, opacity);
+    composite_image(pixmap, &faded, bounds.x, bounds.y);
+}
+
+/// Multiply an RGBA image's alpha channel by `opacity`.
+fn apply_opacity(image: &mut image::RgbaImage, opacity: f32) {
+    if opacity >= 1.0 {
+        return;
+    }
+    for (_, _, pixel) in image.enumerate_pixels_mut() {
+        let alpha = (f32::from(pixel.0[3]) * opacity).round().clamp(0.0, 255.0) as u8;
+        pixel.0[3] = alpha;
     }
 }
 
@@ -540,10 +645,21 @@ pub struct BlockTextPainter;
 
 #[cfg(test)]
 impl TextPainter for BlockTextPainter {
-    fn paint(&self, pixmap: &mut Pixmap, text: &str, x: f32, y: f32, font_px: f32, color: Color) {
+    fn paint(
+        &self,
+        pixmap: &mut Pixmap,
+        text: &str,
+        x: f32,
+        y: f32,
+        font_px: f32,
+        color: Color,
+        align: TextAlign,
+    ) {
+        let block_width = self.measure(text, font_px).0;
         for (line_index, line) in text.split('\n').enumerate() {
             let line_y = y + (font_px * 1.3 * line_index as f32) + font_px * 0.15;
-            let mut cursor = x;
+            let line_width = line.chars().count() as f32 * font_px / 2.0;
+            let mut cursor = x + align_offset(align, block_width, line_width);
             for ch in line.chars() {
                 let advance = font_px / 2.0;
                 let width = (advance * 0.8).max(1.0);
@@ -578,8 +694,9 @@ impl TextPainter for BlockTextPainter {
 mod tests {
     use super::*;
     use crate::editor::model::{
-        ArrowShape, COUNTER_DIAMETER, CounterShape, Document, EffectKind, EffectShape,
-        EllipseShape, IconShape, PenShape, Rect, RectShape, TextShape,
+        ArrowShape, COUNTER_DIAMETER, CounterShape, DiamondShape, Document, EffectKind,
+        EffectShape, EllipseShape, FillStyle, IconShape, ImageShape, LineShape, Opacity, PenShape,
+        Rect, RectShape, ShapeStyle, Sloppiness, StrokeStyle, TextShape,
     };
 
     fn solid_image(width: u32, height: u32) -> Vec<u8> {
@@ -589,14 +706,20 @@ mod tests {
     #[test]
     fn flatten_rejects_a_buffer_that_does_not_match_the_document_size() {
         let document = Document::new(10, 10);
-        let result = flatten(&document, &[0; 100], &BlockTextPainter);
+        let result = flatten_with_assets(&document, &[0; 100], &BlockTextPainter, &no_assets);
         assert!(result.is_err());
     }
 
     #[test]
     fn flatten_output_keeps_the_original_resolution() {
         let document = Document::new(64, 48);
-        let pixmap = flatten(&document, &solid_image(64, 48), &BlockTextPainter).unwrap();
+        let pixmap = flatten_with_assets(
+            &document,
+            &solid_image(64, 48),
+            &BlockTextPainter,
+            &no_assets,
+        )
+        .unwrap();
         assert_eq!((pixmap.width(), pixmap.height()), (64, 48));
     }
 
@@ -609,7 +732,7 @@ mod tests {
             chunk.copy_from_slice(&[10, 20, 30, 255]);
         }
         let document = Document::new(8, 8);
-        let pixmap = flatten(&document, &image, &BlockTextPainter).unwrap();
+        let pixmap = flatten_with_assets(&document, &image, &BlockTextPainter, &no_assets).unwrap();
         let pixel = pixmap.pixel(0, 0).unwrap();
         assert_eq!(
             [pixel.red(), pixel.green(), pixel.blue(), pixel.alpha()],
@@ -638,8 +761,11 @@ mod tests {
             y: 4.0,
             size,
             color: "#e03131".to_string(),
+            ..Default::default()
         }));
-        let flattened = flatten(&document, &[0; 40 * 40 * 4], &BlockTextPainter).unwrap();
+        let flattened =
+            flatten_with_assets(&document, &[0; 40 * 40 * 4], &BlockTextPainter, &no_assets)
+                .unwrap();
         let output = pixmap_to_rgba(&flattened);
         assert_eq!(
             output.get_pixel(4 + source_x, 4 + source_y).0,
@@ -663,8 +789,14 @@ mod tests {
             kind: EffectKind::Blur { radius_px: 1.0 },
         }));
 
-        let (preview, patches) =
-            flatten_with_effect_patches(&document, &source, &BlockTextPainter).unwrap();
+        let (preview, patches) = flatten_with_effect_patches_skipping(
+            &document,
+            &source,
+            &BlockTextPainter,
+            None,
+            &no_assets,
+        )
+        .unwrap();
         assert_eq!(patches.len(), 2);
         assert_eq!((patches[0].x, patches[0].y), (0, 0));
         assert_eq!((patches[1].x, patches[1].y), (1, 0));
@@ -672,11 +804,235 @@ mod tests {
         assert!(preview.pixel(1, 0).unwrap().red() < 200);
         assert_eq!(preview.pixel(3, 0).unwrap().red(), 200);
 
-        let png = flatten_to_png(&document, &source).unwrap();
+        let png = flatten_to_png(&document, &source, &no_assets).unwrap();
         let exported = image::load_from_memory(&png).unwrap().into_rgba8();
         assert_eq!(exported.get_pixel(0, 0).0, [0x11, 0x18, 0x27, 0xff]);
         assert!(exported.get_pixel(1, 0).0[0] < 200);
         assert_eq!(exported.get_pixel(3, 0).0, [200, 200, 200, 255]);
+    }
+
+    #[test]
+    fn flatten_is_deterministic_across_runs() {
+        // Same seed = same output: rough geometry, hatch fills, and dashes
+        // must rasterize identically every time (and in the export).
+        let mut document = Document::new(100, 100);
+        document.shapes.push(Shape::Rectangle(RectShape {
+            id: "r".to_string(),
+            x: 10.0,
+            y: 10.0,
+            w: 80.0,
+            h: 60.0,
+            color: "#1a1a1a".to_string(),
+            stroke_width: 2.0,
+            style: ShapeStyle {
+                fill_color: Some("#1971c2".to_string()),
+                fill_style: FillStyle::CrossHatch,
+                stroke_style: StrokeStyle::Dashed,
+                sloppiness: Sloppiness::VeryRough,
+                ..ShapeStyle::default()
+            },
+        }));
+        let first = flatten_with_assets(
+            &document,
+            &solid_image(100, 100),
+            &BlockTextPainter,
+            &no_assets,
+        )
+        .unwrap()
+        .encode_png()
+        .unwrap();
+        let second = flatten_with_assets(
+            &document,
+            &solid_image(100, 100),
+            &BlockTextPainter,
+            &no_assets,
+        )
+        .unwrap()
+        .encode_png()
+        .unwrap();
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn hatch_fill_and_opacity_show_up_in_the_export() {
+        let background = [230u8; 100 * 100 * 4];
+        let mut document = Document::new(100, 100);
+        document.shapes.push(Shape::Rectangle(RectShape {
+            id: "r".to_string(),
+            x: 20.0,
+            y: 20.0,
+            w: 60.0,
+            h: 60.0,
+            color: "#1a1a1a".to_string(),
+            stroke_width: 2.0,
+            style: ShapeStyle {
+                fill_color: Some("#ff0000".to_string()),
+                fill_style: FillStyle::Hachure,
+                opacity: Opacity(50),
+                ..ShapeStyle::default()
+            },
+        }));
+        let pixmap =
+            flatten_with_assets(&document, &background, &BlockTextPainter, &no_assets).unwrap();
+        // Some interior pixel carries hatch red blended at 50% over gray.
+        let mut red_interior = false;
+        let mut reds = 0;
+        for y in 22..78 {
+            for x in 22..78 {
+                let pixel = pixmap.pixel(x, y).unwrap();
+                if pixel.red() > pixel.green() + 20 {
+                    red_interior = true;
+                }
+                if pixel.red() > pixel.green() + 20 {
+                    reds += 1;
+                }
+            }
+        }
+        println!("reds: {reds}");
+        assert!(
+            red_interior,
+            "hatch lines should tint the interior red ({reds} red pixels found)"
+        );
+        // Opacity: the same hachure fill at 100% tints more pixels harder.
+        let tinted = |pixmap: &Pixmap| -> u32 {
+            let mut count = 0;
+            for y in 22..78 {
+                for x in 22..78 {
+                    let pixel = pixmap.pixel(x, y).unwrap();
+                    if pixel.red() > pixel.green() + 20 {
+                        count += 1;
+                    }
+                }
+            }
+            count
+        };
+        let mut document_opaque = document.clone();
+        if let Shape::Rectangle(rect) = &mut document_opaque.shapes[0] {
+            rect.style.opacity = Opacity::FULL;
+        }
+        let opaque =
+            flatten_with_assets(&document_opaque, &background, &BlockTextPainter, &no_assets)
+                .unwrap();
+        assert!(
+            tinted(&opaque) > tinted(&pixmap),
+            "100% opacity must tint more strongly than 50%"
+        );
+    }
+
+    #[test]
+    fn dashed_stroke_breaks_the_outline() {
+        let mut document = Document::new(100, 100);
+        document.shapes.push(Shape::Rectangle(RectShape {
+            id: "r".to_string(),
+            x: 20.0,
+            y: 20.0,
+            w: 60.0,
+            h: 60.0,
+            color: "#000000".to_string(),
+            stroke_width: 2.0,
+            style: ShapeStyle {
+                stroke_style: StrokeStyle::Dashed,
+                ..ShapeStyle::default()
+            },
+        }));
+        let pixmap = flatten_with_assets(
+            &document,
+            &solid_image(100, 100),
+            &BlockTextPainter,
+            &no_assets,
+        )
+        .unwrap();
+        // Walk the middle of the top edge: a dashed line has gaps.
+        let mut dark = 0;
+        let mut light = 0;
+        for x in 21..79 {
+            let pixel = pixmap.pixel(x, 20).unwrap();
+            if pixel.red() < 128 {
+                dark += 1;
+            } else {
+                light += 1;
+            }
+        }
+        assert!(dark > 0, "dash marks must paint");
+        assert!(light > 0, "dash gaps must stay background");
+    }
+
+    #[test]
+    fn diamond_and_line_render_through_the_ops_engine() {
+        let mut document = Document::new(100, 100);
+        document.shapes.push(Shape::Diamond(DiamondShape {
+            id: "d".to_string(),
+            x: 10.0,
+            y: 10.0,
+            w: 80.0,
+            h: 60.0,
+            color: "#0000ff".to_string(),
+            stroke_width: 2.0,
+            style: ShapeStyle {
+                fill_color: Some("#0000ff".to_string()),
+                fill_style: FillStyle::Solid,
+                ..ShapeStyle::default()
+            },
+        }));
+        document.shapes.push(Shape::Line(LineShape {
+            id: "l".to_string(),
+            x1: 10.0,
+            y1: 90.0,
+            x2: 90.0,
+            y2: 90.0,
+            color: "#000000".to_string(),
+            stroke_width: 2.0,
+            style: ShapeStyle::default(),
+        }));
+        let pixmap = flatten_with_assets(
+            &document,
+            &solid_image(100, 100),
+            &BlockTextPainter,
+            &no_assets,
+        )
+        .unwrap();
+        let center = pixmap.pixel(50, 40).unwrap(); // diamond center
+        assert!(center.blue() > 200, "filled diamond center is blue");
+        let on_line = pixmap.pixel(50, 90).unwrap();
+        assert!(on_line.red() < 128, "line body paints");
+        let below_line = pixmap.pixel(50, 96).unwrap();
+        assert_eq!(below_line.red(), 255, "off the line stays background");
+    }
+
+    #[test]
+    fn image_elements_composite_from_resolved_assets() {
+        // A 4x4 red image asset drawn into a 10x8 rect, with the resolver
+        // failing for a second shape (missing asset renders as nothing).
+        let asset_png = {
+            let image = image::RgbaImage::from_fn(4, 4, |_, _| image::Rgba([255, 0, 0, 255]));
+            let mut png = Vec::new();
+            image::DynamicImage::ImageRgba8(image)
+                .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+                .unwrap();
+            png
+        };
+        let assets = |id: &str| (id == "asset-1").then(|| asset_png.clone());
+        let mut document = Document::new(40, 30);
+        document.shapes.push(Shape::Image(ImageShape {
+            id: "img".to_string(),
+            asset_id: "asset-1".to_string(),
+            bounds: Rect::new(5.0, 5.0, 10.0, 8.0),
+            ..Default::default()
+        }));
+        document.shapes.push(Shape::Image(ImageShape {
+            id: "missing".to_string(),
+            asset_id: "asset-gone".to_string(),
+            bounds: Rect::new(5.0, 5.0, 10.0, 8.0),
+            ..Default::default()
+        }));
+        let pixmap =
+            flatten_with_assets(&document, &solid_image(40, 30), &BlockTextPainter, &assets)
+                .unwrap();
+        let center = pixmap.pixel(10, 9).unwrap();
+        assert!(center.red() > 200, "the asset bitmap must composite in");
+        // Outside the bounds stays background.
+        let outside = pixmap.pixel(2, 2).unwrap();
+        assert_eq!(outside.red(), 255);
     }
 
     #[test]
@@ -690,8 +1046,15 @@ mod tests {
             h: 40.0,
             color: "#ff0000".to_string(),
             stroke_width: 4.0,
+            ..Default::default()
         }));
-        let pixmap = flatten(&document, &solid_image(100, 100), &BlockTextPainter).unwrap();
+        let pixmap = flatten_with_assets(
+            &document,
+            &solid_image(100, 100),
+            &BlockTextPainter,
+            &no_assets,
+        )
+        .unwrap();
         let pixel = pixmap.pixel(20, 40).unwrap(); // on the left border
         assert!(pixel.red() > 200, "border should be red, got {pixel:?}");
         let center = pixmap.pixel(50, 40).unwrap();
@@ -711,8 +1074,15 @@ mod tests {
             h: 80.0,
             color: "#00ff00".to_string(),
             stroke_width: 6.0,
+            ..Default::default()
         }));
-        let pixmap = flatten(&document, &solid_image(100, 100), &BlockTextPainter).unwrap();
+        let pixmap = flatten_with_assets(
+            &document,
+            &solid_image(100, 100),
+            &BlockTextPainter,
+            &no_assets,
+        )
+        .unwrap();
         let vertex = pixmap.pixel(50, 10).unwrap(); // top vertex on the stroke
         assert!(
             vertex.green() > 200,
@@ -733,8 +1103,15 @@ mod tests {
             y2: 50.0,
             color: "#0000ff".to_string(),
             stroke_width: 4.0,
+            ..Default::default()
         }));
-        let pixmap = flatten(&document, &solid_image(100, 100), &BlockTextPainter).unwrap();
+        let pixmap = flatten_with_assets(
+            &document,
+            &solid_image(100, 100),
+            &BlockTextPainter,
+            &no_assets,
+        )
+        .unwrap();
         let mid_line = pixmap.pixel(35, 50).unwrap();
         assert!(
             mid_line.blue() > 200,
@@ -753,8 +1130,15 @@ mod tests {
             points: vec![(10.0, 10.0), (90.0, 90.0)],
             color: "#1a1a1a".to_string(),
             stroke_width: 6.0,
+            ..Default::default()
         }));
-        let pixmap = flatten(&document, &solid_image(100, 100), &BlockTextPainter).unwrap();
+        let pixmap = flatten_with_assets(
+            &document,
+            &solid_image(100, 100),
+            &BlockTextPainter,
+            &no_assets,
+        )
+        .unwrap();
         let midpoint = pixmap.pixel(50, 50).unwrap();
         assert!(
             midpoint.red() < 100,
@@ -776,8 +1160,9 @@ mod tests {
             n: 7,
             color: "#e03131".to_string(),
             diameter: COUNTER_DIAMETER,
+            ..Default::default()
         }));
-        let pixmap = flatten(&document, &image, &BlockTextPainter).unwrap();
+        let pixmap = flatten_with_assets(&document, &image, &BlockTextPainter, &no_assets).unwrap();
         let cx = 20.0 + COUNTER_DIAMETER / 2.0;
         let badge_left = pixmap.pixel(26, cx as u32).unwrap();
         assert!(
@@ -808,8 +1193,15 @@ mod tests {
             text: "hi".to_string(),
             size: 20.0,
             color: "#0000ff".to_string(),
+            ..Default::default()
         }));
-        let pixmap = flatten(&document, &solid_image(100, 100), &BlockTextPainter).unwrap();
+        let pixmap = flatten_with_assets(
+            &document,
+            &solid_image(100, 100),
+            &BlockTextPainter,
+            &no_assets,
+        )
+        .unwrap();
         // BlockTextPainter draws each char as a block at font_px/2 advance:
         // 'h' block covers x ≈ 10..18, y ≈ 13..27.
         let block = pixmap.pixel(12, 18).unwrap();
@@ -833,14 +1225,22 @@ mod tests {
             h: 8.0,
             color: "#ff0000".to_string(),
             stroke_width: 8.0,
+            ..Default::default()
         }));
         document.shapes.push(Shape::Pen(PenShape {
             id: "above".to_string(),
             points: vec![(0.0, 44.0), (100.0, 44.0)],
             color: "#00ff00".to_string(),
             stroke_width: 2.0,
+            ..Default::default()
         }));
-        let pixmap = flatten(&document, &solid_image(100, 100), &BlockTextPainter).unwrap();
+        let pixmap = flatten_with_assets(
+            &document,
+            &solid_image(100, 100),
+            &BlockTextPainter,
+            &no_assets,
+        )
+        .unwrap();
         let pixel = pixmap.pixel(50, 44).unwrap();
         assert!(
             pixel.green() > 200,
