@@ -17,18 +17,17 @@ selection quick and focused, then returns you to the editor with the result.
 
 ### 2. Mark it up
 
-The editor keeps the screenshot at the center of the experience. Annotation tools
-live in a detached bottom dock, while export, sharing, history, and other main
-actions stay visible in the top command bar.
+The editor keeps the screenshot at the center of the experience. A toolbar
+along the bottom holds annotation tools, undo and redo, copy, and save actions.
+History, icon selection, and preferences open in side panels.
 
 Use drawing, shapes, arrows, text, numbered steps, highlights, blur, pixelation,
 and redaction to make the image clear.
 
 ### 3. Share the result
 
-Copy the annotated image, copy it as a file, save a PNG, or run local OCR and
-copy the recognized text. Sharing uses the Windows clipboard and files. There
-are no hosted share links or accounts.
+Copy the annotated image, copy it as a file, or save a PNG. Sharing uses the
+Windows clipboard and files. There are no hosted share links or accounts.
 
 ### 4. Find it later
 
@@ -42,7 +41,7 @@ windows for reference.
 |---|---|
 | Capture | Area, window, and full-screen capture; cursor inclusion; loupe and physical-pixel sizing |
 | Annotation | Drawing, shapes, arrows, text, counters, highlights, blur, pixelation, and redaction |
-| Output | Copy image, copy file, save PNG, and local OCR text extraction |
+| Output | Copy image, copy file, and save PNG |
 | History | Thumbnails, title editing, title search, reopen, delete, and annotation persistence |
 | Windows | Global capture shortcut, tray controls, single-instance behavior, startup option, and always-on-top pins |
 
@@ -51,21 +50,21 @@ windows for reference.
 - Windows 10 and 11 are the supported platforms.
 - Captures, annotations, settings, and history stay on your machine.
 - No account, cloud sync, telemetry, or hosted library is required.
-- OCR uses bundled local assets and does not need a network connection.
+- OCR is available as a separate local Rust tool in `ocr/`; it is not yet
+  integrated into the editor.
 - The app is designed for standard-user operation. Administrator access is not
   required for normal use.
 
 ## Current status
 
-The browser editor and native Windows shell are implemented. The remaining
-pre-release work is manual Windows acceptance testing, including mixed-DPI
-monitors, window capture, clipboard behavior, packaged assets, tray and startup
-behavior, and pin windows.
+The native GPUI app and editor are implemented. The remaining pre-release work
+is manual Windows acceptance testing, including mixed-DPI monitors, window
+capture, clipboard behavior, tray and startup behavior, and pin windows.
 
-There is no public installer yet. Scrolling capture, richer composition tools,
-broader library search, native OCR, and a user-facing project-file format are
-planned for later work. Video recording, cloud sharing, accounts, macOS, and
-Linux are outside the current v1 direction.
+There is no public installer yet. Scrolling capture, integrated OCR, richer
+library search, and a user-facing project-file format are planned for later
+work. Video recording, cloud sharing, accounts, macOS, and Linux are outside
+the current v1 direction.
 
 ## Project documentation
 

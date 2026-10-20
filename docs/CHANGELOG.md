@@ -51,6 +51,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   entirely, including its devDependency, hook configuration, and the `prepare`
   script.
 
+### Removed
+
+- Removed the superseded browser app, Tauri shell, web-era tests and assets, and
+  workflows that only built or tested the old app. The GPUI app in `app/` and
+  the standalone OCR tool in `ocr/` remain.
+
 ### Fixed
 
 - Prevented drawing and selection interactions from dropping or becoming stuck
