@@ -12,7 +12,13 @@ use serde::{Deserialize, Serialize};
 
 use super::icons::{IconGlyph, MAX_ICON_SIZE, MIN_ICON_SIZE};
 
-pub const DOCUMENT_VERSION: u32 = 1;
+pub const DOCUMENT_VERSION: u32 = 2;
+
+/// Version 1: `color` + `stroke_width` only. Version 2 adds the style
+/// options (`fill_color`, `fill_style`, `stroke_style`, `sloppiness`,
+/// `edges`, `opacity`, text `align`). Every version-2 field carries a serde
+/// default, so version-1 documents parse unchanged and migrate by re-saving.
+pub const MIN_SUPPORTED_VERSION: u32 = 1;
 
 /// The per-shape color palette, in the old app's order.
 pub const PALETTE: [&str; 8] = [
@@ -26,18 +32,144 @@ pub const PALETTE: [&str; 8] = [
     "#868e96", // grey
 ];
 
-/// Stroke widths in image pixels, old-app S/M/L/XL.
-pub const STROKE_WIDTHS: [f32; 4] = [2.0, 4.0, 8.0, 14.0];
-pub const ARROW_STROKE_WIDTHS: [f32; 4] = [3.0, 5.0, 8.0, 12.0];
+/// Stroke widths in image pixels: Excalidraw's four steps (1/2/4/8).
+pub const STROKE_WIDTHS: [f32; 4] = [1.0, 2.0, 4.0, 8.0];
 
-/// Default text size in image pixels.
-pub const DEFAULT_TEXT_SIZE: f32 = 24.0;
+/// Text sizes in image pixels: Excalidraw's S/M/L/XL steps.
+pub const TEXT_SIZES: [f32; 4] = [16.0, 20.0, 28.0, 36.0];
+
+/// Default text size in image pixels (Excalidraw's M).
+pub const DEFAULT_TEXT_SIZE: f32 = 20.0;
 
 /// Counter badge diameter in image pixels.
 pub const COUNTER_DIAMETER: f32 = 32.0;
 
+/// How far a duplicated shape is offset from its original, in image pixels.
+pub const DUPLICATE_OFFSET: f32 = 12.0;
+
+/// Maximum corner radius for round-edged rectangles (Excalidraw caps at 32
+/// device px and scales down with the shape).
+pub const MAX_CORNER_RADIUS: f32 = 32.0;
+
 fn default_counter_diameter() -> f32 {
     COUNTER_DIAMETER
+}
+
+/// How a shape's interior is filled. `None` leaves the interior
+/// transparent; hachure and cross-hatch are generated hatch-line fills.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FillStyle {
+    #[default]
+    None,
+    Solid,
+    Hachure,
+    CrossHatch,
+}
+
+/// Dash pattern of a shape's stroke.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum StrokeStyle {
+    #[default]
+    Solid,
+    Dashed,
+    Dotted,
+}
+
+/// Sloppiness: how far edge geometry wobbles (the roughjs algorithm family).
+/// Level 0 draws clean geometry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Sloppiness {
+    #[default]
+    Off,
+    Rough,
+    VeryRough,
+}
+
+impl Sloppiness {
+    /// The numeric roughness level (0/1/2) the geometry engine uses.
+    pub fn level(self) -> usize {
+        match self {
+            Sloppiness::Off => 0,
+            Sloppiness::Rough => 1,
+            Sloppiness::VeryRough => 2,
+        }
+    }
+}
+
+/// Corner treatment for rectangles and diamonds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EdgeStyle {
+    #[default]
+    Sharp,
+    Round,
+}
+
+impl EdgeStyle {
+    pub fn is_round(self) -> bool {
+        self == EdgeStyle::Round
+    }
+}
+
+/// Per-element opacity, 0-100 as Excalidraw's slider. Stored exactly, applied
+/// as a fraction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Opacity(pub u8);
+
+impl Opacity {
+    pub const FULL: Opacity = Opacity(100);
+
+    /// The opacity as a 0.0-1.0 multiplier.
+    pub fn alpha(self) -> f32 {
+        f32::from(self.0) / 100.0
+    }
+}
+
+impl Default for Opacity {
+    fn default() -> Self {
+        Opacity::FULL
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TextAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+/// The uniform per-element style options every drawable shape carries —
+/// full Excalidraw parity. Flattened into each shape's JSON (all keys at the
+/// top level, so version-1 documents deserialize with plain defaults).
+impl ShapeStyle {
+    /// True when the shape renders an interior fill (a fill color that is
+    /// set, with a style other than `None`).
+    pub fn is_filled(&self) -> bool {
+        self.fill_color.is_some() && self.fill_style != FillStyle::None
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShapeStyle {
+    /// Fill hex color; `None` is Excalidraw's transparent fill.
+    #[serde(default)]
+    pub fill_color: Option<String>,
+    #[serde(default)]
+    pub fill_style: FillStyle,
+    #[serde(default)]
+    pub stroke_style: StrokeStyle,
+    #[serde(default)]
+    pub sloppiness: Sloppiness,
+    #[serde(default)]
+    pub edges: EdgeStyle,
+    #[serde(default)]
+    pub opacity: Opacity,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -59,7 +191,7 @@ pub struct Document {
 
 fn document_version_default() -> u32 {
     tracing::debug!(target: "snipsy::annotations", "Annotation document is missing `version`; assuming version 1");
-    DOCUMENT_VERSION
+    MIN_SUPPORTED_VERSION
 }
 
 impl Document {
@@ -84,15 +216,20 @@ impl Document {
     }
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, String> {
-        self.validate()?;
-        serde_json::to_vec_pretty(self)
+        // Saving migrates: whatever version loaded, the file is stamped with
+        // the current one. Version 1 shapes carry every version-2 field with
+        // its default after deserialization, so a stamp is the whole move.
+        let mut migrated = self.clone();
+        migrated.version = DOCUMENT_VERSION;
+        migrated.validate()?;
+        serde_json::to_vec_pretty(&migrated)
             .map_err(|error| format!("Could not encode the annotation document: {error}"))
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.version != DOCUMENT_VERSION {
+        if !(MIN_SUPPORTED_VERSION..=DOCUMENT_VERSION).contains(&self.version) {
             return Err(format!(
-                "Unsupported annotation document version {} (expected {})",
+                "Unsupported annotation document version {} (expected {} or older)",
                 self.version, DOCUMENT_VERSION
             ));
         }
@@ -154,6 +291,18 @@ impl Document {
         self.shapes.len() != before
     }
 
+    /// Duplicate the shape with the given id: a copy with a fresh id,
+    /// offset by [`DUPLICATE_OFFSET`], inserted just above the original so
+    /// it lands on top of it. Returns the new id.
+    pub fn duplicate(&mut self, id: &ShapeId, new_id: ShapeId) -> Option<ShapeId> {
+        let index = self.index_of(id)?;
+        let mut copy = self.shapes[index].clone();
+        *copy.id_mut() = new_id;
+        copy.translate(DUPLICATE_OFFSET, DUPLICATE_OFFSET);
+        self.shapes.insert(index + 1, copy);
+        Some(self.shapes[index + 1].id().clone())
+    }
+
     /// The number the next counter badge should show: one past the highest
     /// existing badge. Derived, so undoing a counter creation does not skew
     /// the sequence.
@@ -204,6 +353,12 @@ pub struct Rect {
     pub h: f32,
 }
 
+impl Default for Rect {
+    fn default() -> Self {
+        Rect::new(0.0, 0.0, 0.0, 0.0)
+    }
+}
+
 impl Rect {
     pub fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
         Rect { x, y, w, h }
@@ -222,7 +377,7 @@ impl Rect {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RectShape {
     pub id: ShapeId,
@@ -230,13 +385,23 @@ pub struct RectShape {
     pub y: f32,
     pub w: f32,
     pub h: f32,
-    /// Hex color, one of [`PALETTE`].
+    /// Stroke hex color, one of [`PALETTE`].
     pub color: String,
     /// Stroke width in image pixels.
     pub stroke_width: f32,
+    #[serde(default, flatten)]
+    pub style: ShapeStyle,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+impl RectShape {
+    /// The corner radius a round-edged rectangle renders with: proportional
+    /// to the shape, capped at [`MAX_CORNER_RADIUS`].
+    pub fn corner_radius(&self) -> f32 {
+        (self.w.min(self.h) * 0.25).min(MAX_CORNER_RADIUS)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EllipseShape {
     pub id: ShapeId,
@@ -246,9 +411,27 @@ pub struct EllipseShape {
     pub h: f32,
     pub color: String,
     pub stroke_width: f32,
+    #[serde(default, flatten)]
+    pub style: ShapeStyle,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// A diamond (rotated square) — Excalidraw's diamond tool. `edges` rounds
+/// the four corners.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiamondShape {
+    pub id: ShapeId,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub color: String,
+    pub stroke_width: f32,
+    #[serde(default, flatten)]
+    pub style: ShapeStyle,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArrowShape {
     pub id: ShapeId,
@@ -258,6 +441,23 @@ pub struct ArrowShape {
     pub y2: f32,
     pub color: String,
     pub stroke_width: f32,
+    #[serde(default, flatten)]
+    pub style: ShapeStyle,
+}
+
+/// Excalidraw's line tool: a bare 2-point stroke without a head.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LineShape {
+    pub id: ShapeId,
+    pub x1: f32,
+    pub y1: f32,
+    pub x2: f32,
+    pub y2: f32,
+    pub color: String,
+    pub stroke_width: f32,
+    #[serde(default, flatten)]
+    pub style: ShapeStyle,
 }
 
 impl ArrowShape {
@@ -290,7 +490,7 @@ impl ArrowShape {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PenShape {
     pub id: ShapeId,
@@ -298,9 +498,11 @@ pub struct PenShape {
     pub points: Vec<(f32, f32)>,
     pub color: String,
     pub stroke_width: f32,
+    #[serde(default, flatten)]
+    pub style: ShapeStyle,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TextShape {
     pub id: ShapeId,
@@ -308,12 +510,16 @@ pub struct TextShape {
     pub x: f32,
     pub y: f32,
     pub text: String,
-    /// Font size in image pixels.
+    /// Font size in image pixels (one of [`TEXT_SIZES`] for new shapes).
     pub size: f32,
     pub color: String,
+    #[serde(default)]
+    pub align: TextAlign,
+    #[serde(default, flatten)]
+    pub style: ShapeStyle,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CounterShape {
     pub id: ShapeId,
@@ -325,6 +531,8 @@ pub struct CounterShape {
     pub color: String,
     #[serde(default = "default_counter_diameter")]
     pub diameter: f32,
+    #[serde(default, flatten)]
+    pub style: ShapeStyle,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -335,7 +543,7 @@ pub struct EffectShape {
     pub kind: EffectKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IconShape {
     pub id: ShapeId,
@@ -347,6 +555,21 @@ pub struct IconShape {
     pub y: f32,
     pub size: f32,
     pub color: String,
+    #[serde(default, flatten)]
+    pub style: ShapeStyle,
+}
+
+/// A pasted or file-inserted bitmap, stored as a reference to a library
+/// asset (the PNG bytes live in `<data>/assets/<asset_id>.png`, shared
+/// across documents).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageShape {
+    pub id: ShapeId,
+    pub asset_id: ShapeId,
+    pub bounds: Rect,
+    #[serde(default, flatten)]
+    pub style: ShapeStyle,
 }
 
 /// Old documents may carry glyph ids that are no longer bundled; they render
@@ -376,12 +599,15 @@ pub enum EffectKind {
 pub enum Shape {
     Rectangle(RectShape),
     Ellipse(EllipseShape),
+    Diamond(DiamondShape),
+    Line(LineShape),
     Arrow(ArrowShape),
     Pen(PenShape),
     Text(TextShape),
     Counter(CounterShape),
     Effect(EffectShape),
     Icon(IconShape),
+    Image(ImageShape),
 }
 
 impl Shape {
@@ -389,12 +615,32 @@ impl Shape {
         match self {
             Shape::Rectangle(shape) => &shape.id,
             Shape::Ellipse(shape) => &shape.id,
+            Shape::Diamond(shape) => &shape.id,
+            Shape::Line(shape) => &shape.id,
             Shape::Arrow(shape) => &shape.id,
             Shape::Pen(shape) => &shape.id,
             Shape::Text(shape) => &shape.id,
             Shape::Counter(shape) => &shape.id,
             Shape::Effect(shape) => &shape.id,
             Shape::Icon(shape) => &shape.id,
+            Shape::Image(shape) => &shape.id,
+        }
+    }
+
+    /// Mutable access to the shape's id (used when duplicating).
+    pub fn id_mut(&mut self) -> &mut ShapeId {
+        match self {
+            Shape::Rectangle(shape) => &mut shape.id,
+            Shape::Ellipse(shape) => &mut shape.id,
+            Shape::Diamond(shape) => &mut shape.id,
+            Shape::Line(shape) => &mut shape.id,
+            Shape::Arrow(shape) => &mut shape.id,
+            Shape::Pen(shape) => &mut shape.id,
+            Shape::Text(shape) => &mut shape.id,
+            Shape::Counter(shape) => &mut shape.id,
+            Shape::Effect(shape) => &mut shape.id,
+            Shape::Icon(shape) => &mut shape.id,
+            Shape::Image(shape) => &mut shape.id,
         }
     }
 
@@ -403,6 +649,13 @@ impl Shape {
         match self {
             Shape::Rectangle(shape) => Rect::new(shape.x, shape.y, shape.w, shape.h),
             Shape::Ellipse(shape) => Rect::new(shape.x, shape.y, shape.w, shape.h),
+            Shape::Diamond(shape) => Rect::new(shape.x, shape.y, shape.w, shape.h),
+            Shape::Line(shape) => {
+                let (x1, y1, x2, y2) = (shape.x1, shape.y1, shape.x2, shape.y2);
+                let x = x1.min(x2);
+                let y = y1.min(y2);
+                Rect::new(x, y, (x1 - x2).abs().max(1.0), (y1 - y2).abs().max(1.0))
+            }
             Shape::Arrow(shape) => {
                 let (x1, y1, x2, y2) = (shape.x1, shape.y1, shape.x2, shape.y2);
                 let x = x1.min(x2);
@@ -441,6 +694,7 @@ impl Shape {
             Shape::Counter(shape) => Rect::new(shape.x, shape.y, shape.diameter, shape.diameter),
             Shape::Effect(shape) => shape.bounds,
             Shape::Icon(shape) => Rect::new(shape.x, shape.y, shape.size, shape.size),
+            Shape::Image(shape) => shape.bounds,
         }
     }
 
@@ -454,6 +708,16 @@ impl Shape {
             Shape::Ellipse(shape) => {
                 shape.x += dx;
                 shape.y += dy;
+            }
+            Shape::Diamond(shape) => {
+                shape.x += dx;
+                shape.y += dy;
+            }
+            Shape::Line(shape) => {
+                shape.x1 += dx;
+                shape.y1 += dy;
+                shape.x2 += dx;
+                shape.y2 += dy;
             }
             Shape::Arrow(shape) => {
                 shape.x1 += dx;
@@ -482,6 +746,10 @@ impl Shape {
             Shape::Icon(shape) => {
                 shape.x += dx;
                 shape.y += dy;
+            }
+            Shape::Image(shape) => {
+                shape.bounds.x += dx;
+                shape.bounds.y += dy;
             }
         }
     }
@@ -514,6 +782,18 @@ impl Shape {
                 shape.w = target.w.max(1.0);
                 shape.h = target.h.max(1.0);
             }
+            Shape::Diamond(shape) => {
+                shape.x = target.x;
+                shape.y = target.y;
+                shape.w = target.w.max(1.0);
+                shape.h = target.h.max(1.0);
+            }
+            Shape::Line(shape) => {
+                shape.x1 = target.x + (shape.x1 - original.x) * sx;
+                shape.y1 = target.y + (shape.y1 - original.y) * sy;
+                shape.x2 = target.x + (shape.x2 - original.x) * sx;
+                shape.y2 = target.y + (shape.y2 - original.y) * sy;
+            }
             Shape::Arrow(shape) => {
                 shape.x1 = target.x + (shape.x1 - original.x) * sx;
                 shape.y1 = target.y + (shape.y1 - original.y) * sy;
@@ -537,6 +817,9 @@ impl Shape {
                 shape.diameter = (shape.diameter * sx.min(sy)).max(8.0);
             }
             Shape::Effect(shape) => {
+                shape.bounds = Rect::new(target.x, target.y, target.w.max(1.0), target.h.max(1.0));
+            }
+            Shape::Image(shape) => {
                 shape.bounds = Rect::new(target.x, target.y, target.w.max(1.0), target.h.max(1.0));
             }
             Shape::Icon(shape) => {
@@ -590,13 +873,26 @@ impl Shape {
                 finite(&[shape.x, shape.y, shape.w, shape.h, shape.stroke_width])
                     && shape.w >= 0.0
                     && shape.h >= 0.0
-                    && valid_stroke(shape.stroke_width),
+                    && valid_stroke(shape.stroke_width)
+                    && shape.corner_radius() <= MAX_CORNER_RADIUS,
             ),
             Shape::Ellipse(shape) => (
                 &shape.color,
                 finite(&[shape.x, shape.y, shape.w, shape.h, shape.stroke_width])
                     && shape.w >= 0.0
                     && shape.h >= 0.0
+                    && valid_stroke(shape.stroke_width),
+            ),
+            Shape::Diamond(shape) => (
+                &shape.color,
+                finite(&[shape.x, shape.y, shape.w, shape.h, shape.stroke_width])
+                    && shape.w >= 0.0
+                    && shape.h >= 0.0
+                    && valid_stroke(shape.stroke_width),
+            ),
+            Shape::Line(shape) => (
+                &shape.color,
+                finite(&[shape.x1, shape.y1, shape.x2, shape.y2, shape.stroke_width])
                     && valid_stroke(shape.stroke_width),
             ),
             Shape::Arrow(shape) => (
@@ -627,12 +923,58 @@ impl Shape {
             ),
             Shape::Effect(_) => unreachable!("effects are validated without a color"),
             Shape::Icon(_) => unreachable!("icons are validated separately"),
+            Shape::Image(shape) => {
+                let Rect { x, y, w, h } = shape.bounds;
+                return if finite(&[x, y, w, h]) && w > 0.0 && h > 0.0 && valid_id(&shape.asset_id) {
+                    validate_opacity(shape.style.opacity)
+                } else {
+                    Err(format!("The geometry for shape {} is invalid.", self.id()))
+                };
+            }
         };
         if !geometry_valid {
             return Err(format!("The geometry for shape {} is invalid.", self.id()));
         }
-        validate_color(color)
+        validate_color(color)?;
+        validate_shape_options(self)
     }
+}
+
+/// Every new-in-v2 option field must carry a sane value.
+fn validate_shape_options(shape: &Shape) -> Result<(), String> {
+    let style = match shape {
+        Shape::Rectangle(shape) => &shape.style,
+        Shape::Ellipse(shape) => &shape.style,
+        Shape::Diamond(shape) => &shape.style,
+        Shape::Line(shape) => &shape.style,
+        Shape::Arrow(shape) => &shape.style,
+        Shape::Pen(shape) => &shape.style,
+        Shape::Text(shape) => &shape.style,
+        Shape::Counter(shape) => &shape.style,
+        Shape::Icon(shape) => &shape.style,
+        Shape::Image(shape) => &shape.style,
+        Shape::Effect(_) => return Ok(()),
+    };
+    if let Some(color) = &style.fill_color {
+        validate_color(color)?;
+    }
+    validate_opacity(style.opacity)
+}
+
+fn validate_opacity(opacity: Opacity) -> Result<(), String> {
+    if opacity.0 <= 100 {
+        Ok(())
+    } else {
+        Err("The shape opacity is invalid.".to_string())
+    }
+}
+
+fn valid_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 128
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
 }
 
 fn finite(values: &[f32]) -> bool {
@@ -667,6 +1009,7 @@ mod tests {
             h,
             color: "#e03131".to_string(),
             stroke_width: 4.0,
+            ..Default::default()
         })
     }
 
@@ -683,12 +1026,14 @@ mod tests {
             y2: 200.0,
             color: "#1971c2".to_string(),
             stroke_width: 4.0,
+            ..Default::default()
         }));
         document.shapes.push(Shape::Pen(PenShape {
             id: "c".to_string(),
             points: vec![(50.0, 50.0), (60.0, 55.0), (70.0, 50.0)],
             color: "#1a1a1a".to_string(),
             stroke_width: 2.0,
+            ..Default::default()
         }));
         document
     }
@@ -726,9 +1071,13 @@ mod tests {
         let parsed = Document::from_bytes(bytes).unwrap();
         assert_eq!(parsed.version, 1);
         assert_eq!(parsed.shapes.len(), 1);
+        // Re-saving stamps the current version: that is the migration.
         let reloaded = Document::from_bytes(&parsed.to_bytes().unwrap()).unwrap();
-        assert_eq!(reloaded, parsed);
-        assert_eq!(reloaded.version, 1);
+        assert_eq!(reloaded.version, DOCUMENT_VERSION);
+        let Shape::Rectangle(rect) = &reloaded.shapes[0] else {
+            panic!("expected the rectangle");
+        };
+        assert_eq!(rect.style, ShapeStyle::default());
     }
 
     #[test]
@@ -816,6 +1165,7 @@ mod tests {
             n: 3,
             color: "#e03131".to_string(),
             diameter: COUNTER_DIAMETER,
+            ..Default::default()
         }));
         assert_eq!(document.next_counter_number(), 4);
     }
@@ -883,6 +1233,7 @@ mod tests {
             text: "text".to_string(),
             size: 20.0,
             color: "#1a1a1a".to_string(),
+            ..Default::default()
         });
         text.scale_to(&Rect::new(20.0, 30.0, 100.0, 52.0));
         match text {
@@ -899,6 +1250,7 @@ mod tests {
             n: 1,
             color: "#e03131".to_string(),
             diameter: 32.0,
+            ..Default::default()
         });
         counter.scale_to(&Rect::new(20.0, 30.0, 64.0, 48.0));
         match counter {
@@ -919,6 +1271,7 @@ mod tests {
             y2: 0.0,
             color: "#000000".to_string(),
             stroke_width: 4.0,
+            ..Default::default()
         };
         let head = arrow.head_triangle(20.0);
         // Tip overshoots the endpoint along the line; the base straddles it.
@@ -941,6 +1294,7 @@ mod tests {
             y2: 5.0,
             color: "#000000".to_string(),
             stroke_width: 4.0,
+            ..Default::default()
         };
         assert_eq!(arrow.head_triangle(20.0), [(5.0, 5.0); 3]);
     }
@@ -954,9 +1308,169 @@ mod tests {
             text: "hello".to_string(),
             size: 24.0,
             color: "#000000".to_string(),
+            ..Default::default()
         });
         let bounds = text.bounds();
         assert!(bounds.h > 0.0);
+    }
+
+    #[test]
+    fn style_options_round_trip_through_json() {
+        let mut document = Document::new(100, 80);
+        document.shapes.push(Shape::Rectangle(RectShape {
+            id: "r".to_string(),
+            x: 0.0,
+            y: 0.0,
+            w: 40.0,
+            h: 30.0,
+            color: "#1971c2".to_string(),
+            stroke_width: 2.0,
+            style: ShapeStyle {
+                fill_color: Some("#f8d12c".to_string()),
+                fill_style: FillStyle::CrossHatch,
+                stroke_style: StrokeStyle::Dashed,
+                sloppiness: Sloppiness::VeryRough,
+                edges: EdgeStyle::Round,
+                opacity: Opacity(60),
+            },
+        }));
+        document.shapes.push(Shape::Line(LineShape {
+            id: "l".to_string(),
+            x1: 0.0,
+            y1: 0.0,
+            x2: 30.0,
+            y2: 30.0,
+            color: "#1a1a1a".to_string(),
+            stroke_width: 4.0,
+            style: ShapeStyle {
+                stroke_style: StrokeStyle::Dotted,
+                sloppiness: Sloppiness::Rough,
+                opacity: Opacity(80),
+                ..ShapeStyle::default()
+            },
+        }));
+        document.shapes.push(Shape::Text(TextShape {
+            id: "t".to_string(),
+            x: 5.0,
+            y: 5.0,
+            text: "hi".to_string(),
+            size: 28.0,
+            color: "#1a1a1a".to_string(),
+            align: TextAlign::Center,
+            ..Default::default()
+        }));
+        let bytes = document.to_bytes().unwrap();
+        // Options serialize flat, Excalidraw-style.
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["shapes"][0]["fillStyle"], "cross-hatch");
+        assert_eq!(json["shapes"][0]["strokeStyle"], "dashed");
+        assert_eq!(json["shapes"][0]["sloppiness"], "very-rough");
+        assert_eq!(json["shapes"][0]["edges"], "round");
+        assert_eq!(json["shapes"][0]["opacity"], 60);
+        assert_eq!(json["shapes"][1]["strokeStyle"], "dotted");
+        assert_eq!(json["shapes"][2]["align"], "center");
+        assert_eq!(json["version"], DOCUMENT_VERSION);
+        assert_eq!(Document::from_bytes(&bytes).unwrap(), document);
+    }
+
+    #[test]
+    fn version_1_documents_migrate_with_default_options() {
+        let bytes = br##"{"version": 1, "imageWidth": 10, "imageHeight": 10, "shapes": [{"type": "ellipse", "id": "e", "x": 0, "y": 0, "w": 5, "h": 5, "color": "#e03131", "strokeWidth": 4}]}"##;
+        let parsed = Document::from_bytes(bytes).unwrap();
+        let Shape::Ellipse(ellipse) = &parsed.shapes[0] else {
+            panic!("expected the ellipse");
+        };
+        assert_eq!(ellipse.style, ShapeStyle::default());
+        assert_eq!(ellipse.style.opacity, Opacity::FULL);
+        assert_eq!(ellipse.style.fill_color, None);
+        // The migration is stamped on save.
+        let json: serde_json::Value = serde_json::from_slice(&parsed.to_bytes().unwrap()).unwrap();
+        assert_eq!(json["version"], DOCUMENT_VERSION);
+    }
+
+    #[test]
+    fn out_of_range_opacity_and_fill_colors_are_rejected() {
+        let mut document = Document::new(10, 10);
+        document.shapes.push(Shape::Rectangle(RectShape {
+            id: "r".to_string(),
+            x: 0.0,
+            y: 0.0,
+            w: 5.0,
+            h: 5.0,
+            color: "#1a1a1a".to_string(),
+            stroke_width: 2.0,
+            style: ShapeStyle {
+                fill_color: Some("red".to_string()),
+                ..ShapeStyle::default()
+            },
+        }));
+        assert!(document.to_bytes().is_err());
+        document.shapes[0] = Shape::Rectangle(RectShape {
+            id: "r".to_string(),
+            x: 0.0,
+            y: 0.0,
+            w: 5.0,
+            h: 5.0,
+            color: "#1a1a1a".to_string(),
+            stroke_width: 2.0,
+            style: ShapeStyle {
+                fill_color: Some("#1971c2".to_string()),
+                opacity: Opacity(150),
+                ..ShapeStyle::default()
+            },
+        });
+        assert!(document.to_bytes().is_err());
+    }
+
+    #[test]
+    fn image_shapes_round_trip_and_validate_the_asset_reference() {
+        let mut document = Document::new(100, 80);
+        document.shapes.push(Shape::Image(ImageShape {
+            id: "img".to_string(),
+            asset_id: "asset-1".to_string(),
+            bounds: Rect::new(4.0, 4.0, 40.0, 30.0),
+            ..Default::default()
+        }));
+        assert_eq!(
+            Document::from_bytes(&document.to_bytes().unwrap()).unwrap(),
+            document
+        );
+        // A garbage asset reference fails validation.
+        let json: serde_json::Value =
+            serde_json::from_slice(&document.to_bytes().unwrap()).unwrap();
+        let mut bad = json.clone();
+        bad["shapes"][0]["assetId"] = "not valid!".into();
+        assert!(Document::from_bytes(serde_json::to_vec(&bad).unwrap().as_slice()).is_err());
+        // Degenerate bounds fail too.
+        let mut degenerate = json;
+        degenerate["shapes"][0]["bounds"] = serde_json::json!({"x": 0, "y": 0, "w": 0, "h": 0});
+        assert!(Document::from_bytes(serde_json::to_vec(&degenerate).unwrap().as_slice()).is_err());
+    }
+
+    #[test]
+    fn duplicate_copies_with_offset_above_the_original() {
+        let mut document = sample_document();
+        let original_bounds = document.shapes[0].bounds();
+        let new_id = document.duplicate(&"a".to_string(), "a-copy".to_string());
+        assert_eq!(new_id.as_deref(), Some("a-copy"));
+        assert_eq!(document.shapes.len(), 4);
+        // The copy sits directly above the original in paint order.
+        assert_eq!(document.shapes[1].id(), "a-copy");
+        assert_eq!(
+            document.shapes[1].bounds(),
+            Rect::new(
+                original_bounds.x + DUPLICATE_OFFSET,
+                original_bounds.y + DUPLICATE_OFFSET,
+                original_bounds.w,
+                original_bounds.h
+            )
+        );
+        assert!(
+            document
+                .duplicate(&"missing".to_string(), "x".to_string())
+                .is_none()
+        );
+        assert!(document.to_bytes().is_ok(), "duplicate ids are distinct");
     }
 
     #[test]
@@ -1004,6 +1518,7 @@ mod tests {
             y: 20.0,
             size: 32.0,
             color: "#1971c2".to_string(),
+            ..Default::default()
         }));
         assert_eq!(
             Document::from_bytes(&document.to_bytes().unwrap()).unwrap(),
@@ -1032,6 +1547,7 @@ mod tests {
             y: 20.0,
             size: 32.0,
             color: "#1971c2".to_string(),
+            ..Default::default()
         }));
 
         document.shapes[0].scale_to(&Rect::new(10.0, 20.0, 2048.0, 1600.0));

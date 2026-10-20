@@ -7,4 +7,5 @@ pub mod history;
 pub mod hit_test;
 pub mod icons;
 pub mod model;
+pub mod outline;
 pub mod window;

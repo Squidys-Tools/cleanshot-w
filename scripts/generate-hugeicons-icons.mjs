@@ -31,7 +31,12 @@ const chromeTable = resolve(root, "app/cleanshot/src/ui_chrome.rs");
 const chrome = {
   select: "CursorRectangleSelectionIcon",
   rectangle: "SquareIcon",
+  diamond: "DiamondIcon",
   ellipse: "CircleIcon",
+  line: "LineIcon",
+  image: "ImageIcon",
+  eraser: "EraserIcon",
+  duplicate: "CopyPlusIcon",
   arrow: "ArrowUpRight01Icon",
   pen: "Pen01Icon",
   text: "TypeIcon",

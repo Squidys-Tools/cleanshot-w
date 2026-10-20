@@ -2,7 +2,12 @@
 pub(super) const CHROME_ICONS: &[(&str, &[u8])] = &[
     ("select", include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/hugeicons/select.svg"))),
     ("rectangle", include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/hugeicons/rectangle.svg"))),
+    ("diamond", include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/hugeicons/diamond.svg"))),
     ("ellipse", include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/hugeicons/ellipse.svg"))),
+    ("line", include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/hugeicons/line.svg"))),
+    ("image", include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/hugeicons/image.svg"))),
+    ("eraser", include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/hugeicons/eraser.svg"))),
+    ("duplicate", include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/hugeicons/duplicate.svg"))),
     ("arrow", include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/hugeicons/arrow.svg"))),
     ("pen", include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/hugeicons/pen.svg"))),
     ("text", include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/hugeicons/text.svg"))),

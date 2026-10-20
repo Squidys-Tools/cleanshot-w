@@ -124,13 +124,32 @@ pub fn hit_test(document: &Document, px: f32, py: f32, tolerance: f32) -> Option
 
 fn shape_contains(shape: &Shape, px: f32, py: f32, tolerance: f32) -> bool {
     match shape {
-        Shape::Rectangle(rect) => stroke_contains_rect(
-            Rect::new(rect.x, rect.y, rect.w, rect.h),
-            px,
-            py,
-            rect.stroke_width,
-            tolerance,
-        ),
+        Shape::Rectangle(rect) => {
+            let bounds = Rect::new(rect.x, rect.y, rect.w, rect.h);
+            let filled = rect.style.is_filled();
+            if filled && bounds.contains(px, py) {
+                return true;
+            }
+            stroke_contains_rect(bounds, px, py, rect.stroke_width, tolerance)
+        }
+        Shape::Diamond(diamond) => {
+            let bounds = Rect::new(diamond.x, diamond.y, diamond.w, diamond.h);
+            if diamond.style.is_filled()
+                && bounds.contains(px, py)
+                && diamond_contains(diamond, px, py)
+            {
+                return true;
+            }
+            diamond_stroke_contains(diamond, px, py, tolerance)
+        }
+        Shape::Line(shape) => {
+            distance_to_segment(px, py, shape.x1, shape.y1, shape.x2, shape.y2)
+                <= shape.stroke_width / 2.0 + tolerance
+        }
+        Shape::Image(shape) => {
+            let bounds = shape.bounds;
+            bounds.contains(px, py) || distance_to_rect_edge(&bounds, px, py) <= tolerance
+        }
         Shape::Ellipse(ellipse) => {
             // Distance from the ellipse edge: normalize both the point and a
             // tolerance ring into the unit circle and compare radii.
@@ -146,6 +165,9 @@ fn shape_contains(shape: &Shape, px: f32, py: f32, tolerance: f32) -> bool {
             let tol_nx = tol / rx;
             let tol_ny = tol / ry;
             let tol_r = (tol_nx * tol_nx + tol_ny * tol_ny).sqrt();
+            if ellipse.style.is_filled() && r <= 1.0 {
+                return true;
+            }
             r <= 1.0 + tol_r && r >= 1.0 - tol_r.min(1.0)
         }
         Shape::Arrow(arrow) => {
@@ -179,6 +201,34 @@ fn shape_contains(shape: &Shape, px: f32, py: f32, tolerance: f32) -> bool {
             bounds.contains(px, py) || distance_to_rect_edge(&bounds, px, py) <= tolerance
         }
     }
+}
+
+/// Is the point inside the diamond (a rotated square's rhombus)?
+fn diamond_contains(diamond: &crate::editor::model::DiamondShape, px: f32, py: f32) -> bool {
+    let cx = diamond.x + diamond.w / 2.0;
+    let cy = diamond.y + diamond.h / 2.0;
+    let nx = (px - cx) / (diamond.w / 2.0).max(f32::EPSILON);
+    let ny = (py - cy) / (diamond.h / 2.0).max(f32::EPSILON);
+    nx.abs() + ny.abs() <= 1.0
+}
+
+/// Stroke hit for a diamond: near any of its four edges.
+fn diamond_stroke_contains(
+    diamond: &crate::editor::model::DiamondShape,
+    px: f32,
+    py: f32,
+    tolerance: f32,
+) -> bool {
+    let cx = diamond.x + diamond.w / 2.0;
+    let cy = diamond.y + diamond.h / 2.0;
+    let top = (cx, diamond.y);
+    let right = (diamond.x + diamond.w, cy);
+    let bottom = (cx, diamond.y + diamond.h);
+    let left = (diamond.x, cy);
+    let edges = [(top, right), (right, bottom), (bottom, left), (left, top)];
+    edges.iter().any(|(a, b)| {
+        distance_to_segment(px, py, a.0, a.1, b.0, b.1) <= diamond.stroke_width / 2.0 + tolerance
+    })
 }
 
 /// Stroke hit for a rectangle: near the border, or inside when the stroke is
@@ -283,6 +333,7 @@ mod tests {
             h,
             color: "#e03131".to_string(),
             stroke_width: stroke,
+            ..Default::default()
         })
     }
 
@@ -334,6 +385,7 @@ mod tests {
             h: 100.0,
             color: "#1971c2".to_string(),
             stroke_width: 4.0,
+            ..Default::default()
         });
         let document = document_with(shape);
         assert_eq!(
@@ -359,6 +411,7 @@ mod tests {
             h: 100.0,
             color: "#1971c2".to_string(),
             stroke_width: 4.0,
+            ..Default::default()
         });
         if let Shape::Ellipse(ellipse) = &mut shape {
             ellipse.stroke_width = 220.0; // thicker than the radii: filled
@@ -377,6 +430,7 @@ mod tests {
             y2: 0.0,
             color: "#1a1a1a".to_string(),
             stroke_width: 4.0,
+            ..Default::default()
         });
         let document = document_with(shape);
         assert_eq!(hit_test(&document, 150.0, 0.0, 4.0), Some(0), "mid-line");
@@ -398,6 +452,7 @@ mod tests {
             y2: 120.0,
             color: "#1a1a1a".to_string(),
             stroke_width: 4.0,
+            ..Default::default()
         };
 
         assert_eq!(
@@ -423,6 +478,7 @@ mod tests {
             y2: 45.0,
             color: "#1a1a1a".to_string(),
             stroke_width: 4.0,
+            ..Default::default()
         }));
         document.shapes.push(rect(120.0, 120.0, 20.0, 20.0, 4.0));
 
@@ -439,6 +495,7 @@ mod tests {
             points: vec![(0.0, 0.0), (100.0, 100.0)],
             color: "#1a1a1a".to_string(),
             stroke_width: 4.0,
+            ..Default::default()
         });
         let document = document_with(shape);
         assert_eq!(hit_test(&document, 50.0, 50.0, 4.0), Some(0));
@@ -466,6 +523,7 @@ mod tests {
             text: "hello".to_string(),
             size: 24.0,
             color: "#1a1a1a".to_string(),
+            ..Default::default()
         });
         let document = document_with(shape);
         let bounds = document.shapes[0].bounds();
@@ -482,6 +540,7 @@ mod tests {
             n: 1,
             color: "#e03131".to_string(),
             diameter: COUNTER_DIAMETER,
+            ..Default::default()
         });
         let document = document_with(shape);
         let cx = 100.0 + COUNTER_DIAMETER / 2.0;
@@ -543,6 +602,89 @@ mod tests {
             Rect::new(100.0, 100.0, 60.0, 50.0),
             "vertical edges ignore the y move"
         );
+    }
+
+    #[test]
+    fn diamond_hits_its_edges_and_its_fill_when_filled() {
+        let outline_only = || {
+            Shape::Diamond(crate::editor::model::DiamondShape {
+                id: "d".to_string(),
+                x: 10.0,
+                y: 10.0,
+                w: 80.0,
+                h: 60.0,
+                color: "#1a1a1a".to_string(),
+                stroke_width: 2.0,
+                ..Default::default()
+            })
+        };
+        // Center is empty without a fill.
+        let mut document = Document::new(200, 200);
+        document.shapes.push(outline_only());
+        assert!(hit_test(&document, 50.0, 40.0, 1.0).is_none());
+        // Edge hits.
+        assert!(hit_test(&document, 50.0, 10.0, 1.0).is_some());
+        // Filled: the center hits.
+        let mut filled = document;
+        if let Shape::Diamond(diamond) = &mut filled.shapes[0] {
+            diamond.style.fill_color = Some("#1971c2".to_string());
+            diamond.style.fill_style = crate::editor::model::FillStyle::Solid;
+        }
+        assert!(hit_test(&filled, 50.0, 40.0, 1.0).is_some());
+        // Outside the rhombus but inside the bounds box: no hit.
+        assert!(hit_test(&filled, 15.0, 15.0, 1.0).is_none());
+    }
+
+    #[test]
+    fn line_hits_along_its_segment_only() {
+        let mut document = Document::new(200, 200);
+        document
+            .shapes
+            .push(Shape::Line(crate::editor::model::LineShape {
+                id: "l".to_string(),
+                x1: 20.0,
+                y1: 20.0,
+                x2: 100.0,
+                y2: 20.0,
+                color: "#1a1a1a".to_string(),
+                stroke_width: 2.0,
+                ..Default::default()
+            }));
+        assert!(hit_test(&document, 60.0, 20.0, 1.0).is_some());
+        assert!(hit_test(&document, 60.0, 40.0, 1.0).is_none());
+    }
+
+    #[test]
+    fn filled_rectangle_interior_hits() {
+        let mut document = Document::new(200, 200);
+        document.shapes.push(rect(20.0, 20.0, 60.0, 60.0, 2.0));
+        assert!(
+            hit_test(&document, 50.0, 50.0, 1.0).is_none(),
+            "outline-only interior misses"
+        );
+        if let Shape::Rectangle(rectangle) = &mut document.shapes[0] {
+            rectangle.style.fill_color = Some("#1971c2".to_string());
+            rectangle.style.fill_style = crate::editor::model::FillStyle::Hachure;
+        }
+        assert!(
+            hit_test(&document, 50.0, 50.0, 1.0).is_some(),
+            "filled interior hits"
+        );
+    }
+
+    #[test]
+    fn image_hits_its_bounds() {
+        let mut document = Document::new(200, 200);
+        document
+            .shapes
+            .push(Shape::Image(crate::editor::model::ImageShape {
+                id: "img".to_string(),
+                asset_id: "asset-1".to_string(),
+                bounds: Rect::new(20.0, 20.0, 60.0, 40.0),
+                ..Default::default()
+            }));
+        assert!(hit_test(&document, 50.0, 40.0, 1.0).is_some());
+        assert!(hit_test(&document, 5.0, 5.0, 1.0).is_none());
     }
 
     #[test]

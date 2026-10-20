@@ -261,6 +261,35 @@ pub fn annotations_path(id: &str) -> Result<PathBuf, String> {
     Ok(capture_dir(&library_root()?, id).join("annotations.json"))
 }
 
+/// The shared asset store (`<data>/assets/<id>.png`), referenced by image
+/// annotation elements. Assets are global so two annotations can share one
+/// pasted image.
+fn assets_root() -> Result<PathBuf, String> {
+    Ok(app_data_root()?.join("assets"))
+}
+
+/// Store image bytes as a new asset and return its id.
+pub fn save_asset(png: &[u8]) -> Result<String, String> {
+    let id = generate_id();
+    let root = assets_root()?;
+    fs::create_dir_all(&root)
+        .map_err(|error| format!("Could not create the asset folder: {error}"))?;
+    write_atomic(&root.join(format!("{id}.png")), png)?;
+    Ok(id)
+}
+
+/// Read one asset's image bytes by id.
+pub fn read_asset(id: &str) -> Result<Vec<u8>, String> {
+    validate_id(id)?;
+    fs::read(asset_path(id)).map_err(|error| format!("Could not read asset {id}: {error}"))
+}
+
+pub fn asset_path(id: &str) -> PathBuf {
+    assets_root()
+        .unwrap_or_else(|_| PathBuf::from("assets"))
+        .join(format!("{id}.png"))
+}
+
 #[derive(Debug)]
 pub enum AnnotationSource {
     Transient,
@@ -536,7 +565,10 @@ mod tests {
         else {
             panic!("versionless annotation document was not loaded");
         };
-        assert_eq!(document.version, crate::editor::model::DOCUMENT_VERSION);
+        assert_eq!(
+            document.version,
+            crate::editor::model::MIN_SUPPORTED_VERSION
+        );
 
         write_annotations_idempotent(&document, &loaded_path).unwrap();
         let saved: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
