@@ -352,3 +352,132 @@ no source redistribution; CleanShot X patterns from cleanshot.com, Macworld, TYP
 **Assumed**: Segoe UI Variable available on target Windows (standard on Win10/11); mockup
 proportions (toolbar 52, rail 232) are starting values to tune in phase 3; quick-access card
 is a net-new surface (CleanShot-inspired) and needs Christopher's feature sign-off.
+
+## 10. Excalidraw tool and option parity (2026-10-20)
+
+Christopher asked for every tool excalidraw.com offers, and every option those tools expose, in Snipsy's editor. The one exception is the pen/freehand tool, which he has held off. This section inventories those tools, proposes how they fit Snipsy's toolbar, and lists the decisions still open. The mockup for it is the "Tool parity" tab in `index.html`.
+
+**Sources.** Excalidraw source at commit `6f0a4d19b577e781ee5491d6cb89799b3fba7ee8` (https://github.com/excalidraw/excalidraw/tree/6f0a4d19b577e781ee5491d6cb89799b3fba7ee8), read on 2026-10-20 from a local copy. Excalidraw's development docs (https://docs.excalidraw.com/docs/introduction/development) and the live app (https://excalidraw.com) informed the tool list only; no line citations come from them. Citations are `file:line` in that commit. Snipsy citations are `app/cleanshot/src/editor/window.rs`. Lines tagged **unverified** were cut short or not read in full, so confirm them before implementation.
+
+Parity means the same tools and options in Snipsy's chrome: the icon-only toolbar with tooltips, sticky tools, and Snipsy's own keys. Excalidraw's revert-to-selection behavior is not specified, per Christopher.
+
+### 10.1 Tool inventory
+
+Snipsy's `Tool` enum is at `window.rs:78-91`: Select, Rectangle, Ellipse, Arrow, Pen, Text, Counter, Crop, Blur, Pixelate, Redact, Icon. The key bindings at `window.rs:446-500` cover V, R, O, A, D, T, C, and numerics 1-6 for these tools, with Pen bound to D and 5. The bindings for Blur (B), Pixelate (M), Redact (Shift+R), Icon (I), numerics 7-9, and Shift+X were not visible in that read, so they are **unverified**. The key labels in the mockup (Blur B, Pixelate M, Redact ⇧R, Icon I) follow the design, not the code.
+
+Excalidraw's numeric keys differ from Snipsy's: its Ellipse is 4, Arrow 5, and Text 8. Snipsy keeps its numbers, and each new tool takes a letter. Snipsy binds `d` to Pen, so Excalidraw's Diamond (D) cannot take D without a remap. The Shift+X binding for Draw to shape is unchecked against Snipsy, and Draw to shape is deferred below, so it needs no key yet.
+
+Excalidraw's tool registry is `Tools.tsx:69-159`. Its overflow menu is `Toolbar.tsx:124-207`.
+
+| Excalidraw tool | Excalidraw key | Source | Snipsy today | Decision |
+|---|---|---|---|---|
+| Selection | V, 1 | `Tools.tsx:75-80` | Select (1) | Have |
+| Lasso | none | `Tools.tsx:156-159`; overflow `Toolbar.tsx:184-192` | none | Include in the Select group; key open |
+| Hand | H | `Tools.tsx:70-73` | none | Include once zoom exists; Space-drag |
+| Rectangle | R, 2 | `Tools.tsx:81-86` | Rectangle (2) | Have; add roundness |
+| Diamond | D, 3 | `Tools.tsx:87-92` | none | Include; key open, D is Snipsy's Pen |
+| Ellipse | O, 4 | `Tools.tsx:93-98` | Ellipse (3) | Have |
+| Arrow | A, 5 | `Tools.tsx:99-104` | Arrow (4) | Have; add arrow types and arrowheads |
+| Line | L, 6 | `Tools.tsx:105-110` | none | Include; key L proposed |
+| Freedraw | P or X, 7 | `Tools.tsx:111-115` | Pen (5) | Excluded (pen held off); Snipsy's Pen stays |
+| Text | T, 8 | `Tools.tsx:116-120` | Text (6) | Have; add font, size, alignment |
+| Sticky note | N | `Tools.tsx:121-124` | none | Include; key N proposed |
+| Image | 9 | `Tools.tsx:125-128`; overflow `Toolbar.tsx:123-130` | none | Include; Snipsy's Icon (I) stays separate |
+| Eraser | E, 0 | `Tools.tsx:129-134` | none | Include; key E proposed |
+| Frame | F | `Tools.tsx:135-138`; overflow `Toolbar.tsx:135-143` | none | Include; needs a container in the model |
+| Draw to shape | Shift+X | `Tools.tsx:139-143`; overflow `Toolbar.tsx:154-163` | none | Defer with the pen, since it recognizes freehand strokes |
+| Bucket fill | B | `Tools.tsx:152-155`; overflow `Toolbar.tsx:174-183` | none | Include; Snipsy uses B for Blur, so key G proposed |
+| Web embed | none | `Tools.tsx:145-147`; overflow `Toolbar.tsx:145-153` | none | Exclude; see 10.7 |
+| Laser pointer | K | `Tools.tsx:148-151`; overflow `Toolbar.tsx:164-173` | none | Recommend exclude; see 10.4 |
+
+The overflow menu also holds a Generate section (`Toolbar.tsx:195-216`). Mermaid to Excalidraw reportedly shows without AI gating, and Wireframe to code arms only when AI is enabled and a diagram-to-code plugin is set. Both are excluded in 10.7. Lines past `Toolbar.tsx:207` were not read in full, so the complete overflow count is **unverified**.
+
+Snipsy's Counter, Crop, Blur, Pixelate, Redact, and Icon have no Excalidraw equivalent and stay as they are.
+
+### 10.2 Options per tool
+
+Excalidraw keeps options as shared `currentItem*` properties in app state. `Actions.tsx` decides which controls each tool shows. Citations below come from grep output and partial reads; the ones tagged **unverified** have not been read in full.
+
+- **Stroke color.** `COLOR_PALETTE` at `colors.ts:193-212` covers transparent, black, white, gray, hue families, and bronze. Quick stroke picks are at `colors.ts:239-245` (black, red, green, blue, yellow).
+- **Background color.** Quick picks at `colors.ts:248-254` (transparent, red, green, blue, yellow).
+- **Bucket fill background.** `BUCKET_FILL_BACKGROUND_PICKS` at `colors.ts:259-265` starts with white in place of transparent; the comment at `colors.ts:257-258` says transparent is a no-op for the bucket. Transparent is excluded from the control at `actionProperties.tsx:584-589`.
+- **Sticky note color.** Stroke picks reuse the element stroke picks (`colors.ts:270-271`). Background picks at `colors.ts:275` never include transparent (comment at `colors.ts:273-274`). The default note color is **unverified**.
+- **Fill style.** Hachure, cross-hatch, solid, and zigzag (`elemtypes.ts:19`). Picker `actionChangeFillStyle` at `actionProperties.tsx:611` (**unverified**).
+- **Stroke width.** Thin 1, medium 2, bold 4 (`constants.ts:486-488`). `extraBold` (8, `constants.ts:489`) is left out. The medium default is **unverified**.
+- **Stroke style.** Solid, dashed, and dotted (`elemtypes.ts:28`). Picker around `actionProperties.tsx:906-942` (**unverified**).
+- **Sloppiness.** Stored as roughness: architect 0, artist 1, cartoonist 2 (`constants.ts:469-473`). Picker options at `actionProperties.tsx:794-808`; the 0/1/2 mapping there is **verified**.
+- **Roundness.** Sharp and round. Action around `actionProperties.tsx:1762` (**unverified**), options around 1811-1816 (**unverified**). Default round (**unverified**).
+- **Opacity.** `actionChangeOpacity` around `actionProperties.tsx:961`, range 0 to 100 in steps of 10 (**unverified**).
+- **Arrow type.** Sharp, round, and elbow (`commonconst.ts:591-595`). Default round (**unverified**). Pressing the arrow key while the arrow tool is active cycles the type (`App.tsx` around 5346-5378, **unverified**).
+- **Arrowheads.** Picker around `actionProperties.tsx:1850-1946` (**unverified** as a full list). Triangle outline, bar, and cardinality markers appear there. Defaults are an arrow at the end and none at the start (**unverified**).
+- **Font family.** Nine faces in `FONT_FAMILY` (`commonconst.ts:143-153`): Virgil, Helvetica, Cascadia, Excalifont, Nunito, Lilita One, Comic Shanns, Liberation Sans, and Assistant. Default Excalifont (`commonconst.ts:271`, **unverified**). Whether these faces can be bundled under their licenses is **unverified**.
+- **Font size.** Small 16, medium 20, large 28, extra large 36 (`constants.ts:125-130`). Default medium is **unverified**.
+- **Text alignment.** Horizontal left, center, right (`constants.ts:434-438`). Vertical top, middle, bottom (`constants.ts:428-432`). Defaults are **unverified**.
+- **Frame.** Frame rendering carries flags for enabled, clip, name, and outline (**unverified**). The controls that set them are **unverified**.
+- **Image.** Options are **unverified**; read them before implementation.
+
+Tool behavior that the options do not cover:
+
+- **Eraser.** No options. Pointer movement marks elements pending erasure, and those render at 20% opacity: `renderElement.ts:197` multiplies opacity by `ELEMENT_READY_TO_ERASE_OPACITY` (20, `constants.ts:440`). The commit path after pointer-up (`App.tsx` around 10150) is **unverified**.
+- **Bucket fill.** Pointer-up commits the fill through `bucketFill.handlePointerUp` (around `App.tsx:9476-9480`, **unverified**). Pressing B again while the tool is active cycles the background color (around `App.tsx:5367-5372`, **unverified**).
+- **Laser pointer.** The trail is drawn by `LaserTrails`. Its decay constants at `laserTrails.ts:29-30` are `DECAY_TIME` 1000 and `DECAY_LENGTH` 50. An upstream file, `excal2/index.ts:50-51`, shows 200 and 10, so which tool uses which constants is **unverified**.
+
+### 10.3 UI surfaces
+
+Snipsy's floating toolbar holds twelve tool buttons at 36 px (`tokens.css` `--tool-btn`, mockup `index.html:202-213`). The nine new tools would take it to twenty-one buttons. Grouping keeps it at six buttons. Each group button shows its last-used tool; clicking it selects that tool, and the caret opens the group's flyout. Tooltips show the name and key, as the locked icon-only toolbar requires.
+
+The six groups hold 21 tools:
+
+- **Select:** Select (1), Lasso, Hand (Space-drag once zoom exists).
+- **Shapes:** Rectangle (2), Diamond, Ellipse (3), Line, Arrow (4), and Snipsy's existing Pen (5).
+- **Text:** Text (6) and Sticky note.
+- **Insert:** Counter (7), Icon (I), Image (9), and Frame.
+- **Effects:** Blur (B), Pixelate (M), and Redact (Shift+R).
+- **Edit:** Crop (8), Eraser, and Bucket fill.
+
+Undo and redo stay outside the groups, as they are now.
+
+For properties, the selection strip in section 5.2 becomes one contextual strip that serves the active tool and the current selection. It shows only the controls the tool or selection supports. Excalidraw hides its properties panel for some tools (`Actions.tsx` around 232-238, **unverified**), so Snipsy shows an empty strip for the eraser, hand, and laser. The strip carries the most-used controls: stroke color, background, stroke width, stroke style, and opacity. A Style popover holds fill style, sloppiness, roundness, arrow type, arrowheads, and text options. This is a Snipsy layout, not a copy of Excalidraw's panel, because Snipsy's chrome floats over the screenshot.
+
+### 10.4 Laser pointer (recommendation: exclude)
+
+The laser draws a fading trail in the live view and creates no element. Snipsy's output is a flattened PNG, so a laser trail has nothing to flatten. This reasoning is from the design, not from source. The laser's only use is pointing during a live screen share, and Snipsy's capture flow has no such step.
+
+If Christopher still wants it, the light spec is an overlay layer that never enters the model, a trail on the decay timing above, no undo entry, and no flatten step. This is a recommendation for Christopher to decide.
+
+### 10.5 Sticky tool behavior
+
+A tool stays active until the user switches away, and this spec keeps that behavior. Excalidraw's revert-to-selection behavior is intentionally not specified, per Christopher.
+
+### 10.6 Flatten notes (CPU, original image dimensions)
+
+Flatten runs on the CPU at the original image dimensions, with tiny-skia for shapes and fontdue for text. These per-option rules are design proposals to check against the crates before implementation:
+
+- **Fill styles.** Solid is a path fill. Hachure, cross-hatch, and zigzag are generated line sets clipped to the shape path, then stroked.
+- **Stroke styles.** Dashed and dotted use stroke dashing.
+- **Sloppiness.** Offset polylines seeded from the shape's id, so one shape flattens the same way on every export. Amplitude steps with the level (0, 1, 2). This is not roughjs and will not match Excalidraw's pixels.
+- **Roundness.** Round uses rounded corners; sharp uses miter joins.
+- **Opacity.** One alpha per shape, multiplied into the fill and stroke paints.
+- **Arrow types.** Sharp is a straight segment, round is a quadratic curve, and elbow is an orthogonal route between the endpoints.
+- **Arrowheads.** Each head is a small path placed at the endpoint and oriented along the segment.
+- **Text.** Rasterized with fontdue. Alignment applies to the layout box.
+- **Image.** A pixmap drawn with an affine transform and the element's opacity.
+- **Bucket fill.** Writes color, fill style, and opacity to the shape it hits, then flattens as a filled shape. It is not a pixel flood fill.
+- **Eraser, laser, hand.** No flatten step. They edit the model or the view only.
+
+### 10.7 Verified, assumed, unverified, and open
+
+**Verified** against the Excalidraw commit above: the tool keys and registry lines in 10.1 (`Tools.tsx`), the sloppiness 0/1/2 mapping at `actionProperties.tsx:794-808`, the eraser opacity at `renderElement.ts:197`, and the Snipsy tool enum, label table, and key bindings at `window.rs:78-91`, `2827-2831`, and `446-500` for the keys listed in 10.1.
+
+**Unverified:** every line tagged in 10.1 through 10.3, including the overflow entries past `Toolbar.tsx:207`, Mermaid gating, default values, the frame and image option lists, the full arrowhead list, the eraser commit path, and the Snipsy bindings for B, M, Shift+R, I, and numerics 7-9.
+
+**Assumed:** tiny-skia provides the clip, mask, and dash calls 10.6 needs, and the Excalidraw font faces can be bundled under their licenses.
+
+**Open for Christopher:**
+
+- Laser pointer: exclude, as recommended in 10.4.
+- Web embed: exclude, or replace it with a link card.
+- Mermaid to Excalidraw and wireframe to code: both excluded here; confirm.
+- Draw to shape: deferred with the pen; confirm.
+- Zoom and the Hand tool.
+- Keys for Lasso, Diamond (D collides with Pen), Line, Sticky note, Image, Frame, Eraser, and Bucket fill. The table proposes L, N, 9, F, E, and G; Diamond and Lasso are open.

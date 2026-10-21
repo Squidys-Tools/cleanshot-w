@@ -65,6 +65,17 @@
 .width-chip.on { background: var(--accent-soft); color: var(--accent); }
 .width-chip:hover { background: var(--bg-hover); }
 
+/* ===================== tool parity (section 10) ===================== */
+.ic { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; display: block; }
+.tool-group { position: relative; display: inline-flex; }
+.tool-group .caret { position: absolute; right: 2px; bottom: 3px; font-size: 7px; color: var(--text-3); }
+.flyout {
+  position: absolute; bottom: calc(100% + 12px); left: 50%; transform: translateX(-50%);
+  display: flex; gap: 2px; padding: 6px; background: var(--bg-toolbar); border: 1px solid var(--hairline);
+  border-radius: var(--r-window); box-shadow: var(--shadow-floating); white-space: nowrap;
+}
+.strip-empty { font-size: 11px; color: var(--text-3); padding: 0 6px; }
+
 /* ===================== history rail ===================== */
 .rail { width: var(--rail-w); background: var(--bg-surface); border-left: 1px solid var(--hairline);
   display: flex; flex-direction: column; flex: none; }
@@ -156,6 +167,7 @@
 <div class="gallery-bar">
   <div class="logo">Snipsy <span>redesign</span></div>
   <button class="tab-btn on" data-tab="editor">Editor</button>
+  <button class="tab-btn" data-tab="parity">Tool parity</button>
   <button class="tab-btn" data-tab="rail">History rail</button>
   <button class="tab-btn" data-tab="overlay">Capture overlay</button>
   <button class="tab-btn" data-tab="qa">Quick access</button>
@@ -380,6 +392,79 @@
         <div class="pref-row" style="border-bottom:0">
           <div><div class="lbl">Save location</div><div class="sub">Where Save PNG opens by default.</div></div>
           <div class="select-chip"><script>document.write(hi('FolderOpen',13))</script> Pictures\Snipsy</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TOOL PARITY (section 10) ============ -->
+  <div class="surface" id="tab-parity">
+    <p class="note"><b>Tool parity (section 10, 2026-10-20).</b> The 21 tools sit in six group buttons plus undo and redo. A caret opens the group's flyout, and the group button shows its last-used tool. Excalidraw's pen/freehand tool is not included, and Snipsy's own Pen stays. The tool stays active until switched. The contextual strip shows only the options the active tool supports; the eraser has none, so its strip is empty.</p>
+    <div class="surface-frame theme-dark editor" data-theme-root style="height:440px; margin-bottom:24px;">
+      <div class="editor-titlebar">
+        <span class="t">Snipsy — editor.png · Shapes flyout open</span>
+        <div class="win-btns"><i></i><i></i><i></i></div>
+      </div>
+      <div class="editor-canvas-area">
+        <div class="shot">
+          <div class="mock-head"><i></i><i></i><i></i></div>
+          <div class="mock-body"><div class="ln w80"></div><div class="ln"></div><div class="ln w60"></div></div>
+          <div class="sel-rect"><span class="h nw"></span><span class="h ne"></span><span class="h sw"></span><span class="h se"></span></div>
+        </div>
+        <div class="selection-pill" style="bottom:118px;">
+          <span class="color-dot on" style="background:#e5484d"></span>
+          <span class="color-dot" style="background:#1e1e1e"></span>
+          <span class="color-dot" style="background:#30a46c"></span>
+          <span class="tb-sep" style="height:18px; margin:0 4px;"></span>
+          <span class="width-chip">1</span><span class="width-chip on">2</span><span class="width-chip">4</span>
+          <span class="tb-sep" style="height:18px; margin:0 4px;"></span>
+          <span class="width-chip on" title="Solid">―</span><span class="width-chip" title="Dashed">┄</span><span class="width-chip" title="Dotted">⋯</span>
+          <span class="tb-sep" style="height:18px; margin:0 4px;"></span>
+          <span class="tb-btn">Style <span style="font-size:9px">▾</span></span>
+        </div>
+        <div class="floating-toolbar">
+          <span class="tool-group"><span class="tool-btn" title="Select (1) · Lasso · Hand"><script>document.write(hi('CursorRectangleSelection',20))</script></span><span class="caret">▾</span></span>
+          <span class="tool-group"><span class="tool-btn on" title="Shapes · Rectangle (2)"><script>document.write(hi('Square',20))</script></span><span class="caret">▾</span>
+            <span class="flyout">
+              <span class="tool-btn on" title="Rectangle (2)"><script>document.write(hi('Square',20))</script></span>
+              <span class="tool-btn" title="Diamond"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3l9 9-9 9-9-9z"/></svg></span>
+              <span class="tool-btn" title="Ellipse (3)"><script>document.write(hi('Circle',20))</script></span>
+              <span class="tool-btn" title="Line"><svg class="ic" viewBox="0 0 24 24"><path d="M5 19L19 5"/></svg></span>
+              <span class="tool-btn" title="Arrow (4)"><script>document.write(hi('ArrowUpRight01',20))</script></span>
+              <span class="tool-btn" title="Pen (5)"><script>document.write(hi('Pen01',20))</script></span>
+            </span>
+          </span>
+          <span class="tool-group"><span class="tool-btn" title="Text (6) · Sticky note"><script>document.write(hi('Type',20))</script></span><span class="caret">▾</span></span>
+          <span class="tool-group"><span class="tool-btn" title="Insert · Counter (7)"><script>document.write(hi('OneSquare',20))</script></span><span class="caret">▾</span></span>
+          <span class="tool-group"><span class="tool-btn" title="Effects · Blur (B)"><script>document.write(hi('Blur',20))</script></span><span class="caret">▾</span></span>
+          <span class="tool-group"><span class="tool-btn" title="Edit · Crop (8)"><script>document.write(hi('Crop',20))</script></span><span class="caret">▾</span></span>
+          <span class="tb-sep"></span>
+          <span class="tool-btn" title="Undo (Ctrl+Z)"><script>document.write(hi('Undo',18))</script></span>
+          <span class="tool-btn" title="Redo (Ctrl+Y)"><script>document.write(hi('Redo',18))</script></span>
+        </div>
+      </div>
+    </div>
+
+    <p class="note"><b>Eraser active.</b> The Edit group shows the eraser. The strip is empty because the eraser has no options. Elements marked for erasure render at 20% opacity (renderElement.ts:197 in the pinned Excalidraw source).</p>
+    <div class="surface-frame theme-dark editor" data-theme-root style="height:300px;">
+      <div class="editor-titlebar">
+        <span class="t">Snipsy — editor.png · Eraser active</span>
+        <div class="win-btns"><i></i><i></i><i></i></div>
+      </div>
+      <div class="editor-canvas-area">
+        <div class="shot" style="width:440px; height:200px;">
+          <div class="mock-head"><i></i><i></i><i></i></div>
+          <div class="mock-body"><div class="ln w60"></div><div class="ln w40"></div></div>
+          <div class="sel-rect" style="left:150px; top:50px; width:140px; height:70px; opacity:.2;"></div>
+        </div>
+        <div class="selection-pill" style="bottom:118px;"><span class="strip-empty">Eraser: no options</span></div>
+        <div class="floating-toolbar">
+          <span class="tool-group"><span class="tool-btn" title="Select (1)"><script>document.write(hi('CursorRectangleSelection',20))</script></span><span class="caret">▾</span></span>
+          <span class="tool-group"><span class="tool-btn" title="Shapes"><script>document.write(hi('Square',20))</script></span><span class="caret">▾</span></span>
+          <span class="tool-group"><span class="tool-btn" title="Text"><script>document.write(hi('Type',20))</script></span><span class="caret">▾</span></span>
+          <span class="tool-group"><span class="tool-btn" title="Insert"><script>document.write(hi('OneSquare',20))</script></span><span class="caret">▾</span></span>
+          <span class="tool-group"><span class="tool-btn" title="Effects"><script>document.write(hi('Blur',20))</script></span><span class="caret">▾</span></span>
+          <span class="tool-group"><span class="tool-btn on" title="Edit · Eraser (E)"><svg class="ic" viewBox="0 0 24 24"><path d="M3 17l9-9 7 7-5 5H7z"/><path d="M9 11l7 7"/></svg></span><span class="caret">▾</span></span>
         </div>
       </div>
     </div>
